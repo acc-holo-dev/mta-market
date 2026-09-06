@@ -51,6 +51,7 @@
 | `16_Модель_домена.md` | Формальные сущности: Order/Payment/Purchase/License/Installation + инварианты | ✅ создан |
 | `17_Финансовый_ledger.md` | Immutable financial_transactions, reconciliation, escrow state machine | ✅ создан |
 | `18_Модель_угроз.md` | Attacker models A–G: актив → угроза → митигация → остаточный риск | ✅ создан |
+| `19_STAGE_0_SPIKE_REPORT.md` | ✅ Отчёт DRM Feasibility Spike: гипотеза подтверждена + находки | ✅ создан |
 
 ## Раздел 4. История аудита
 
