@@ -1,101 +1,129 @@
 # 🗺️ ROADMAP — дорожная карта разработки
 
-> План по неделям. Цель: рабочий MVP, который может принимать реальные
-> платежи, за 5 недель (спокойный темп, разработка через AI-агента).
-> После каждого этапа — обновлять отметки.
+> **v2 — по итогам внешнего аудита.** Прежняя версия обещала «MVP за 5
+> недель» при фактических фазах на 7 недель и включала ~6 продуктов
+> вместо одного. Теперь: scope-based (не calendar-based), MVP сокращён,
+> доказательство технических рисков — ДО всей разработки.
 
 ---
 
-## Фаза 0: Фундамент (неделя 1)
+## Главный принцип
+
+**MVP — это не маленькая версия всего. Это узкая полоса, которая
+приносит деньги и доказывает бизнес-модель.**
+
+В MVP входит: Auth → Catalog → Upload → Moderation → Payment →
+License → MTA integration → Updates + Rollback.
+
+**НЕ входит в MVP (отложено):** subscriptions, биржа заказов, чаты,
+bundle, промокоды, A/B, seller API, инфлюенсер-система, Live Demo,
+3D Asset Studio, Leak Radar, депозиты.
+
+---
+
+## STAGE 0 — DRM Feasibility Spike (1–3 дня) ⭐ критично
+
+До всей остальной разработки доказываем главную гипотезу:
+
+```
+encrypted test.lua → C++ module → AES-GCM decrypt →
+Lua execution → ресурс нормально работает
+```
+
+Проверить: Windows + Linux, MTA 1.6.x. Ответить на вопрос:
+*«MTA позволяет нашему модулю вмешаться в lifecycle загрузки ресурса
+так, как нам нужно?»* (MTA грузит ресурсы через внутренний
+loader/`LuaLoadBuffer`; модуль — это `<module>` в mtaserver.conf, и
+автоматического "защищённого resource loader" из этого не следует.)
+
+- ✅ Spike успешен → начинаем Stage 1
+- ❌ Spike провален → пересмотр всей концепции ДО разработки площадки
+
+## STAGE 1 — Фундамент (неделя 1)
 
 ```
 □ Скет монорепозитория (apps/web, apps/server, infra/)
 □ docker-compose: PostgreSQL + Redis + MinIO
-□ CI: lint + тесты при каждом push
-□ Миграции БД: таблицы из 07_База_данных.md
-□ Деплой на VDS: nginx + SSL + автоматический deploy из main
+□ CI: lint + unit + integration при каждом push
+□ Миграции БД (07_База_данных.md, без orders/subscriptions)
+□ CI/CD pipeline: build → migrate check → deploy staging → smoke
 ```
 
-## Фаза 1: Аутентификация (неделя 2)
+## STAGE 2 — Auth + Users (неделя 2)
 
 ```
-□ Регистрация/логин/JWT/refresh
+□ Регистрация/логин/JWT/refresh (rotation + reuse detection)
 □ Верификация email (SMTP)
-□ Сброс пароля
-□ Роли: user, seller, admin
+□ Роли + permissions (см. RBAC в 10_Безопасность.md)
+□ Сессии: таблица devices, logout all
 ```
 
-## Фаза 2: Каталог + товары (неделя 2–3)
+## STAGE 3 — Catalog + Upload + Moderation (недели 3–4)
 
 ```
-□ CRUD ресурсов продавцом (draft → published)
-□ Список/поиск/категории
-□ Карточка товара: Markdown, галерея, changelog
-□ Upload blob (S3/MinIO), валидация
+□ CRUD ресурсов продавцом (draft → submitted → under_review → approved → published)
+□ Модерация: moderation_reason, moderator_id, reviewed_at
+□ FTS-поиск (search_vector + GIN)
+□ Upload pipeline: статическая валидация → публикация
+□ ⚠️ Динамический smoke-тест — В ЭФЕМЕРНОМ SANDBOX (см. 10_Безопасность)
 ```
 
-## Фаза 3: Платежи + подписки (неделя 3)
+## STAGE 4 — Payments (неделя 5)
 
 ```
-□ Подключение ЮKassa (test mode)
-□ Webhook: payment.succeeded → покупка + лицензия
-□ Подписки (рекуррентные списания)
-□ Комиссия 15% при release escrow
+□ ЮKassa: выбрать модель — Safe Deal ИЛИ Split Payments (см. 06_Платежка)
+□ Webhook-обработка (idempotent)
+□ Финансовый ledger + invariant tests
+□ Комиссия площадки
 ```
 
-## Фаза 4: DRM-модуль (неделя 4) ⭐ сердце проекта
+## STAGE 5 — Purchase + Licenses (неделя 6)
 
 ```
-□ Форк mta-sdk-module + libsodium
-□ POST /v1/activate, /v1/verify, /v1/report на Backend
-□ HWID сбор (C++): MAC + volume + CPU
-□ Расшифровка blob в C++, никогда в Lua
-□ Grace period 48ч
-□ Тестовый end-to-end: MTA-сервер + модуль + площадка
+□ Checkout → purchase (со snapshot'ом) → license
+□ Financial ledger: seller_pending и т.д.
+□ License Server: /v1/activate, /v1/verify (lease-модель)
+□ Installation keys, challenge/response
 ```
 
-## Фаза 5: Кабинеты (неделя 5)
+## STAGE 6 — MTA Module (недели 7–8)
 
 ```
-□ Кабинет покупателя: лицензии, HWID-менеджер, подписки
-□ Кабинет продавца: товары, статистика, выплаты
-□ Админ-панель: баны, отзыв лицензий, споры
+□ Market Manager: расшифровка blob, lease renew, license_check()
+□ Grace/controlled-state логика
+□ End-to-end сборка Windows + Linux
 ```
 
-## Фаза 6: Социальное (неделя 6)
+## STAGE 7 — Real-world test + Closed Beta (недели 9–10)
 
 ```
-□ Отзывы (только после покупки)
-□ Email + in-app уведомления
-□ Споры/disputes
+□ Полный путь руками: seller → upload → moderation → buyer → pay →
+  install → run → update → rollback
+□ Инвариантные тесты зелёные (11_Тестирование.md)
+□ Закрытая бета: 5–10 продавцов, 20–50 покупателей
+□ Только после этого: public launch
 ```
 
-## Фаза 7: Полировка + запуск (неделя 7)
+## POST-MVP (по приоритету, после закрытой беты)
 
 ```
-□ Пройти чек-лист безопасности (10_Безопасность.md)
-□ Пройти чек-лист тестирования (11_Тестирование.md)
-□ Оферта, договор продавца, тексты страниц
-□ Switch ЮKassa test → production
-□ 🚀 Запуск: посты в MTA-сообщества
-```
-
-## Фаза 8: Пост-MVP (месяцы 2–3, по приоритету)
-
-```
-□ Live-Demo сервер (тест-драйв скриптов в игре)
-□ 3D-вьюер моделей (rw-parser + Three.js)
-□ Система промокодов и bundle
-□ Биржа заказов
-□ Leak Radar (поиск сливов)
+1. Live Demo (sandbox-ферма демо-серверов)
+2. Аналитика продавцам (агрегаты!)
+3. Leak Radar (forensic scoring)
+4. Subscriptions (renewal, proration — большая логика)
+5. 3D Asset Studio
+6. Биржа заказов (второй продукт!)
+7. Промокоды, bundle, инфлюенсер-система, seller API
 ```
 
 ---
 
 ## Правила работы над roadmap
 
-1. **Не браться за фазу N+1**, пока фаза N не работает end-to-end.
-2. Каждую неделю — ревизия: что перенеслось, что добавилось, почему.
-3. Всё, что «хочется, но потом» → в конец списка. Список — не договор,
-   а инструмент приоритизации.
-4. Пустой чекбокс в продакшен-фазе = блокер запуска.
+1. **Scope-based, не calendar-based:** stage завершён, когда выполнены
+   его критерии приёмки, а не «прошла неделя».
+2. Не браться за Stage N+1, пока N не работает end-to-end.
+3. Всё «хочется, но потом» → POST-MVP. Список — не договор, а
+   приоритизация.
+4. Каждый перенос/изменение — фиксировать в 13_Решения.md.
+5. Пустой чекбокс продакшен-фазы = блокер запуска.
