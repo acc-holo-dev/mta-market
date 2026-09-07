@@ -3,45 +3,54 @@ import { Router, Response } from "express";
 import { authenticate, AuthRequest } from "../lib/auth";
 import { standardRateLimit } from "../lib/rateLimit";
 import { db } from "../prisma/db";
+import { validate, validateParam } from "../middleware/validate";
+import {
+  createResourceSchema,
+  updateResourceSchema,
+  paginationSchema,
+  resourceFiltersSchema,
+} from "../lib/validation";
 
 const router: Router = Router();
 
 // GET /resources - List all published resources
-router.get("/", standardRateLimit, async (req, res: Response) => {
-  try {
-    const { type, search, page = "1", limit = "20" } = req.query;
+router.get(
+  "/",
+  standardRateLimit,
+  validate(paginationSchema.merge(resourceFiltersSchema), "query"),
+  async (req, res: Response) => {
+    try {
+      const { page, limit } = req.query as any;
+      const skip = (page - 1) * limit;
 
-    const pageNum = parseInt(page as string, 10);
-    const limitNum = Math.min(parseInt(limit as string, 10), 100);
-    const skip = (pageNum - 1) * limitNum;
+      // Prisma 8 uses different query API
+      // TODO: Implement filtering with where() + type/search
+      // For now, just get published resources
 
-    // Prisma 8 uses different query API
-    // TODO: Implement filtering with where() + type/search
-    // For now, just get published resources
+      const resources = await db.orm.public.Resource.where({ status: "PUBLISHED" })
+        .orderBy((m) => m.createdAt.desc())
+        .limit(limit)
+        .offset(skip)
+        .all();
 
-    const resources = await db.orm.public.Resource.where({ status: "PUBLISHED" })
-      .orderBy((m) => m.createdAt.desc())
-      .limit(limitNum)
-      .offset(skip)
-      .all();
+      // Count total (simplified for now)
+      const total = resources.length;
 
-    // Count total (simplified for now)
-    const total = resources.length;
-
-    res.json({
-      data: resources,
-      pagination: {
-        page: pageNum,
-        limit: limitNum,
-        total,
-        pages: Math.ceil(total / limitNum),
-      },
-    });
-  } catch (error) {
-    console.error("Error fetching resources:", error);
-    res.status(500).json({ error: "Failed to fetch resources" });
+      res.json({
+        data: resources,
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit),
+        },
+      });
+    } catch (error) {
+      console.error("Error fetching resources:", error);
+      res.status(500).json({ error: "Failed to fetch resources" });
+    }
   }
-});
+);
 
 // GET /resources/:slug - Get resource by slug
 router.get("/:slug", standardRateLimit, async (req, res: Response) => {
@@ -69,44 +78,40 @@ router.get("/:slug", standardRateLimit, async (req, res: Response) => {
 });
 
 // POST /resources - Create new resource (authenticated)
-router.post("/", authenticate, standardRateLimit, async (req: AuthRequest, res: Response) => {
-  try {
-    const { title, description, type, price, slug } = req.body;
+router.post(
+  "/",
+  authenticate,
+  standardRateLimit,
+  validate(createResourceSchema),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { title, description, type, price, slug } = req.body;
 
-    if (!title || !description || !type || !price || !slug) {
-      res.status(400).json({ error: "Missing required fields" });
-      return;
+      // Check slug uniqueness
+      const existing = await db.orm.public.Resource.where({ slug }).first();
+
+      if (existing) {
+        res.status(409).json({ error: "Slug already exists" });
+        return;
+      }
+
+      const resource = await db.orm.public.Resource.create({
+        sellerId: req.user!.userId,
+        slug,
+        title,
+        description,
+        type,
+        price, // Already validated as non-negative int in kopecks
+        status: "DRAFT",
+      });
+
+      res.status(201).json(resource);
+    } catch (error) {
+      console.error("Error creating resource:", error);
+      res.status(500).json({ error: "Failed to create resource" });
     }
-
-    if (price < 0) {
-      res.status(400).json({ error: "Price must be non-negative" });
-      return;
-    }
-
-    // Check slug uniqueness
-    const existing = await db.orm.public.Resource.where({ slug }).first();
-
-    if (existing) {
-      res.status(409).json({ error: "Slug already exists" });
-      return;
-    }
-
-    const resource = await db.orm.public.Resource.create({
-      sellerId: req.user!.userId,
-      slug,
-      title,
-      description,
-      type,
-      price: Math.round(price * 100), // Convert to kopecks
-      status: "DRAFT",
-    });
-
-    res.status(201).json(resource);
-  } catch (error) {
-    console.error("Error creating resource:", error);
-    res.status(500).json({ error: "Failed to create resource" });
   }
-});
+);
 
 // PATCH /resources/:slug - Update resource (authenticated, owner only)
 router.patch("/:slug", authenticate, standardRateLimit, async (req: AuthRequest, res: Response) => {
