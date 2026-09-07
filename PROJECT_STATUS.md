@@ -48,33 +48,28 @@ MTA Market is a DRM-protected marketplace for MTA:SA server resources. The proje
 
 ## ⚠️ P0 Security Issues (Critical)
 
-### ✅ Resolved (commits 2e050a0, 5100abb)
+### ✅ Resolved (commits 2e050a0, 5100abb, 0c6f5f3) — 12/17 done
 
 1. **P0-01:** Payment bypass via `/purchases/:id/complete` — **REMOVED**
 2. **P0-02:** YooKassa webhook — **IDEMPOTENT + PROVIDER VERIFICATION**
-3. **P0-05:** Seller direct PUBLISHED status — **BLOCKED**
-4. **P0-06:** Tokens in OAuth redirect URL — **MOVED TO COOKIES**
-5. **P0-07:** Refresh token HttpOnly cookie — **IMPLEMENTED**
-6. **P0-09:** JWT fallback secret — **REMOVED (throws on startup)**
-7. **P0-10:** S3 signed downloads — **IMPLEMENTED (GetObjectCommand + TTL)**
-8. **P0-11:** DRM v1 uses symmetric AES-GCM — **DOCUMENTED (v2 pending)**
-9. **P0-12:** Webhook idempotency — **PaymentProviderEvent table added**
-10. **P0-16:** README overstated status — **CORRECTED**
+3. **P0-03:** ID type consistency — **RESOLVED: Int PK, stale schema removed (ADR-014)**
+4. **P0-05:** Seller direct PUBLISHED status — **BLOCKED**
+5. **P0-06:** Tokens in OAuth redirect URL — **MOVED TO COOKIES**
+6. **P0-07:** Refresh token HttpOnly cookie — **IMPLEMENTED**
+7. **P0-09:** JWT fallback secret — **REMOVED (throws on startup)**
+8. **P0-10:** S3 signed downloads — **IMPLEMENTED (GetObjectCommand + TTL)**
+9. **P0-11:** DRM v1 uses symmetric AES-GCM — **DOCUMENTED (v2 pending)**
+10. **P0-12:** Webhook idempotency — **PaymentProviderEvent table added**
+11. **P0-13:** Financial ledger — **settlePurchaseRevenue() with fee invariants**
+12. **P0-16:** README overstated status — **CORRECTED**
+13. **P0-17:** Stale architecture docs — **schema.prisma removed, ADR-014 added**
 
-### ⏳ Remaining P0 Issues
+### ⏳ Remaining P0 Issues — 5 left
 
-11. **P0-03:** ID type consistency — schema uses `String @id` but runtime contract uses `Int @id`
-12. **P0-04:** Missing input validation (Zod/class-validator)
-13. **P0-08:** Password reset uses GET with token in URL
-14. **P0-13:** Financial ledger incomplete (no double-entry bookkeeping)
-15. **P0-14:** Sandbox upload validation missing
-16. **P0-15:** Observability incomplete (no tracing/metrics)
-17. **P0-17:** Stale architecture documentation
-18. **P0-12:** Payment provider_payment_events table missing (no idempotency)
-19. **P0-13:** Financial ledger incomplete (no double-entry bookkeeping)
-20. **P0-14:** Sandbox validation missing (malicious resource upload)
-21. **P0-15:** Observability incomplete (no tracing/metrics)
-22. **P0-17:** Stale architecture documentation
+14. **P0-04:** Missing input validation (Zod/class-validator)
+15. **P0-08:** Password reset uses GET with token in URL
+16. **P0-14:** Sandbox upload validation missing
+17. **P0-15:** Observability incomplete (no tracing/metrics)
 
 ---
 
