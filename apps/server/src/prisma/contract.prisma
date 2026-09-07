@@ -234,102 +234,13 @@ model ResourceVersion {
 }
 
 enum PurchaseStatus {
-  PENDING
-  COMPLETED
-  REFUNDED
-  DISPUTED
-}
-
-enum DiscountType {
-  PERCENTAGE // Percentage off (e.g., 20% off)
-  FIXED      // Fixed amount off (e.g., 100 RUB off)
-}
-
-model Discount {
-  id          String       @id @default(cuid())
-  name        String       // Display name (e.g., "Summer Sale 2026")
-  code        String?      @unique // Optional promo code (e.g., "SUMMER20")
-  type        DiscountType
-  value       Int          // Percentage (20 = 20%) or fixed amount in kopecks
-  resourceId  String?      // Specific resource (null = any)
-  serviceId   String?      // Specific service (null = any)
-  minPurchase Int?         // Minimum purchase amount (kopecks, null = no minimum)
-  maxDiscount Int?         // Maximum discount amount (kopecks, null = no cap)
-  usageLimit  Int?         // Total usage limit (null = unlimited)
-  usageCount  Int          @default(0) // Current usage count
-  startsAt    TimestamptzString
-  expiresAt   TimestamptzString?
-  createdAt   TimestamptzString @default(now())
-  createdBy   String       // Admin/seller who created it
-
-  resource Resource? @relation(fields: [resourceId], references: [id], onDelete: Cascade)
-  service  Service?  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
-  creator  User      @relation(fields: [createdBy], references: [id], onDelete: Restrict)
-
-  @@index([code])
-  @@index([resourceId])
-  @@index([serviceId])
-  @@index([startsAt])
-  @@index([expiresAt])
-}
-
-enum OrderStatus {
-  CART          // User is building cart
-  PENDING       // Order submitted, awaiting payment
-  PROCESSING    // Payment received, processing fulfillment
-  COMPLETED     // All items fulfilled
-  CANCELLED     // User cancelled
-  FAILED        // Payment failed
-}
-
-model Order {
-  id              String      @id @default(cuid())
-  buyerId         String
-  status          OrderStatus @default(CART)
-  totalAmount     Int         // Sum of all items after discounts
-  platformFee     Int         // Platform fee on total
-  createdAt       TimestamptzString @default(now())
-  submittedAt     TimestamptzString? // When user clicked "checkout"
-  completedAt     TimestamptzString?
-  cancelledAt     TimestamptzString?
-
-  buyer       User        @relation(fields: [buyerId], references: [id], onDelete: Restrict)
-  items       OrderItem[]
-  serviceItems ServiceOrderItem[]
-  payment     Payment?    // One payment for entire order
-
-  @@index([buyerId])
-  @@index([status])
-  @@index([createdAt])
-}
-
-model OrderItem {
-  id                String  @id @default(cuid())
-  orderId           String
-  resourceId        String
-  versionId         String  // Snapshot: which version at time of order
-  quantity          Int     @default(1) // For future: multi-license purchases
-  priceSnapshot     Int     // Resource price at time of adding to cart
-  discountId        String?
-  discountSnapshot  Int     @default(0)
-  finalPrice        Int     // priceSnapshot - discountSnapshot
-  createdAt         TimestamptzString @default(now())
-
-  order    Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  resource Resource        @relation(fields: [resourceId], references: [id], onDelete: Restrict)
-  version  ResourceVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
-  purchase Purchase?       // Created after payment completes
-
-  @@index([orderId])
-  @@index([resourceId])
-}
-
-enum PurchaseStatus {
   PENDING    // Awaiting payment
   COMPLETED  // Payment successful, entitlement granted
   REFUNDED   // Payment refunded
+  DISPUTED   // Payment/order in dispute
   FAILED     // Payment failed
 }
+
 
 model Purchase {
   id                 String         @id @default(cuid())
