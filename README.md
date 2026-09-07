@@ -1,12 +1,20 @@
-# 🎮 MTA Market
+# 🎮 MTA Market — Site Implementation
 
 > **MVP / Pre-Production** — DRM-защищённая площадка продаж серверных ресурсов для MTA:SA
 
-[![CI/CD](https://github.com/acc-holo-dev/mta-market/actions/workflows/ci.yml/badge.svg)](https://github.com/acc-holo-dev/mta-market/actions)
+[![CI/CD](https://github.com/acc-holo-dev/mta-market-site/actions/workflows/ci.yml/badge.svg)](https://github.com/acc-holo-dev/mta-market-site/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-24-green.svg)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
 [![Next.js](https://img.shields.io/badge/Next.js-15-black.svg)](https://nextjs.org/)
+
+## 📍 Project Organization
+
+This is the **implementation repository** (backend + frontend).
+
+**Related repositories:**
+- 📚 [Documentation & Audit](https://github.com/acc-holo-dev/mta-market-document) — Specs, architecture, security audit
+- 🔐 [DRM Module (Lua)](https://github.com/acc-holo-dev/mta-market-module) — Client-side license verification
 
 ## ⚠️ Production Status
 
@@ -33,7 +41,7 @@ What's in progress:
 
 **Do not use with real money until production checklist is complete.**
 
-See [PRODUCTION_CHECKLIST.md](PRODUCTION_CHECKLIST.md) for required gates.
+See [PROJECT_STATUS.md](PROJECT_STATUS.md) and [mta-market-document](https://github.com/acc-holo-dev/mta-market-document) for production gates and security audit.
 
 ## ✨ Что реализовано
 
