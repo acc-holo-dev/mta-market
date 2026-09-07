@@ -10,7 +10,18 @@
     "lint": "eslint src --ext .ts",
     "type-check": "tsc --noEmit",
     "postinstall": "prisma skills sync || exit 0",
-    "contract:emit": "prisma contract emit"
+    "contract:emit": "prisma contract emit",
+    "artifact:keygen": "tsx src/cli/artifact.ts keygen",
+    "artifact:sign": "tsx src/cli/artifact.ts sign",
+    "artifact:verify": "tsx src/cli/artifact.ts verify",
+    "artifact:keys": "tsx src/cli/artifact.ts keys",
+    "artifact:revoke": "tsx src/cli/artifact.ts revoke",
+    "drm:keygen": "tsx src/cli/drm.ts keygen",
+    "drm:test-installation": "tsx src/cli/drm.ts test-installation",
+    "drm:generate-nonce": "tsx src/cli/drm.ts generate-nonce",
+    "drm:info": "tsx src/cli/drm.ts info",
+    "reconciliation:run": "tsx -e \"require('./src/jobs/reconciliation').runDailyReconciliation()\"",
+    "reconciliation:summary": "tsx -e \"require('./src/lib/reconciliation/service').getReconciliationSummary().then(console.log)\""
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1127.0",
@@ -20,6 +31,7 @@
     "@types/multer": "^2.2.0",
     "@types/nodemailer": "^8.0.1",
     "bcryptjs": "^3.0.3",
+    "commander": "^12.1.0",
     "dotenv": "^16.6.1",
     "express": "^4.21.2",
     "ioredis": "^6.0.0",

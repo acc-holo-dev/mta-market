@@ -38,6 +38,7 @@ model User {
   discounts     Discount[]    // Discounts created by this user (admin/seller)
   sellerBalance SellerBalance?
   transactions  FinancialTransaction[]
+  publisherKeys PublisherKey[]
 
   @@index([email])
   @@index([username])
@@ -225,6 +226,8 @@ model ResourceVersion {
   resource  Resource  @relation(fields: [resourceId], references: [id], onDelete: Cascade)
   licenses  License[]
   purchases Purchase[]
+  signature ArtifactSignature?
+  sandboxRuns SandboxRun[]
 
   @@unique([resourceId, version])
   @@index([resourceId])
@@ -380,6 +383,7 @@ model License {
 }
 
 enum InstallationStatus {
+  PENDING_VERIFICATION  // Awaiting challenge response
   ACTIVE
   REVOKED
 }
@@ -387,18 +391,27 @@ enum InstallationStatus {
 model Installation {
   id            String             @id @default(cuid())
   licenseId     String
-  publicKey     String
-  privateKey    String
-  serverSerial  String
+  publicKey     String             @unique // Ed25519 public key (client-side generated)
+  challenge     String?            // Pending verification challenge
+  serverSerial  String?            // MTA server serial (optional metadata)
   serverName    String?
-  status        InstallationStatus @default(ACTIVE)
+  mtaVersion    String?            // MTA:SA version
+  moduleVersion String?            // mta-market-module version
+  status        InstallationStatus @default(PENDING_VERIFICATION)
+  verifiedAt    TimestamptzString? // When challenge was verified
   installedAt   TimestamptzString @default(now())
   lastHeartbeat TimestamptzString?
+  revokedAt     TimestamptzString?
+  revokedBy     String?
+  revocationReason String?
 
   license License @relation(fields: [licenseId], references: [id], onDelete: Cascade)
+  leases  Lease[]
 
   @@index([licenseId])
+  @@index([publicKey])
   @@index([serverSerial])
+  @@index([status])
 }
 
 enum PaymentProvider {
@@ -514,4 +527,214 @@ model Review {
   @@unique([resourceId, buyerId])
   @@index([resourceId])
   @@index([buyerId])
+}
+
+// ============================================
+// TASK-019: Artifact Signing Models
+// ============================================
+
+enum KeyStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+}
+
+// Publisher cryptographic keys for signing artifacts
+model PublisherKey {
+  id          String    @id @default(cuid())
+  sellerId    String
+  keyType     String    @default("ED25519") // ED25519, RSA
+  publicKey   String    // Base64 encoded public key
+  algorithm   String    @default("EdDSA")   // EdDSA, RS256
+  status      KeyStatus @default(ACTIVE)
+  createdAt   TimestamptzString @default(now())
+  revokedAt   TimestamptzString?
+  revokedBy   String?
+  revocationReason String?
+
+  seller    User                @relation(fields: [sellerId], references: [id], onDelete: Restrict)
+  signatures ArtifactSignature[]
+
+  @@index([sellerId])
+  @@index([status])
+  @@index([publicKey])
+}
+
+// Cryptographic signatures for resource artifacts
+model ArtifactSignature {
+  id           String @id @default(cuid())
+  versionId    String @unique
+  keyId        String
+  signature    String  // Base64 encoded signature
+  algorithm    String  // EdDSA, RS256
+  manifestHash String  // SHA-256 of canonical manifest JSON
+  artifactHash String  // SHA-256 of artifact file
+  manifest     Json    // Complete artifact manifest
+  signedAt     TimestamptzString @default(now())
+  verifiedAt   TimestamptzString? // Last verification timestamp
+
+  version ResourceVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  key     PublisherKey    @relation(fields: [keyId], references: [id], onDelete: Restrict)
+
+  @@index([versionId])
+  @@index([keyId])
+  @@index([artifactHash])
+}
+
+// ============================================
+// TASK-020: DRM Protocol v2 Models
+// ============================================
+
+// Server cryptographic keys for signing DRM leases
+model ServerSigningKey {
+  id         String    @id @default(cuid())
+  keyType    String    @default("ED25519") // ED25519, RSA
+  publicKey  String    // Base64 encoded public key
+  algorithm  String    @default("EdDSA")   // EdDSA, RS256
+  status     KeyStatus @default(ACTIVE)
+  createdAt  TimestamptzString @default(now())
+  revokedAt  TimestamptzString?
+  revokedBy  String?
+  revocationReason String?
+
+  leases Lease[]
+
+  @@index([status])
+}
+
+// DRM lease issued to installation for resource access
+model Lease {
+  id               String @id @default(cuid())
+  installationId   String
+  licenseId        String
+  resourceId       String
+  resourceVersionId String
+  artifactHash     String          // SHA-256 of artifact
+  nonce            String @unique  // Replay protection
+  protocolVersion  Int    @default(2)
+  serverKeyId      String          // ServerSigningKey used
+  signature        String          // Base64 encoded signature
+  capabilities     Json            // ["run", "update", etc]
+  issuedAt         TimestamptzString @default(now())
+  expiresAt        TimestamptzString
+  lastVerifiedAt   TimestamptzString?
+
+  installation Installation     @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  serverKey    ServerSigningKey @relation(fields: [serverKeyId], references: [id], onDelete: Restrict)
+
+  @@index([installationId])
+  @@index([licenseId])
+  @@index([nonce])
+  @@index([expiresAt])
+  @@index([issuedAt])
+}
+
+// ============================================
+// TASK-022: Upload Sandbox Models
+// ============================================
+
+enum SandboxStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED
+  TIMEOUT
+  SECURITY_VIOLATION
+}
+
+// Sandbox execution run for artifact validation
+model SandboxRun {
+  id                 String        @id @default(cuid())
+  versionId          String
+  status             SandboxStatus @default(PENDING)
+  startedAt          TimestamptzString @default(now())
+  completedAt        TimestamptzString?
+  timeoutSeconds     Int           @default(60)
+  cpuLimit           Int           @default(1)
+  memoryLimitMb      Int           @default(512)
+  exitCode           Int?
+  stdout             String?       // Execution output
+  stderr             String?       // Error output
+  staticValidation   Json?         // Static validation results
+  compatibilityReport Json?        // Compatibility report
+  securityReport     Json?         // Security issues found
+  containerId        String?       // Docker container ID
+  
+  version ResourceVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  
+  @@index([versionId])
+  @@index([status])
+  @@index([startedAt])
+}
+
+// ============================================
+// TASK-018: Reconciliation Models
+// ============================================
+
+enum ReconciliationStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+enum ReconciliationReportType {
+  PAYMENT
+  REFUND
+  PAYOUT
+}
+
+enum MismatchType {
+  MISSING_INTERNAL     // Transaction exists in provider but not internal
+  MISSING_PROVIDER     // Transaction exists internally but not in provider
+  AMOUNT_MISMATCH      // Same transaction, different amounts
+  STATUS_MISMATCH      // Same transaction, different status
+}
+
+// Reconciliation report for comparing internal vs provider records
+model ReconciliationReport {
+  id                String                 @id @default(cuid())
+  provider          String                 // YUKASSA, STRIPE, etc.
+  reportType        ReconciliationReportType
+  periodStart       TimestamptzString
+  periodEnd         TimestamptzString
+  internalCount     Int
+  internalTotal     Int                    // Total amount in internal records
+  providerCount     Int
+  providerTotal     Int                    // Total amount in provider records
+  mismatchCount     Int
+  status            ReconciliationStatus   @default(PENDING)
+  createdAt         TimestamptzString      @default(now())
+  completedAt       TimestamptzString?
+  errorMessage      String?
+
+  mismatches ReconciliationMismatch[]
+
+  @@index([provider])
+  @@index([reportType])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// Individual mismatch found during reconciliation
+model ReconciliationMismatch {
+  id               String        @id @default(cuid())
+  reportId         String
+  type             MismatchType
+  internalId       String?       // Internal transaction ID
+  providerId       String?       // Provider transaction ID
+  expectedAmount   Int?          // Amount we expected
+  actualAmount     Int?          // Amount provider reports
+  description      String
+  resolved         Boolean       @default(false)
+  resolvedAt       TimestamptzString?
+  resolvedBy       String?
+  resolution       String?       // How it was resolved
+  createdAt        TimestamptzString @default(now())
+
+  report ReconciliationReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId])
+  @@index([type])
+  @@index([resolved])
 }
