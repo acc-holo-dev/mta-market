@@ -48,7 +48,7 @@ MTA Market is a DRM-protected marketplace for MTA:SA server resources. The proje
 
 ## ⚠️ P0 Security Issues (Critical)
 
-### ✅ Resolved (commits 2e050a0, 5100abb, 0c6f5f3, b83aa60) — 13/17 done
+### ✅ Resolved (commits 2e050a0, 5100abb, 0c6f5f3, b83aa60) — 14/17 done
 
 1. **P0-01:** Payment bypass via `/purchases/:id/complete` — **REMOVED**
 2. **P0-02:** YooKassa webhook — **IDEMPOTENT + PROVIDER VERIFICATION**
@@ -57,19 +57,19 @@ MTA Market is a DRM-protected marketplace for MTA:SA server resources. The proje
 5. **P0-05:** Seller direct PUBLISHED status — **BLOCKED**
 6. **P0-06:** Tokens in OAuth redirect URL — **MOVED TO COOKIES**
 7. **P0-07:** Refresh token HttpOnly cookie — **IMPLEMENTED**
-8. **P0-09:** JWT fallback secret — **REMOVED (throws on startup)**
-9. **P0-10:** S3 signed downloads — **IMPLEMENTED (GetObjectCommand + TTL)**
-10. **P0-11:** DRM v1 uses symmetric AES-GCM — **DOCUMENTED (v2 pending)**
-11. **P0-12:** Webhook idempotency — **PaymentProviderEvent table added**
-12. **P0-13:** Financial ledger — **settlePurchaseRevenue() with fee invariants**
-13. **P0-16:** README overstated status — **CORRECTED**
-14. **P0-17:** Stale architecture docs — **schema.prisma removed, ADR-014 added**
+8. **P0-08:** Password reset GET → POST — **N/A (Discord OAuth only, requirements documented)**
+9. **P0-09:** JWT fallback secret — **REMOVED (throws on startup)**
+10. **P0-10:** S3 signed downloads — **IMPLEMENTED (GetObjectCommand + TTL)**
+11. **P0-11:** DRM v1 uses symmetric AES-GCM — **DOCUMENTED (v2 pending)**
+12. **P0-12:** Webhook idempotency — **PaymentProviderEvent table added**
+13. **P0-13:** Financial ledger — **settlePurchaseRevenue() with fee invariants**
+14. **P0-16:** README overstated status — **CORRECTED**
+15. **P0-17:** Stale architecture docs — **schema.prisma removed, ADR-014 added**
 
-### ⏳ Remaining P0 Issues — 4 left
+### ⏳ Remaining P0 Issues — 3 left (requires implementation before closed beta)
 
-15. **P0-08:** Password reset uses GET with token in URL
-16. **P0-14:** Sandbox upload validation missing
-17. **P0-15:** Observability incomplete (no tracing/metrics)
+16. **P0-14:** Sandbox upload validation — **REQUIREMENTS DOCUMENTED (SECURITY_REQUIREMENTS.md)**
+17. **P0-15:** Observability (tracing/metrics/logging) — **REQUIREMENTS DOCUMENTED (SECURITY_REQUIREMENTS.md)**
 
 ---
 
