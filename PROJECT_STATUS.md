@@ -70,11 +70,11 @@ MTA Market is a DRM-protected marketplace for MTA:SA server resources. The proje
 15. **P0-14:** Sandbox upload validation missing
 16. **P0-15:** Observability incomplete (no tracing/metrics)
 17. **P0-17:** Stale architecture documentation
-13. **P0-12:** Payment provider_payment_events table missing (no idempotency)
-14. **P0-13:** Financial ledger incomplete (no double-entry bookkeeping)
-15. **P0-14:** Sandbox validation missing (malicious resource upload)
-16. **P0-15:** Observability incomplete (no tracing/metrics)
-17. **P0-17:** Stale architecture documentation
+18. **P0-12:** Payment provider_payment_events table missing (no idempotency)
+19. **P0-13:** Financial ledger incomplete (no double-entry bookkeeping)
+20. **P0-14:** Sandbox validation missing (malicious resource upload)
+21. **P0-15:** Observability incomplete (no tracing/metrics)
+22. **P0-17:** Stale architecture documentation
 
 ---
 

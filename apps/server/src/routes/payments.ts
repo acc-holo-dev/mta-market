@@ -11,6 +11,7 @@ import crypto from "crypto";
 import { authenticate, AuthRequest } from "../lib/auth";
 import { standardRateLimit } from "../lib/rateLimit";
 import { sendPurchaseEmail } from "../lib/email";
+import { settlePurchaseRevenue } from "../lib/ledger";
 
 const router: Router = Router();
 
@@ -216,13 +217,9 @@ router.post("/webhook", async (req: Request, res: Response) => {
       status: "ACTIVE",
     });
 
-    await db.orm.public.FinancialTransaction.create({
-      userId: purchase.buyerId,
-      type: "PAYMENT_RECEIVED",
-      amount: purchase.priceSnapshot,
-      balanceAfter: 0,
-      relatedPurchaseId: purchase.id,
-    });
+    // Settle revenue: seller gets sellerRevenue, platform keeps platformFee.
+    // Uses immutable purchase snapshot; validates fee invariants.
+    await settlePurchaseRevenue(purchase);
 
     const user = await db.orm.public.User.where({ id: purchase.buyerId }).first();
     const resource = await db.orm.public.Resource.where({ id: purchase.resourceId }).first();
@@ -289,14 +286,8 @@ router.post(
         status: "ACTIVE",
       });
 
-      // Create financial transaction
-      await db.orm.public.FinancialTransaction.create({
-        userId: purchase.buyerId,
-        type: "PAYMENT_RECEIVED",
-        amount: purchase.priceSnapshot,
-        balanceAfter: 0, // TODO: calculate actual balance
-        relatedPurchaseId: purchase.id,
-      });
+      // Settle revenue (same flow as real payment)
+      await settlePurchaseRevenue(purchase);
 
       res.json({
         message: "Payment simulated successfully",
