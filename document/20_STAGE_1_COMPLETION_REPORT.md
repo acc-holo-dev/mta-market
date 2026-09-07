@@ -28,12 +28,14 @@ apps/web/
 ```
 
 **Стек:**
+
 - Next.js 15.1.3 (App Router + Turbopack)
 - React 19.2.8
 - TypeScript 5.7.2 (strict mode)
 - Tailwind CSS 3.4.17
 
 **Проверено:**
+
 - ✅ `pnpm build` → `.next/` (105 kB First Load JS)
 - ✅ `pnpm lint` → No ESLint warnings or errors
 - ✅ `pnpm type-check` → tsc passes
@@ -50,12 +52,14 @@ apps/server/
 ```
 
 **Стек:**
+
 - Node.js 20+ (ES2022 target)
 - Express 4.21.2
 - TypeScript 5.7.2 (strict mode)
 - tsx 4.19.2 (dev hot-reload)
 
 **Проверено:**
+
 - ✅ `pnpm build` → `dist/index.js`
 - ✅ `pnpm lint` → ESLint passes
 - ✅ `pnpm type-check` → tsc passes
@@ -64,11 +68,13 @@ apps/server/
 ### 4. packages/* — Shared конфигурации
 
 **@mta-market/tsconfig:**
+
 - `base.json` — общие настройки (strict, ES2022, noEmit)
 - `nextjs.json` — Next.js + React (extends base)
 - `node.json` — Node.js + CommonJS (extends base)
 
 **@mta-market/eslint-config:**
+
 - `next.js` — Next.js + TypeScript ESLint
 - `node.js` — Node.js + TypeScript ESLint
 
@@ -80,7 +86,7 @@ services:
     image: postgres:16-alpine
     ports: 5432:5432
     credentials: mtamarket / dev_password_change_in_production
-    
+
   redis:
     image: redis:7-alpine
     ports: 6379:6379
@@ -89,6 +95,7 @@ services:
 ### 6. CI/CD — GitHub Actions
 
 `.github/workflows/ci.yml`:
+
 - ✅ Node.js 20 setup
 - ✅ pnpm install
 - ✅ format:check (Prettier)
@@ -142,8 +149,8 @@ mta-market/
 
 ## Коммиты
 
-| Репозиторий | Коммит | Что |
-|---|---|---|
+| Репозиторий    | Коммит    | Что                                                      |
+| -------------- | --------- | -------------------------------------------------------- |
 | **mta-market** | `d211342` | Stage 1 — каркас монорепозитория (50 files, +5681 lines) |
 
 ## Следующий шаг: Stage 2 — База данных и аутентификация
@@ -151,7 +158,7 @@ mta-market/
 Из `12_ROADMAP.md`:
 
 > **STAGE 2 — База данных и аутентификация (3–4 дня)**
-> 
+>
 > - Prisma schema (User, Session, Product, License)
 > - JWT + refresh tokens
 > - OAuth2 (Discord как primary, опционально Google/GitHub)

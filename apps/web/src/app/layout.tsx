@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { Providers } from "@/components/Providers";
+import { Navbar } from "@/components/layout/Navbar";
 
 export const metadata: Metadata = {
   title: "MTA Market — Marketplace серверных ресурсов",
@@ -9,7 +11,12 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ru">
-      <body>{children}</body>
+      <body className="min-h-screen bg-slate-50 dark:bg-slate-950">
+        <Providers>
+          <Navbar />
+          <main>{children}</main>
+        </Providers>
+      </body>
     </html>
   );
 }

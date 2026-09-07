@@ -8,3 +8,12 @@ build/
 .env.local
 .DS_Store
 *.tsbuildinfo
+uploads/
+backups/
+ssl/
+.env.*
+!.env.example
+apps/server/.agents/
+apps/server/.claude/
+apps/server/.cursor/
+apps/server/.devin/

@@ -1,0 +1,293 @@
+// MTA Market Schema - Prisma 8 (contract.prisma)
+// Stage 2: Database & Authentication
+
+// use prisma-next
+
+enum UserRole {
+  USER
+  ADMIN
+  MODERATOR
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  BANNED
+}
+
+model User {
+  id            Int          @id @default(autoincrement())
+  email         String       @unique
+  emailVerified TimestamptzString?
+  username      String?      @unique
+  displayName   String?
+  avatar        String?
+  role          UserRole     @default(USER)
+  status        UserStatus   @default(ACTIVE)
+  createdAt     TimestamptzString @default(now())
+  updatedAt     temporal.updatedAtString()
+
+  accounts      Account[]
+  sessions      Session[]
+  resources     Resource[]
+  purchases     Purchase[]
+  reviews       Review[]
+  sellerBalance SellerBalance?
+  transactions  FinancialTransaction[]
+
+  @@index([email])
+  @@index([username])
+}
+
+model Account {
+  id                Int     @id @default(autoincrement())
+  userId            Int
+  provider          String
+  providerAccountId String
+  accessToken       String?
+  refreshToken      String?
+  expiresAt         Int?
+  tokenType         String?
+  scope             String?
+  idToken           String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  refreshToken String   @unique
+  expiresAt    TimestamptzString
+  createdAt    TimestamptzString @default(now())
+  ipAddress    String?
+  userAgent    String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+enum ResourceType {
+  SCRIPT
+  MAP
+  MODEL
+  TEXTURE
+  SOUND
+  GAMEMODE
+}
+
+enum ResourceStatus {
+  DRAFT
+  PENDING_REVIEW
+  PUBLISHED
+  SUSPENDED
+}
+
+model Resource {
+  id          Int            @id @default(autoincrement())
+  sellerId    Int
+  slug        String         @unique
+  title       String
+  description String
+  type        ResourceType
+  status      ResourceStatus @default(DRAFT)
+  price       Int
+  createdAt   TimestamptzString @default(now())
+  updatedAt   temporal.updatedAtString()
+
+  seller   User              @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  versions ResourceVersion[]
+  reviews  Review[]
+
+  @@index([sellerId])
+  @@index([status])
+  @@index([slug])
+}
+
+model ResourceVersion {
+  id           Int    @id @default(autoincrement())
+  resourceId   Int
+  version      String
+  changelog    String?
+  fileUrl      String
+  fileSize     Int
+  fileChecksum String
+  publishedAt  TimestamptzString @default(now())
+
+  resource  Resource  @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  licenses  License[]
+  purchases Purchase[]
+
+  @@unique([resourceId, version])
+  @@index([resourceId])
+}
+
+enum PurchaseStatus {
+  PENDING
+  COMPLETED
+  REFUNDED
+  DISPUTED
+}
+
+model Purchase {
+  id            Int            @id @default(autoincrement())
+  buyerId       Int
+  resourceId    Int
+  versionId     Int
+  paymentId     String         @unique
+  status        PurchaseStatus @default(PENDING)
+  priceSnapshot Int
+  platformFee   Int
+  sellerRevenue Int
+  createdAt     TimestamptzString @default(now())
+  completedAt   TimestamptzString?
+  refundedAt    TimestamptzString?
+
+  buyer   User            @relation(fields: [buyerId], references: [id], onDelete: Restrict)
+  version ResourceVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  license License?
+  payment Payment?
+
+  @@index([buyerId])
+  @@index([resourceId])
+  @@index([paymentId])
+}
+
+enum LicenseStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+}
+
+model License {
+  id           Int           @id @default(autoincrement())
+  purchaseId   Int           @unique
+  versionId    Int
+  serverSerial String?
+  status       LicenseStatus @default(ACTIVE)
+  activatedAt  TimestamptzString?
+  revokedAt    TimestamptzString?
+  expiresAt    TimestamptzString?
+  createdAt    TimestamptzString @default(now())
+
+  purchase      Purchase       @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  version       ResourceVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  installations Installation[]
+
+  @@index([serverSerial])
+  @@index([status])
+}
+
+enum InstallationStatus {
+  ACTIVE
+  REVOKED
+}
+
+model Installation {
+  id            Int                @id @default(autoincrement())
+  licenseId     Int
+  publicKey     String
+  privateKey    String
+  serverSerial  String
+  serverName    String?
+  status        InstallationStatus @default(ACTIVE)
+  installedAt   TimestamptzString @default(now())
+  lastHeartbeat TimestamptzString?
+
+  license License @relation(fields: [licenseId], references: [id], onDelete: Cascade)
+
+  @@index([licenseId])
+  @@index([serverSerial])
+}
+
+enum PaymentProvider {
+  YUKASSA
+  STRIPE
+  TEST
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+model Payment {
+  id                Int             @id @default(autoincrement())
+  purchaseId        Int             @unique
+  provider          PaymentProvider
+  providerPaymentId String          @unique
+  status            PaymentStatus   @default(PENDING)
+  amount            Int
+  currency          String          @default("RUB")
+  metadata          Json?
+  createdAt         TimestamptzString @default(now())
+  succeededAt       TimestamptzString?
+  failedAt          TimestamptzString?
+
+  purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+
+  @@index([providerPaymentId])
+  @@index([status])
+}
+
+enum TransactionType {
+  PAYMENT_RECEIVED
+  PLATFORM_FEE
+  SELLER_REVENUE
+  SELLER_PAYOUT
+  REFUND_TO_BUYER
+  REFUND_FROM_SELLER
+  ADJUSTMENT
+}
+
+model FinancialTransaction {
+  id                Int             @id @default(autoincrement())
+  userId            Int
+  type              TransactionType
+  amount            Int
+  balanceAfter      Int
+  relatedPurchaseId Int?
+  relatedPayoutId   Int?
+  metadata          Json?
+  createdAt         TimestamptzString @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+model SellerBalance {
+  userId          Int @id
+  availableAmount Int @default(0)
+  inEscrowAmount  Int @default(0)
+  totalEarned     Int @default(0)
+  updatedAt       temporal.updatedAtString()
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Review {
+  id         Int    @id @default(autoincrement())
+  resourceId Int
+  buyerId    Int
+  rating     Int
+  comment    String?
+  createdAt  TimestamptzString @default(now())
+  updatedAt  temporal.updatedAtString()
+
+  resource Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  buyer    User     @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+
+  @@unique([resourceId, buyerId])
+  @@index([resourceId])
+  @@index([buyerId])
+}
