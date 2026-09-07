@@ -3,6 +3,7 @@ import { Router, Response } from "express";
 import { authenticate, AuthRequest } from "../lib/auth";
 import { standardRateLimit } from "../lib/rateLimit";
 import { db } from "../prisma/db";
+import { validateDiscount, applyDiscount, calculateFinalPrice } from "../lib/discount";
 import crypto from "crypto";
 import { validate, validateParam } from "../middleware/validate";
 import { createPurchaseSchema } from "../lib/validation";
@@ -55,13 +56,42 @@ router.post(
         return;
       }
 
-      // Calculate fees
+      // Snapshot current price (immutable)
       const priceSnapshot = resource.price;
-      const platformFee = Math.round(priceSnapshot * 0.1); // 10% platform fee
-      const sellerRevenue = priceSnapshot - platformFee;
 
-      // Generate payment ID
-      const paymentId = crypto.randomBytes(16).toString("hex");
+      // Apply discount if provided
+      const { discountCode } = req.body;
+      let discountId: string | null = null;
+      let discountAmount = 0;
+
+      if (discountCode && priceSnapshot > 0) {
+        const validation = await validateDiscount({
+          code: discountCode,
+          resourceId: resource.id,
+          originalPrice: priceSnapshot,
+        });
+
+        if (!validation.valid) {
+          res.status(400).json({ error: validation.error });
+          return;
+        }
+
+        if (validation.discount) {
+          discountId = validation.discount.id;
+          discountAmount = validation.discount.discountAmount;
+          
+          // Increment discount usage count
+          await applyDiscount(discountId);
+        }
+      }
+
+      // Calculate final price after discount
+      const finalPrice = calculateFinalPrice(priceSnapshot, discountAmount);
+      const platformFee = Math.round(finalPrice * 0.1); // 10% of final price
+      const sellerRevenue = finalPrice - platformFee;
+
+      // Generate payment ID (for paid resources)
+      const paymentId = finalPrice > 0 ? crypto.randomBytes(16).toString("hex") : null;
 
       // Create purchase
       const purchase = await db.orm.public.Purchase.create({
@@ -69,20 +99,54 @@ router.post(
         resourceId: resource.id,
         versionId: version.id,
         paymentId,
-        status: "PENDING",
+        status: finalPrice === 0 ? "COMPLETED" : "PENDING", // Free/fully discounted = completed immediately
         priceSnapshot,
+        discountId,
+        discountSnapshot: discountAmount,
+        finalPrice,
         platformFee,
         sellerRevenue,
+        completedAt: finalPrice === 0 ? new Date().toISOString() : null,
       });
 
-      // In production, this would redirect to payment gateway (YooKassa)
-      // For now, return payment info
+      // Free or fully discounted resource: grant license immediately
+      if (finalPrice === 0) {
+        const license = await db.orm.public.License.create({
+          purchaseId: purchase.id,
+          status: "ACTIVE",
+        });
+
+        // Settle revenue (even for free: track metrics)
+        await settlePurchaseRevenue(purchase.id);
+
+        res.status(201).json({
+          purchaseId: purchase.id,
+          licenseId: license.id,
+          status: "completed",
+          message: discountAmount > 0 ? "100% discount applied - free acquisition" : "Free resource acquired",
+          discount: discountAmount > 0 ? {
+            applied: true,
+            amount: discountAmount,
+            originalPrice: priceSnapshot,
+            finalPrice: 0,
+          } : undefined,
+        });
+        return;
+      }
+
+      // Paid resource: redirect to payment
       res.status(201).json({
         purchaseId: purchase.id,
         paymentId: purchase.paymentId,
-        amount: priceSnapshot,
+        amount: finalPrice,
+        originalAmount: priceSnapshot,
         currency: "RUB",
         status: "pending",
+        discount: discountAmount > 0 ? {
+          applied: true,
+          amount: discountAmount,
+          percentage: Math.round((discountAmount / priceSnapshot) * 100),
+        } : undefined,
         // In production: paymentUrl for redirect to YooKassa
         message: "Payment integration pending - purchase created",
       });

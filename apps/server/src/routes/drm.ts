@@ -2,6 +2,7 @@
 import { Router, Response } from "express";
 import { authenticate, AuthRequest } from "../lib/auth";
 import { strictRateLimit, standardRateLimit } from "../lib/rateLimit";
+import { validateCuid } from "../middleware/validateCuid";
 import { db } from "../prisma/db";
 import crypto from "crypto";
 import { sendLicenseActivatedEmail } from "../lib/email";
@@ -9,7 +10,8 @@ import { sendLicenseActivatedEmail } from "../lib/email";
 const router: Router = Router();
 
 // POST /drm/activate - Activate license on MTA server
-router.post("/activate", strictRateLimit, async (req, res: Response) => {
+// SECURITY: Requires authentication to verify license ownership
+router.post("/activate", authenticate, strictRateLimit, async (req: AuthRequest, res: Response) => {
   try {
     const { licenseKey, serverSerial, serverName } = req.body;
 
@@ -19,7 +21,7 @@ router.post("/activate", strictRateLimit, async (req, res: Response) => {
     }
 
     // Find license by purchaseId (simplified - in production use encrypted licenseKey)
-    const license = await db.orm.public.License.where({ id: parseInt(licenseKey, 10) }).first();
+    const license = await db.orm.public.License.where({ id: licenseKey }).first();
 
     if (!license) {
       res.status(404).json({ error: "Invalid license key" });
@@ -30,6 +32,22 @@ router.post("/activate", strictRateLimit, async (req, res: Response) => {
       res.status(403).json({ error: "License is not active" });
       return;
     }
+
+    // SECURITY: Verify ownership - user must own the purchase associated with this license
+    const purchase = await db.orm.public.Purchase.where({ id: license.purchaseId }).first();
+
+    if (!purchase) {
+      res.status(500).json({ error: "Associated purchase not found" });
+      return;
+    }
+
+    if (purchase.buyerId !== req.user!.userId) {
+      console.warn(`License activation denied: User ${req.user!.userId} attempted to activate license ${license.id} owned by ${purchase.buyerId}`);
+      res.status(403).json({ error: "Not authorized: You do not own this license" });
+      return;
+    }
+
+    console.info(`License activation: User ${req.user!.userId} activating license ${license.id} on server ${serverSerial}`);
 
     // Check if license is already bound to another server
     if (license.serverSerial && license.serverSerial !== serverSerial) {
@@ -74,18 +92,13 @@ router.post("/activate", strictRateLimit, async (req, res: Response) => {
     });
 
     // Send license activation email
-    const purchase = await db.orm.public.Purchase.where({ id: license.purchaseId }).first();
+    const user = await db.orm.public.User.where({ id: purchase.buyerId }).first();
+    const resource = await db.orm.public.Resource.where({ id: purchase.resourceId }).first();
 
-    if (purchase) {
-      const user = await db.orm.public.User.where({ id: purchase.buyerId }).first();
-
-      const resource = await db.orm.public.Resource.where({ id: purchase.resourceId }).first();
-
-      if (user && resource && user.email) {
-        sendLicenseActivatedEmail(user.email, resource.title, serverName || serverSerial).catch(
-          (err) => console.error("Failed to send activation email:", err)
-        );
-      }
+    if (user && resource && user.email) {
+      sendLicenseActivatedEmail(user.email, resource.title, serverName || serverSerial).catch(
+        (err) => console.error("Failed to send activation email:", err)
+      );
     }
 
     res.status(201).json({
@@ -204,10 +217,11 @@ router.get(
 router.delete(
   "/revoke/:licenseId",
   authenticate,
+  validateCuid('licenseId'),
   standardRateLimit,
   async (req: AuthRequest, res: Response) => {
     try {
-      const licenseId = parseInt(req.params.licenseId as string, 10);
+      const licenseId = req.params.licenseId as string;
 
       const license = await db.orm.public.License.where({ id: licenseId }).first();
 

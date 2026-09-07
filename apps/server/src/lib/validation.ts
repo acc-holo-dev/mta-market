@@ -15,7 +15,7 @@ export const createResourceSchema = z.object({
   title: z.string().min(3).max(100),
   slug: slug.max(60),
   description: z.string().min(10).max(5000),
-  price: nonNegativeInt.max(100000000), // max 1M RUB
+  price: nonNegativeInt.max(100000000), // 0 = free resource, max 1M RUB
   type: z.enum(["GAMEMODE", "MAPS", "VEHICLES", "SCRIPTS", "TOOLS", "ASSETS", "OTHER"]),
   tags: z.array(z.string().max(30)).max(10).optional(),
 });
@@ -32,6 +32,7 @@ export const createVersionSchema = z.object({
 // Purchase creation
 export const createPurchaseSchema = z.object({
   resourceSlug: slug,
+  discountCode: z.string().min(1).max(50).optional(), // Optional promo code
 });
 
 // Review creation

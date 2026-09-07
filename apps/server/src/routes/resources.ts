@@ -136,17 +136,21 @@ router.patch("/:slug", authenticate, standardRateLimit, async (req: AuthRequest,
     if (description) updateData.description = description;
     if (price !== undefined) updateData.price = Math.round(price * 100);
 
-    // Sellers cannot directly set PUBLISHED status - only admin/moderator can
-    // Allowed seller transitions: DRAFT -> IN_REVIEW, REJECTED -> IN_REVIEW
+    // Sellers cannot directly set PUBLISHED or SUSPENDED status - only admin/moderator can
+    // Allowed seller transitions: DRAFT -> PENDING_REVIEW, SUSPENDED -> PENDING_REVIEW
     if (status) {
-      if (status === "PUBLISHED") {
-        res
-          .status(403)
-          .json({ error: "Cannot set PUBLISHED status directly. Submit for review first." });
+      // Block privileged statuses
+      const privilegedStatuses = ["PUBLISHED", "SUSPENDED"];
+      if (privilegedStatuses.includes(status)) {
+        console.warn(`Resource status bypass attempt: User ${req.user!.userId} tried to set status ${status} on resource ${resource.id}`);
+        res.status(403).json({ 
+          error: "Forbidden status", 
+          message: "Cannot set PUBLISHED or SUSPENDED status directly. Submit for review first." 
+        });
         return;
       }
 
-      const allowedStatuses = ["DRAFT", "IN_REVIEW"];
+      const allowedStatuses = ["DRAFT", "PENDING_REVIEW"];
       if (!allowedStatuses.includes(status)) {
         res.status(400).json({ error: `Invalid status. Allowed: ${allowedStatuses.join(", ")}` });
         return;

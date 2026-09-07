@@ -12,7 +12,7 @@ const JWT_ACCESS_EXPIRY = process.env.JWT_ACCESS_EXPIRY || "15m";
 const JWT_REFRESH_EXPIRY = process.env.JWT_REFRESH_EXPIRY || "7d";
 
 export interface JWTPayload {
-  userId: number;
+  userId: string;
   email: string;
   role: string;
 }

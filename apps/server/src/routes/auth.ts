@@ -3,6 +3,7 @@ import { Router, Request, Response } from "express";
 import { authRateLimit } from "../lib/rateLimit";
 import { authenticate, AuthRequest } from "../lib/auth";
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from "../lib/jwt";
+import { hashRefreshToken, generateTokenId, verifyRefreshTokenHash } from "../lib/tokenSecurity";
 import { db } from "../prisma/db";
 import { sendWelcomeEmail } from "../lib/email";
 
@@ -179,11 +180,16 @@ router.get("/discord/callback", authRateLimit, async (req: Request, res: Respons
       role: user.role,
     });
 
-    // Create session
+    const tokenFamily = generateTokenId(); // For rotation tracking
+
+    // Create session with hashed refresh token
     await db.orm.public.Session.create({
       userId: user.id,
-      refreshToken,
+      refreshTokenHash: hashRefreshToken(refreshToken),
+      tokenFamily,
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days
+      ipAddress: req.ip || req.socket.remoteAddress,
+      userAgent: req.headers["user-agent"],
     });
 
     // Store refresh token in HttpOnly cookie
@@ -215,13 +221,13 @@ router.get("/discord/callback", authRateLimit, async (req: Request, res: Respons
   }
 });
 
-// POST /auth/refresh - Refresh access token
+// POST /auth/refresh - Refresh access token with rotation
 router.post("/refresh", authRateLimit, async (req: Request, res: Response) => {
   try {
     const refreshToken = req.cookies?.refresh_token;
 
     if (!refreshToken) {
-      res.status(400).json({ error: "Refresh token required" });
+      res.status(401).json({ error: "Refresh token required" });
       return;
     }
 
@@ -232,11 +238,33 @@ router.post("/refresh", authRateLimit, async (req: Request, res: Response) => {
       return;
     }
 
-    // Verify session exists and is valid
-    const session = await db.orm.public.Session.where({ refreshToken }).first();
+    // Verify session exists by hashed token
+    const refreshTokenHash = hashRefreshToken(refreshToken);
+    const session = await db.orm.public.Session.where({ refreshTokenHash }).first();
 
     if (!session) {
+      console.warn(`Refresh token not found: userId ${payload.userId}`);
       res.status(401).json({ error: "Session not found" });
+      return;
+    }
+
+    // SECURITY: Check for token reuse (rotation detection)
+    if (session.reuseDetected) {
+      console.error(`TOKEN REUSE DETECTED: Session ${session.id}, User ${session.userId}, TokenFamily ${session.tokenFamily}`);
+      
+      // Revoke all sessions in this token family
+      if (session.tokenFamily) {
+        await db.orm.public.Session.where({ tokenFamily: session.tokenFamily }).delete();
+        console.warn(`Revoked all sessions in token family ${session.tokenFamily}`);
+      } else {
+        await db.orm.public.Session.where({ id: session.id }).delete();
+      }
+      
+      res.clearCookie("refresh_token");
+      res.status(401).json({ 
+        error: "Token reuse detected", 
+        message: "All sessions revoked for security. Please log in again." 
+      });
       return;
     }
 
@@ -244,16 +272,43 @@ router.post("/refresh", authRateLimit, async (req: Request, res: Response) => {
     if (expiresAt < new Date()) {
       // Delete expired session
       await db.orm.public.Session.where({ id: session.id }).delete();
-
+      res.clearCookie("refresh_token");
       res.status(401).json({ error: "Session expired" });
       return;
     }
 
-    // Generate new access token
-    const accessToken = generateAccessToken(payload);
+    // Generate new tokens (rotation)
+    const newAccessToken = generateAccessToken(payload);
+    const newRefreshToken = generateRefreshToken(payload);
+    const newRefreshTokenHash = hashRefreshToken(newRefreshToken);
+
+    // Mark old session as used (for reuse detection)
+    await db.orm.public.Session.where({ id: session.id }).update({
+      reuseDetected: true,
+    });
+
+    // Create new session (rotation)
+    await db.orm.public.Session.create({
+      userId: session.userId,
+      refreshTokenHash: newRefreshTokenHash,
+      tokenFamily: session.tokenFamily,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      lastRotatedAt: new Date().toISOString(),
+      ipAddress: req.ip || req.socket.remoteAddress,
+      userAgent: req.headers["user-agent"],
+    });
+
+    // Set new refresh token cookie
+    res.cookie("refresh_token", newRefreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+      path: "/",
+    });
 
     res.json({
-      accessToken,
+      accessToken: newAccessToken,
       expiresIn: process.env.JWT_ACCESS_EXPIRY || "15m",
     });
   } catch (error) {
@@ -272,8 +327,9 @@ router.post("/logout", authRateLimit, async (req: Request, res: Response) => {
       return;
     }
 
-    // Delete session
-    const session = await db.orm.public.Session.where({ refreshToken }).first();
+    // Delete session by hashed token
+    const refreshTokenHash = hashRefreshToken(refreshToken);
+    const session = await db.orm.public.Session.where({ refreshTokenHash }).first();
 
     if (session) {
       await db.orm.public.Session.where({ id: session.id }).delete();

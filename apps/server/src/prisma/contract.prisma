@@ -16,7 +16,7 @@ enum UserStatus {
 }
 
 model User {
-  id            Int          @id @default(autoincrement())
+  id            String       @id @default(cuid())
   email         String       @unique
   emailVerified TimestamptzString?
   username      String?      @unique
@@ -30,8 +30,12 @@ model User {
   accounts      Account[]
   sessions      Session[]
   resources     Resource[]
+  services      Service[]
+  orders        Order[]
   purchases     Purchase[]
+  servicePurchases ServicePurchase[]
   reviews       Review[]
+  discounts     Discount[]    // Discounts created by this user (admin/seller)
   sellerBalance SellerBalance?
   transactions  FinancialTransaction[]
 
@@ -40,8 +44,8 @@ model User {
 }
 
 model Account {
-  id                Int     @id @default(autoincrement())
-  userId            Int
+  id                String  @id @default(cuid())
+  userId            String
   provider          String
   providerAccountId String
   accessToken       String?
@@ -58,18 +62,23 @@ model Account {
 }
 
 model Session {
-  id           Int      @id @default(autoincrement())
-  userId       Int
-  refreshToken String   @unique
-  expiresAt    TimestamptzString
-  createdAt    TimestamptzString @default(now())
-  ipAddress    String?
-  userAgent    String?
+  id                 String    @id @default(cuid())
+  userId             String
+  refreshTokenHash   String    @unique  // SHA-256 hash of refresh token
+  tokenFamily        String?   // For rotation: identifies token lineage
+  reuseDetected      Boolean   @default(false)  // Flag for token reuse attacks
+  expiresAt          TimestamptzString
+  createdAt          TimestamptzString @default(now())
+  lastRotatedAt      TimestamptzString?  // Track rotation for security audit
+  ipAddress          String?
+  userAgent          String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([expiresAt])
+  @@index([refreshTokenHash])
+  @@index([tokenFamily])
 }
 
 enum ResourceType {
@@ -89,8 +98,8 @@ enum ResourceStatus {
 }
 
 model Resource {
-  id          Int            @id @default(autoincrement())
-  sellerId    Int
+  id          String         @id @default(cuid())
+  sellerId    String
   slug        String         @unique
   title       String
   description String
@@ -100,18 +109,112 @@ model Resource {
   createdAt   TimestamptzString @default(now())
   updatedAt   temporal.updatedAtString()
 
-  seller   User              @relation(fields: [sellerId], references: [id], onDelete: Cascade)
-  versions ResourceVersion[]
-  reviews  Review[]
+  seller     User              @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  versions   ResourceVersion[]
+  reviews    Review[]
+  discounts  Discount[]        // Discounts for this specific resource
+  orderItems OrderItem[]       // Order items referencing this resource
 
   @@index([sellerId])
   @@index([status])
   @@index([slug])
 }
 
+enum ServiceType {
+  CUSTOM_DEVELOPMENT  // Custom resource development
+  CONFIGURATION       // Server configuration service
+  SUPPORT            // Technical support package
+  CONSULTATION       // Consulting hours
+  OTHER
+}
+
+enum ServiceStatus {
+  DRAFT
+  PENDING_REVIEW
+  PUBLISHED
+  SUSPENDED
+}
+
+model Service {
+  id           String        @id @default(cuid())
+  sellerId     String
+  slug         String        @unique
+  title        String
+  description  String
+  type         ServiceType
+  status       ServiceStatus @default(DRAFT)
+  price        Int           // Fixed price in kopecks
+  deliveryDays Int           // Estimated delivery time (days)
+  requirements String?       // What buyer needs to provide
+  createdAt    TimestamptzString @default(now())
+  updatedAt    temporal.updatedAtString()
+
+  seller           User                @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  reviews          Review[]
+  discounts        Discount[]
+  serviceOrderItems ServiceOrderItem[]
+
+  @@index([sellerId])
+  @@index([status])
+  @@index([slug])
+}
+
+model ServiceOrderItem {
+  id                String  @id @default(cuid())
+  orderId           String
+  serviceId         String
+  quantity          Int     @default(1)
+  priceSnapshot     Int     // Service price at time of order
+  discountId        String?
+  discountSnapshot  Int     @default(0)
+  finalPrice        Int
+  buyerNotes        String? // Special requirements from buyer
+  createdAt         TimestamptzString @default(now())
+
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  service   Service  @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  servicePurchase ServicePurchase?
+
+  @@index([orderId])
+  @@index([serviceId])
+}
+
+enum ServicePurchaseStatus {
+  PENDING      // Payment not yet completed
+  IN_PROGRESS  // Seller working on it
+  COMPLETED    // Service delivered
+  CANCELLED    // Cancelled by buyer/seller
+  DISPUTED     // Dispute opened
+}
+
+model ServicePurchase {
+  id                  String                @id @default(cuid())
+  serviceOrderItemId  String                @unique
+  buyerId             String
+  serviceId           String
+  status              ServicePurchaseStatus @default(PENDING)
+  priceSnapshot       Int
+  discountSnapshot    Int                   @default(0)
+  finalPrice          Int
+  platformFee         Int
+  sellerRevenue       Int
+  deliveryDeadline    TimestamptzString?    // Expected completion date
+  completedAt         TimestamptzString?
+  cancelledAt         TimestamptzString?
+  createdAt           TimestamptzString     @default(now())
+
+  serviceOrderItem ServiceOrderItem @relation(fields: [serviceOrderItemId], references: [id], onDelete: Restrict)
+  buyer            User             @relation(fields: [buyerId], references: [id], onDelete: Restrict)
+  service          Service          @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+
+  @@index([buyerId])
+  @@index([serviceId])
+  @@index([status])
+}
+
 model ResourceVersion {
-  id           Int    @id @default(autoincrement())
-  resourceId   Int
+  id           String @id @default(cuid())
+  resourceId   String
   version      String
   changelog    String?
   fileUrl      String
@@ -134,28 +237,121 @@ enum PurchaseStatus {
   DISPUTED
 }
 
-model Purchase {
-  id            Int            @id @default(autoincrement())
-  buyerId       Int
-  resourceId    Int
-  versionId     Int
-  paymentId     String         @unique
-  status        PurchaseStatus @default(PENDING)
-  priceSnapshot Int
-  platformFee   Int
-  sellerRevenue Int
-  createdAt     TimestamptzString @default(now())
-  completedAt   TimestamptzString?
-  refundedAt    TimestamptzString?
+enum DiscountType {
+  PERCENTAGE // Percentage off (e.g., 20% off)
+  FIXED      // Fixed amount off (e.g., 100 RUB off)
+}
 
-  buyer   User            @relation(fields: [buyerId], references: [id], onDelete: Restrict)
-  version ResourceVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
-  license License?
-  payment Payment?
+model Discount {
+  id          String       @id @default(cuid())
+  name        String       // Display name (e.g., "Summer Sale 2026")
+  code        String?      @unique // Optional promo code (e.g., "SUMMER20")
+  type        DiscountType
+  value       Int          // Percentage (20 = 20%) or fixed amount in kopecks
+  resourceId  String?      // Specific resource (null = any)
+  serviceId   String?      // Specific service (null = any)
+  minPurchase Int?         // Minimum purchase amount (kopecks, null = no minimum)
+  maxDiscount Int?         // Maximum discount amount (kopecks, null = no cap)
+  usageLimit  Int?         // Total usage limit (null = unlimited)
+  usageCount  Int          @default(0) // Current usage count
+  startsAt    TimestamptzString
+  expiresAt   TimestamptzString?
+  createdAt   TimestamptzString @default(now())
+  createdBy   String       // Admin/seller who created it
+
+  resource Resource? @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  service  Service?  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  creator  User      @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+
+  @@index([code])
+  @@index([resourceId])
+  @@index([serviceId])
+  @@index([startsAt])
+  @@index([expiresAt])
+}
+
+enum OrderStatus {
+  CART          // User is building cart
+  PENDING       // Order submitted, awaiting payment
+  PROCESSING    // Payment received, processing fulfillment
+  COMPLETED     // All items fulfilled
+  CANCELLED     // User cancelled
+  FAILED        // Payment failed
+}
+
+model Order {
+  id              String      @id @default(cuid())
+  buyerId         String
+  status          OrderStatus @default(CART)
+  totalAmount     Int         // Sum of all items after discounts
+  platformFee     Int         // Platform fee on total
+  createdAt       TimestamptzString @default(now())
+  submittedAt     TimestamptzString? // When user clicked "checkout"
+  completedAt     TimestamptzString?
+  cancelledAt     TimestamptzString?
+
+  buyer       User        @relation(fields: [buyerId], references: [id], onDelete: Restrict)
+  items       OrderItem[]
+  serviceItems ServiceOrderItem[]
+  payment     Payment?    // One payment for entire order
+
+  @@index([buyerId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id                String  @id @default(cuid())
+  orderId           String
+  resourceId        String
+  versionId         String  // Snapshot: which version at time of order
+  quantity          Int     @default(1) // For future: multi-license purchases
+  priceSnapshot     Int     // Resource price at time of adding to cart
+  discountId        String?
+  discountSnapshot  Int     @default(0)
+  finalPrice        Int     // priceSnapshot - discountSnapshot
+  createdAt         TimestamptzString @default(now())
+
+  order    Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  resource Resource        @relation(fields: [resourceId], references: [id], onDelete: Restrict)
+  version  ResourceVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  purchase Purchase?       // Created after payment completes
+
+  @@index([orderId])
+  @@index([resourceId])
+}
+
+enum PurchaseStatus {
+  PENDING    // Awaiting payment
+  COMPLETED  // Payment successful, entitlement granted
+  REFUNDED   // Payment refunded
+  FAILED     // Payment failed
+}
+
+model Purchase {
+  id                 String         @id @default(cuid())
+  orderItemId        String         @unique // One purchase per order item
+  buyerId            String
+  resourceId         String
+  versionId          String
+  status             PurchaseStatus @default(PENDING)
+  priceSnapshot      Int            // Copied from OrderItem
+  discountSnapshot   Int            @default(0) // Copied from OrderItem
+  finalPrice         Int            // Copied from OrderItem
+  platformFee        Int            // Platform's share
+  sellerRevenue      Int            // Seller's share
+  createdAt          TimestamptzString @default(now())
+  completedAt        TimestamptzString?
+  refundedAt         TimestamptzString?
+
+  orderItem OrderItem       @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+  buyer     User            @relation(fields: [buyerId], references: [id], onDelete: Restrict)
+  version   ResourceVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  license   License?
 
   @@index([buyerId])
   @@index([resourceId])
-  @@index([paymentId])
+  @@index([orderItemId])
 }
 
 enum LicenseStatus {
@@ -165,9 +361,9 @@ enum LicenseStatus {
 }
 
 model License {
-  id           Int           @id @default(autoincrement())
-  purchaseId   Int           @unique
-  versionId    Int
+  id           String        @id @default(cuid())
+  purchaseId   String        @unique
+  versionId    String
   serverSerial String?
   status       LicenseStatus @default(ACTIVE)
   activatedAt  TimestamptzString?
@@ -189,8 +385,8 @@ enum InstallationStatus {
 }
 
 model Installation {
-  id            Int                @id @default(autoincrement())
-  licenseId     Int
+  id            String             @id @default(cuid())
+  licenseId     String
   publicKey     String
   privateKey    String
   serverSerial  String
@@ -219,19 +415,19 @@ enum PaymentStatus {
 }
 
 model Payment {
-  id                Int             @id @default(autoincrement())
-  purchaseId        Int             @unique
+  id                String          @id @default(cuid())
+  orderId           String          @unique // One payment per order
   provider          PaymentProvider
   providerPaymentId String          @unique
   status            PaymentStatus   @default(PENDING)
-  amount            Int
+  amount            Int             // Total order amount
   currency          String          @default("RUB")
   metadata          Json?
   createdAt         TimestamptzString @default(now())
   succeededAt       TimestamptzString?
   failedAt          TimestamptzString?
 
-  purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([providerPaymentId])
   @@index([status])
@@ -246,7 +442,7 @@ enum ProviderEventStatus {
 
 // Immutable/idempotent record of every payment-provider webhook.
 model PaymentProviderEvent {
-  id              Int                 @id @default(autoincrement())
+  id              String              @id @default(cuid())
   provider        PaymentProvider
   providerEventId String
   objectId        String
@@ -276,8 +472,8 @@ enum TransactionType {
 }
 
 model FinancialTransaction {
-  id                Int             @id @default(autoincrement())
-  userId            Int
+  id                String          @id @default(cuid())
+  userId            String
   type              TransactionType
   amount            Int
   balanceAfter      Int
@@ -294,7 +490,7 @@ model FinancialTransaction {
 }
 
 model SellerBalance {
-  userId          Int @id
+  userId          String @id
   availableAmount Int @default(0)
   inEscrowAmount  Int @default(0)
   totalEarned     Int @default(0)
@@ -304,9 +500,9 @@ model SellerBalance {
 }
 
 model Review {
-  id         Int    @id @default(autoincrement())
+  id         String @id @default(cuid())
   resourceId Int
-  buyerId    Int
+  buyerId    String
   rating     Int
   comment    String?
   createdAt  TimestamptzString @default(now())

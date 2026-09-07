@@ -2,6 +2,7 @@
 import { Router, Response } from "express";
 import { authenticate, AuthRequest } from "../lib/auth";
 import { standardRateLimit } from "../lib/rateLimit";
+import { validateCuid } from "../middleware/validateCuid";
 import { db } from "../prisma/db";
 import { sendResourcePublishedEmail } from "../lib/email";
 
@@ -59,10 +60,11 @@ router.patch(
   "/resources/:id/status",
   authenticate,
   adminOnly,
+  validateCuid('id'),
   standardRateLimit,
   async (req: AuthRequest, res: Response) => {
     try {
-      const resourceId = parseInt(req.params.id as string, 10);
+      const resourceId = req.params.id as string;
       const { status, reason } = req.body;
 
       if (!status) {
@@ -153,10 +155,11 @@ router.patch(
   "/users/:id/status",
   authenticate,
   adminOnly,
+  validateCuid('id'),
   standardRateLimit,
   async (req: AuthRequest, res: Response) => {
     try {
-      const userId = parseInt(req.params.id as string, 10);
+      const userId = req.params.id as string;
       const { status, reason } = req.body;
 
       if (!status) {
@@ -195,10 +198,11 @@ router.patch(
   "/users/:id/role",
   authenticate,
   adminOnly,
+  validateCuid('id'),
   standardRateLimit,
   async (req: AuthRequest, res: Response) => {
     try {
-      const userId = parseInt(req.params.id as string, 10);
+      const userId = req.params.id as string;
       const { role } = req.body;
 
       if (!role) {
@@ -237,10 +241,11 @@ router.delete(
   "/reviews/:id",
   authenticate,
   adminOnly,
+  validateCuid('id'),
   standardRateLimit,
   async (req: AuthRequest, res: Response) => {
     try {
-      const reviewId = parseInt(req.params.id as string, 10);
+      const reviewId = req.params.id as string;
 
       const review = await db.orm.public.Review.where({ id: reviewId }).first();
 

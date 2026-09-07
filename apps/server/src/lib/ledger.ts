@@ -4,8 +4,8 @@
 import { db } from "../prisma/db";
 
 export interface RecordSellerRevenueOptions {
-  sellerId: number;
-  purchaseId: number;
+  sellerId: string;
+  purchaseId: string;
   amount: number; // kopecks, must be >= 0
   type: "SELLER_REVENUE" | "REFUND_FROM_SELLER" | "ADJUSTMENT";
 }
@@ -59,9 +59,9 @@ export async function recordSellerRevenue(options: RecordSellerRevenueOptions): 
  * Reads fee breakdown from the purchase snapshot (immutable).
  */
 export async function settlePurchaseRevenue(purchase: {
-  id: number;
-  sellerId?: number;
-  resourceId: number;
+  id: string;
+  buyerId: string;
+  resourceId: string;
   priceSnapshot: number;
   platformFee: number;
   sellerRevenue: number;
@@ -73,7 +73,7 @@ export async function settlePurchaseRevenue(purchase: {
     throw new Error(`Cannot settle purchase ${purchase.id}: resource not found`);
   }
 
-  const sellerId = purchase.sellerId ?? resource.sellerId;
+  const sellerId = resource.sellerId;
 
   // Invariant: fee breakdown must add up
   if (purchase.platformFee + purchase.sellerRevenue !== purchase.priceSnapshot) {

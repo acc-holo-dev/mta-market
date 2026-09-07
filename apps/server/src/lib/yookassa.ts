@@ -127,4 +127,4 @@ export async function getYooKassaPayment(paymentId: string): Promise<YooKassaPay
   return (await response.json()) as YooKassaPayment;
 }
 
-export { YOOKASSA_ENABLED };
+export { YOOKASSA_ENABLED, YOOKASSA_SHOP_ID };

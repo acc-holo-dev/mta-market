@@ -1,6 +1,7 @@
 import express from "express";
 import dotenv from "dotenv";
 import path from "path";
+import { enforceEnvironmentValidation } from "./lib/startupValidation";
 import authRoutes from "./routes/auth";
 import resourcesRoutes from "./routes/resources";
 import versionsRoutes from "./routes/versions";
@@ -13,6 +14,9 @@ import adminRoutes from "./routes/admin";
 import { standardRateLimit } from "./lib/rateLimit";
 
 dotenv.config();
+
+// SECURITY: Validate environment before starting server
+enforceEnvironmentValidation();
 
 const app = express();
 const PORT = process.env.PORT || 3001;

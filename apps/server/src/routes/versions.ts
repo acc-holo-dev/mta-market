@@ -117,7 +117,8 @@ router.get(
         return;
       }
 
-      // Check if user purchased this resource
+      // Check entitlement: user must have purchased this resource
+      // and either bought this specific version or has update rights
       const purchase = await db.orm.public.Purchase.where({
         buyerId: req.user!.userId,
         resourceId: resource.id,
@@ -125,20 +126,52 @@ router.get(
       }).first();
 
       if (!purchase) {
+        console.warn(`Download denied: User ${req.user!.userId} has no purchase for resource ${resource.id} (${slug})`);
         res.status(403).json({ error: "Purchase required to download" });
         return;
       }
+
+      // Verify user has entitlement to THIS version
+      // Case 1: User purchased this exact version
+      // Case 2: User purchased an earlier version and this is an update (future: check update policy)
+      const purchasedVersion = await db.orm.public.ResourceVersion.where({
+        id: purchase.versionId,
+      }).first();
+
+      if (!purchasedVersion) {
+        res.status(500).json({ error: "Purchased version not found" });
+        return;
+      }
+
+      // For now: strict version matching (user can only download what they bought)
+      // TODO: Implement update entitlement based on resource update policy
+      if (purchase.versionId !== resourceVersion.id) {
+        console.warn(`Download denied: User ${req.user!.userId} purchased version ${purchasedVersion.version} but requested ${resourceVersion.version} of resource ${resource.id}`);
+        res.status(403).json({ 
+          error: "Version not entitled", 
+          message: `You purchased version ${purchasedVersion.version}, but requested version ${resourceVersion.version}. Upgrade separately or check update policy.`,
+          purchasedVersion: purchasedVersion.version,
+          requestedVersion: resourceVersion.version,
+        });
+        return;
+      }
+
+      console.info(`Download authorized: User ${req.user!.userId} downloading ${slug} v${version}`);
 
       // SECURITY: Generate short-lived signed URL (never expose public URLs for paid artifacts)
       // fileUrl stores the S3 object key for S3 storage, or a local /uploads path for dev storage
       let downloadUrl: string;
 
       if (S3_ENABLED) {
-        // fileUrl contains the S3 object key
+        // Production: fileUrl contains the S3 object key
         downloadUrl = await getS3DownloadUrl(resourceVersion.fileUrl);
       } else {
+        // Development only: local storage with direct path
+        if (process.env.NODE_ENV === 'production') {
+          res.status(500).json({ error: "S3 must be enabled in production" });
+          return;
+        }
         // Local development storage: fileUrl is /uploads/<filename>
-        // Served through authenticated proxy in production; direct link acceptable for dev only
         downloadUrl = resourceVersion.fileUrl;
       }
 

@@ -5,11 +5,14 @@ import {
   createYooKassaPayment,
   getYooKassaPayment,
   YOOKASSA_ENABLED,
+  YOOKASSA_SHOP_ID,
   YooKassaWebhook,
 } from "../lib/yookassa";
 import crypto from "crypto";
 import { authenticate, AuthRequest } from "../lib/auth";
 import { standardRateLimit } from "../lib/rateLimit";
+import { validateCuid } from "../middleware/validateCuid";
+import { isYooKassaIP, verifyYooKassaAuth, getClientIP } from "../lib/yookassaWebhook";
 import { sendPurchaseEmail } from "../lib/email";
 import { settlePurchaseRevenue } from "../lib/ledger";
 
@@ -88,10 +91,26 @@ router.post("/create", authenticate, standardRateLimit, async (req: AuthRequest,
 
 // POST /payments/webhook - YooKassa webhook
 // YooKassa sends HTTP Basic Auth notifications configured in its dashboard.
-// We record an idempotency event before applying business effects and verify
+// We verify IP whitelist, Basic Auth, record idempotency event, and confirm
 // payment state via the provider API. Repeated deliveries are safe.
 router.post("/webhook", async (req: Request, res: Response) => {
   try {
+    // Security Layer 1: IP Whitelist
+    const clientIP = getClientIP(req);
+    if (YOOKASSA_ENABLED && !isYooKassaIP(clientIP)) {
+      console.warn(`Webhook rejected: IP ${clientIP} not in YooKassa whitelist`);
+      res.status(403).json({ error: "Forbidden: Invalid source IP" });
+      return;
+    }
+
+    // Security Layer 2: Basic Auth
+    const notificationPassword = process.env.YOOKASSA_NOTIFICATION_PASSWORD || "";
+    if (YOOKASSA_ENABLED && !verifyYooKassaAuth(req.headers.authorization, YOOKASSA_SHOP_ID, notificationPassword)) {
+      console.warn(`Webhook rejected: Invalid Basic Auth from ${clientIP}`);
+      res.status(401).json({ error: "Unauthorized: Invalid credentials" });
+      return;
+    }
+
     const webhook: YooKassaWebhook = req.body;
 
     if (!webhook?.event || !webhook.object?.id) {
@@ -155,8 +174,8 @@ router.post("/webhook", async (req: Request, res: Response) => {
       return;
     }
 
-    const purchaseId = parseInt(orderId, 10);
-    if (Number.isNaN(purchaseId)) {
+    const purchaseId = orderId;
+    if (!purchaseId) {
       await db.orm.public.PaymentProviderEvent.where({ id: eventRecord.id }).update({
         status: "FAILED",
         lastError: `Invalid order_id: ${orderId}`,
@@ -242,63 +261,67 @@ router.post("/webhook", async (req: Request, res: Response) => {
 });
 
 // POST /payments/:id/simulate - Simulate payment (development only)
-router.post(
-  "/:id/simulate",
-  authenticate,
-  standardRateLimit,
-  async (req: AuthRequest, res: Response) => {
-    try {
-      if (YOOKASSA_ENABLED) {
-        res.status(403).json({ error: "Cannot simulate in production" });
-        return;
+// This route is ONLY compiled in non-production environments
+if (process.env.NODE_ENV !== 'production') {
+  router.post(
+    "/:id/simulate",
+    authenticate,
+    validateCuid('id'),
+    standardRateLimit,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        if (YOOKASSA_ENABLED) {
+          res.status(403).json({ error: "Cannot simulate in production" });
+          return;
+        }
+
+        const purchaseId = req.params.id as string;
+
+        const purchase = await db.orm.public.Purchase.where({ id: purchaseId }).first();
+
+        if (!purchase) {
+          res.status(404).json({ error: "Purchase not found" });
+          return;
+        }
+
+        if (purchase.buyerId !== req.user!.userId) {
+          res.status(403).json({ error: "Not authorized" });
+          return;
+        }
+
+        if (purchase.status !== "PENDING") {
+          res.status(400).json({ error: "Purchase is not pending" });
+          return;
+        }
+
+        // Complete purchase
+        const completedAt = new Date().toISOString();
+        await db.orm.public.Purchase.where({ id: purchaseId }).update({
+          status: "COMPLETED",
+          completedAt,
+        });
+
+        // Create license
+        const license = await db.orm.public.License.create({
+          purchaseId: purchase.id,
+          versionId: purchase.versionId,
+          status: "ACTIVE",
+        });
+
+        // Settle revenue (same flow as real payment)
+        await settlePurchaseRevenue(purchase);
+
+        res.json({
+          message: "Payment simulated successfully",
+          purchaseId: purchase.id,
+          licenseId: license.id,
+        });
+      } catch (error) {
+        console.error("Error simulating payment:", error);
+        res.status(500).json({ error: "Failed to simulate payment" });
       }
-
-      const purchaseId = parseInt(req.params.id as string, 10);
-
-      const purchase = await db.orm.public.Purchase.where({ id: purchaseId }).first();
-
-      if (!purchase) {
-        res.status(404).json({ error: "Purchase not found" });
-        return;
-      }
-
-      if (purchase.buyerId !== req.user!.userId) {
-        res.status(403).json({ error: "Not authorized" });
-        return;
-      }
-
-      if (purchase.status !== "PENDING") {
-        res.status(400).json({ error: "Purchase is not pending" });
-        return;
-      }
-
-      // Complete purchase
-      const completedAt = new Date().toISOString();
-      await db.orm.public.Purchase.where({ id: purchaseId }).update({
-        status: "COMPLETED",
-        completedAt,
-      });
-
-      // Create license
-      const license = await db.orm.public.License.create({
-        purchaseId: purchase.id,
-        versionId: purchase.versionId,
-        status: "ACTIVE",
-      });
-
-      // Settle revenue (same flow as real payment)
-      await settlePurchaseRevenue(purchase);
-
-      res.json({
-        message: "Payment simulated successfully",
-        purchaseId: purchase.id,
-        licenseId: license.id,
-      });
-    } catch (error) {
-      console.error("Error simulating payment:", error);
-      res.status(500).json({ error: "Failed to simulate payment" });
     }
-  }
-);
+  );
+}
 
 export default router;
