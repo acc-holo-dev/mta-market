@@ -237,6 +237,34 @@ model Payment {
   @@index([status])
 }
 
+enum ProviderEventStatus {
+  RECEIVED
+  PROCESSING
+  PROCESSED
+  FAILED
+}
+
+// Immutable/idempotent record of every payment-provider webhook.
+model PaymentProviderEvent {
+  id              Int                 @id @default(autoincrement())
+  provider        PaymentProvider
+  providerEventId String
+  objectId        String
+  eventType       String
+  objectType      String?
+  payloadHash     String
+  payload         Json?
+  status          ProviderEventStatus @default(RECEIVED)
+  attempts        Int                 @default(0)
+  lastError       String?
+  receivedAt      TimestamptzString   @default(now())
+  processedAt     TimestamptzString?
+
+  @@unique([provider, providerEventId, eventType])
+  @@index([objectId])
+  @@index([status])
+}
+
 enum TransactionType {
   PAYMENT_RECEIVED
   PLATFORM_FEE

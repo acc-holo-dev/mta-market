@@ -1,10 +1,18 @@
 // YooKassa payment integration
+// Auth uses HTTP Basic (shopId:secretKey) per official docs.
+// Webhook authenticity is established by re-verifying payment state via the
+// provider API rather than by trusting webhook headers.
 import crypto from "crypto";
 
 const YOOKASSA_SHOP_ID = process.env.YOOKASSA_SHOP_ID || "";
 const YOOKASSA_SECRET_KEY = process.env.YOOKASSA_SECRET_KEY || "";
-const YOOKASSA_WEBHOOK_SECRET = process.env.YOOKASSA_WEBHOOK_SECRET || "";
 const YOOKASSA_ENABLED = process.env.YOOKASSA_ENABLED === "true";
+
+if (YOOKASSA_ENABLED && (!YOOKASSA_SHOP_ID || !YOOKASSA_SECRET_KEY)) {
+  throw new Error(
+    "FATAL: YOOKASSA_ENABLED=true but YOOKASSA_SHOP_ID or YOOKASSA_SECRET_KEY is missing"
+  );
+}
 
 export interface CreatePaymentOptions {
   amount: number; // kopecks
@@ -95,20 +103,8 @@ export async function createYooKassaPayment(
   return (await response.json()) as YooKassaPayment;
 }
 
-// Verify webhook signature
-export function verifyYooKassaWebhook(body: string, signature: string): boolean {
-  if (!YOOKASSA_ENABLED) {
-    return false;
-  }
-
-  const hmac = crypto.createHmac("sha256", YOOKASSA_WEBHOOK_SECRET);
-  hmac.update(body);
-  const expectedSignature = hmac.digest("hex");
-
-  return signature === expectedSignature;
-}
-
-// Get payment status
+// Get current payment state directly from YooKassa.
+// Used to verify webhook notifications before granting entitlements.
 export async function getYooKassaPayment(paymentId: string): Promise<YooKassaPayment> {
   if (!YOOKASSA_ENABLED) {
     throw new Error("YooKassa is not enabled");

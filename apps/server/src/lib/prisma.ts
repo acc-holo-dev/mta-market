@@ -13,6 +13,7 @@ export const prisma: typeof db.orm.public = {
   License: db.orm.public.License,
   Installation: db.orm.public.Installation,
   Payment: db.orm.public.Payment,
+  PaymentProviderEvent: db.orm.public.PaymentProviderEvent,
   FinancialTransaction: db.orm.public.FinancialTransaction,
   SellerBalance: db.orm.public.SellerBalance,
   Review: db.orm.public.Review,

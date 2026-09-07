@@ -2,7 +2,9 @@
 import jwt from "jsonwebtoken";
 
 if (!process.env.JWT_SECRET) {
-  throw new Error("FATAL: JWT_SECRET environment variable is required. Generate with: openssl rand -base64 64");
+  throw new Error(
+    "FATAL: JWT_SECRET environment variable is required. Generate with: openssl rand -base64 64"
+  );
 }
 
 const JWT_SECRET: string = process.env.JWT_SECRET;

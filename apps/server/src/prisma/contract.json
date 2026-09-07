@@ -24,6 +24,10 @@
       "model": "Payment",
       "namespace": "public"
     },
+    "paymentProviderEvent": {
+      "model": "PaymentProviderEvent",
+      "namespace": "public"
+    },
     "purchase": {
       "model": "Purchase",
       "namespace": "public"
@@ -122,6 +126,27 @@
               {
                 "name": "REFUNDED",
                 "value": "REFUNDED"
+              }
+            ]
+          },
+          "ProviderEventStatus": {
+            "codecId": "pg/text@1",
+            "members": [
+              {
+                "name": "RECEIVED",
+                "value": "RECEIVED"
+              },
+              {
+                "name": "PROCESSING",
+                "value": "PROCESSING"
+              },
+              {
+                "name": "PROCESSED",
+                "value": "PROCESSED"
+              },
+              {
+                "name": "FAILED",
+                "value": "FAILED"
               }
             ]
           },
@@ -938,6 +963,159 @@
               },
               "namespaceId": "public",
               "table": "payment"
+            }
+          },
+          "PaymentProviderEvent": {
+            "fields": {
+              "attempts": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/int4@1",
+                  "kind": "scalar"
+                }
+              },
+              "eventType": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/int4@1",
+                  "kind": "scalar"
+                }
+              },
+              "lastError": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "objectId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "objectType": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "payload": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/json@1",
+                  "kind": "scalar"
+                }
+              },
+              "payloadHash": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "processedAt": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "provider": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                },
+                "valueSet": {
+                  "entityKind": "enum",
+                  "entityName": "PaymentProvider",
+                  "namespaceId": "public",
+                  "plane": "domain"
+                }
+              },
+              "providerEventId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "receivedAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "status": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                },
+                "valueSet": {
+                  "entityKind": "enum",
+                  "entityName": "ProviderEventStatus",
+                  "namespaceId": "public",
+                  "plane": "domain"
+                }
+              }
+            },
+            "relations": {},
+            "storage": {
+              "fields": {
+                "attempts": {
+                  "column": "attempts"
+                },
+                "eventType": {
+                  "column": "eventType"
+                },
+                "id": {
+                  "column": "id"
+                },
+                "lastError": {
+                  "column": "lastError"
+                },
+                "objectId": {
+                  "column": "objectId"
+                },
+                "objectType": {
+                  "column": "objectType"
+                },
+                "payload": {
+                  "column": "payload"
+                },
+                "payloadHash": {
+                  "column": "payloadHash"
+                },
+                "processedAt": {
+                  "column": "processedAt"
+                },
+                "provider": {
+                  "column": "provider"
+                },
+                "providerEventId": {
+                  "column": "providerEventId"
+                },
+                "receivedAt": {
+                  "column": "receivedAt"
+                },
+                "status": {
+                  "column": "status"
+                }
+              },
+              "namespaceId": "public",
+              "table": "paymentProviderEvent"
             }
           },
           "Purchase": {
@@ -2607,6 +2785,148 @@
                 }
               ]
             },
+            "paymentProviderEvent": {
+              "checks": [
+                {
+                  "expression": "\"provider\" IN ('YUKASSA', 'STRIPE', 'TEST')",
+                  "name": "paymentProviderEvent_provider_check_7f539d22",
+                  "prefix": "paymentProviderEvent_provider_check"
+                },
+                {
+                  "expression": "\"status\" IN ('RECEIVED', 'PROCESSING', 'PROCESSED', 'FAILED')",
+                  "name": "paymentProviderEvent_status_check_9eba03e5",
+                  "prefix": "paymentProviderEvent_status_check"
+                }
+              ],
+              "columns": {
+                "attempts": {
+                  "codecId": "pg/int4@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": 0
+                  },
+                  "nativeType": "int4",
+                  "nullable": false
+                },
+                "eventType": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "id": {
+                  "codecId": "pg/int4@1",
+                  "default": {
+                    "expression": "autoincrement()",
+                    "kind": "function"
+                  },
+                  "nativeType": "int4",
+                  "nullable": false
+                },
+                "lastError": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "objectId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "objectType": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "payload": {
+                  "codecId": "pg/json@1",
+                  "nativeType": "json",
+                  "nullable": true
+                },
+                "payloadHash": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "processedAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "nativeType": "timestamptz",
+                  "nullable": true
+                },
+                "provider": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false,
+                  "valueSet": {
+                    "entityKind": "valueSet",
+                    "entityName": "PaymentProvider",
+                    "namespaceId": "public",
+                    "plane": "storage"
+                  }
+                },
+                "providerEventId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "receivedAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "default": {
+                    "expression": "now()",
+                    "kind": "function"
+                  },
+                  "nativeType": "timestamptz",
+                  "nullable": false
+                },
+                "status": {
+                  "codecId": "pg/text@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": "RECEIVED"
+                  },
+                  "nativeType": "text",
+                  "nullable": false,
+                  "valueSet": {
+                    "entityKind": "valueSet",
+                    "entityName": "ProviderEventStatus",
+                    "namespaceId": "public",
+                    "plane": "storage"
+                  }
+                }
+              },
+              "foreignKeys": [],
+              "indexes": [
+                {
+                  "columns": [
+                    "objectId"
+                  ],
+                  "name": "paymentProviderEvent_objectId_idx_08ca88de",
+                  "prefix": "paymentProviderEvent_objectId_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "status"
+                  ],
+                  "name": "paymentProviderEvent_status_idx_e98638ab",
+                  "prefix": "paymentProviderEvent_status_idx",
+                  "unique": false
+                }
+              ],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
+              "uniques": [
+                {
+                  "columns": [
+                    "provider",
+                    "providerEventId",
+                    "eventType"
+                  ]
+                }
+              ]
+            },
             "purchase": {
               "checks": [
                 {
@@ -3460,6 +3780,15 @@
                 "REFUNDED"
               ]
             },
+            "ProviderEventStatus": {
+              "kind": "valueSet",
+              "values": [
+                "RECEIVED",
+                "PROCESSING",
+                "PROCESSED",
+                "FAILED"
+              ]
+            },
             "PurchaseStatus": {
               "kind": "valueSet",
               "values": [
@@ -3523,7 +3852,7 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "8f19548abd77c9a147dd12b7ec94c2c650a50b6dc3dbdde7abfb78af3f70558a"
+    "storageHash": "2e5cbee6c20beb141a612d0b628ac5f3ece622e099faa982de25284eaad3fa23"
   },
   "execution": {
     "executionHash": "1e7db2e9cebeb214c87808c50bb2152fa89151dceb8d51779228c397345c9b1b",

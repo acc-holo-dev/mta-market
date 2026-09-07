@@ -1,5 +1,12 @@
 // S3 client for production file storage
-import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+// SECURITY: All paid artifacts MUST be stored in a PRIVATE bucket.
+// Downloads are only allowed via short-lived signed URLs (GetObjectCommand).
+import {
+  S3Client,
+  PutObjectCommand,
+  DeleteObjectCommand,
+  GetObjectCommand,
+} from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import crypto from "crypto";
 import path from "path";
@@ -11,9 +18,18 @@ const S3_ACCESS_KEY = process.env.S3_ACCESS_KEY || "";
 const S3_SECRET_KEY = process.env.S3_SECRET_KEY || "";
 const S3_ENDPOINT = process.env.S3_ENDPOINT; // For Cloudflare R2
 
+// Signed download URL TTL (seconds). Short-lived per audit P0-10.
+const SIGNED_URL_TTL = parseInt(process.env.S3_SIGNED_URL_TTL || "300", 10); // 5 minutes
+
 let s3Client: S3Client | null = null;
 
 if (S3_ENABLED) {
+  if (!S3_BUCKET || !S3_ACCESS_KEY || !S3_SECRET_KEY) {
+    throw new Error(
+      "FATAL: S3_ENABLED=true but S3_BUCKET, S3_ACCESS_KEY or S3_SECRET_KEY is missing"
+    );
+  }
+
   s3Client = new S3Client({
     region: S3_REGION,
     credentials: {
@@ -66,19 +82,32 @@ export async function deleteFromS3(key: string): Promise<void> {
   await s3Client.send(command);
 }
 
-export async function getS3DownloadUrl(key: string, expiresIn = 3600): Promise<string> {
+/**
+ * Generate a short-lived signed URL for downloading a private artifact.
+ * SECURITY: Uses GetObjectCommand (read-only). Never expose public URLs for paid content.
+ */
+export async function getS3DownloadUrl(key: string, expiresIn?: number): Promise<string> {
   if (!s3Client) {
     throw new Error("S3 is not enabled");
   }
 
-  const command = new PutObjectCommand({
+  const ttl = expiresIn ?? SIGNED_URL_TTL;
+
+  // Hard cap TTL to prevent accidental long-lived URLs
+  const safeTtl = Math.min(ttl, 900); // max 15 minutes
+
+  const command = new GetObjectCommand({
     Bucket: S3_BUCKET,
     Key: key,
   });
 
-  return await getSignedUrl(s3Client, command as any, { expiresIn });
+  return await getSignedUrl(s3Client, command, { expiresIn: safeTtl });
 }
 
+/**
+ * DEPRECATED: Public URLs are only acceptable for non-sensitive assets
+ * (e.g., public preview images). NEVER use for paid artifacts.
+ */
 export function getS3PublicUrl(key: string): string {
   if (S3_ENDPOINT) {
     // Cloudflare R2 or custom endpoint
@@ -87,4 +116,4 @@ export function getS3PublicUrl(key: string): string {
   return `https://${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com/${key}`;
 }
 
-export { S3_ENABLED };
+export { S3_ENABLED, SIGNED_URL_TTL };

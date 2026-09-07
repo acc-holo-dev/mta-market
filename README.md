@@ -13,6 +13,7 @@
 **This project is in active development (MVP / Pre-Production stage).**
 
 What works:
+
 - ✅ Backend API (38 endpoints)
 - ✅ Frontend (Next.js 15)
 - ✅ OAuth2 Discord authentication
@@ -21,6 +22,7 @@ What works:
 - ✅ Docker deployment
 
 What's in progress:
+
 - 🔨 Production YooKassa integration
 - 🔨 Secure token handling (HttpOnly cookies)
 - 🔨 Complete DRM cryptographic protocol

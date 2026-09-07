@@ -10,6 +10,7 @@
 MTA Market is a DRM-protected marketplace for MTA:SA server resources. The project has completed initial implementation of core features (backend API, frontend, Docker deployment, CI/CD) but **is not ready for production** until critical security issues are resolved and production gates are completed.
 
 **Key metrics:**
+
 - ✅ 38 backend API endpoints implemented
 - ✅ 5 frontend pages (Next.js 15)
 - ✅ Docker + CI/CD pipeline operational
@@ -22,6 +23,7 @@ MTA Market is a DRM-protected marketplace for MTA:SA server resources. The proje
 ## ✅ What Works (Implemented)
 
 ### Backend API
+
 - **Authentication:** Discord OAuth2 + JWT (access/refresh tokens)
 - **Resources:** CRUD operations, versioning, seller dashboard
 - **Purchases:** Order creation, YooKassa integration skeleton
@@ -30,11 +32,13 @@ MTA Market is a DRM-protected marketplace for MTA:SA server resources. The proje
 - **Financial:** Transaction logging (basic)
 
 ### Frontend
+
 - **Pages:** Home, catalog, resource detail, dashboard, auth callback
 - **UI:** TailwindCSS + lucide-react, responsive design
 - **State:** Zustand + TanStack Query
 
 ### Infrastructure
+
 - **Database:** PostgreSQL 16 + Prisma 8
 - **Cache:** Redis 7
 - **Deployment:** Docker Compose (dev + prod), GitHub Actions CI/CD
@@ -45,6 +49,7 @@ MTA Market is a DRM-protected marketplace for MTA:SA server resources. The proje
 ## ⚠️ P0 Security Issues (Critical)
 
 ### ✅ Resolved (commit 2e050a0)
+
 1. **P0-01:** Payment bypass via `/purchases/:id/complete` — **REMOVED**
 2. **P0-02:** YooKassa webhook signature verification — **DOCUMENTED LIMITATIONS**
 3. **P0-05:** Seller direct PUBLISHED status — **BLOCKED**
@@ -54,6 +59,7 @@ MTA Market is a DRM-protected marketplace for MTA:SA server resources. The proje
 7. **P0-16:** README overstated status — **CORRECTED**
 
 ### ⏳ Remaining P0 Issues
+
 8. **P0-03:** ID type mismatch (schema vs runtime contract) — schema shows `String @id @default(cuid())` but runtime contract uses `Int @id @default(autoincrement())`
 9. **P0-04:** Missing input validation (Zod/class-validator)
 10. **P0-08:** Password reset uses GET with token in URL
@@ -72,6 +78,7 @@ MTA Market is a DRM-protected marketplace for MTA:SA server resources. The proje
 The following must be completed before production launch:
 
 ### Security & Payments
+
 - [ ] Complete YooKassa production flow (IP whitelist + Basic Auth)
 - [ ] Implement provider_payment_events idempotency table
 - [ ] Add Zod input validation across all endpoints
@@ -80,24 +87,28 @@ The following must be completed before production launch:
 - [ ] Add artifact signature verification
 
 ### DRM v2
+
 - [ ] Keypair-based license signing (RSA/Ed25519)
 - [ ] Public key distribution to MTA Guard module
 - [ ] License signature verification in Lua
 - [ ] Revocation list distribution
 
 ### Financial Integrity
+
 - [ ] Double-entry ledger (transactions + journal_entries + ledger_accounts)
 - [ ] Seller payout reconciliation
 - [ ] Platform fee accounting
 - [ ] Audit trail for all money movements
 
 ### Moderation & Safety
+
 - [ ] Sandbox resource validation (static analysis + MTA load test)
 - [ ] Automated malware scanning
 - [ ] Manual review workflow for published resources
 - [ ] DMCA takedown process
 
 ### Observability
+
 - [ ] OpenTelemetry tracing
 - [ ] Prometheus metrics
 - [ ] Structured logging (JSON)
@@ -105,6 +116,7 @@ The following must be completed before production launch:
 - [ ] Uptime monitoring
 
 ### Testing
+
 - [ ] Integration tests (purchase flow, DRM activation)
 - [ ] E2E tests (Playwright)
 - [ ] Load testing (YooKassa webhook handling)
@@ -127,6 +139,7 @@ The following must be completed before production launch:
 ## 📊 Architecture Overview
 
 ### Current (Stage 7)
+
 ```
 [Frontend: Next.js 15]
        ↓ HTTP
@@ -138,6 +151,7 @@ The following must be completed before production launch:
 ```
 
 ### Target (Production)
+
 ```
 [Frontend: Next.js 15]
        ↓ HTTPS + CORS
@@ -157,31 +171,37 @@ The following must be completed before production launch:
 ## 🛣️ Roadmap to Production
 
 ### Phase 1: P0 Security (Current)
+
 - ✅ Remove payment bypasses
 - ✅ Fix token handling
 - ⏳ Complete P0-03 through P0-17
 
 ### Phase 2: Payment & Financial Integrity
+
 - YooKassa production integration
 - Double-entry ledger
 - Seller payout automation
 
 ### Phase 3: DRM v2
+
 - Keypair-based signing
 - MTA Guard module updates
 - Revocation infrastructure
 
 ### Phase 4: Observability & Testing
+
 - OpenTelemetry + Prometheus
 - Integration + E2E tests
 - Load testing
 
 ### Phase 5: Closed Beta
+
 - Invite 10-20 trusted sellers
 - Manual moderation
 - Bug bounty program
 
 ### Phase 6: Public Launch
+
 - Marketing campaign
 - Growth features (bundles, subscriptions, affiliates)
 
@@ -206,6 +226,7 @@ For security issues, email: security@mtamarket.com (placeholder — configure re
 ---
 
 **Status legend:**
+
 - ✅ Complete
 - ⏳ In progress
 - ⚠️ Blocked / requires decision

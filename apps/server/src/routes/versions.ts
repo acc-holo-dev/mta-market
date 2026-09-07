@@ -3,6 +3,7 @@ import { Router, Response } from "express";
 import { authenticate, AuthRequest } from "../lib/auth";
 import { standardRateLimit } from "../lib/rateLimit";
 import { db } from "../prisma/db";
+import { S3_ENABLED, getS3DownloadUrl, SIGNED_URL_TTL } from "../lib/s3";
 
 const router: Router = Router();
 
@@ -128,12 +129,25 @@ router.get(
         return;
       }
 
-      // In production, this should generate a signed S3 URL
+      // SECURITY: Generate short-lived signed URL (never expose public URLs for paid artifacts)
+      // fileUrl stores the S3 object key for S3 storage, or a local /uploads path for dev storage
+      let downloadUrl: string;
+
+      if (S3_ENABLED) {
+        // fileUrl contains the S3 object key
+        downloadUrl = await getS3DownloadUrl(resourceVersion.fileUrl);
+      } else {
+        // Local development storage: fileUrl is /uploads/<filename>
+        // Served through authenticated proxy in production; direct link acceptable for dev only
+        downloadUrl = resourceVersion.fileUrl;
+      }
+
       res.json({
-        downloadUrl: resourceVersion.fileUrl,
+        downloadUrl,
         version: resourceVersion.version,
         fileSize: resourceVersion.fileSize,
         checksum: resourceVersion.fileChecksum,
+        expiresIn: S3_ENABLED ? SIGNED_URL_TTL : null,
       });
     } catch (error) {
       console.error("Error getting download URL:", error);

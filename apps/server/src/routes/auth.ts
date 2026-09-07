@@ -198,7 +198,7 @@ router.get("/discord/callback", authRateLimit, async (req: Request, res: Respons
     // Redirect to frontend with access token in a temporary session
     // Frontend should store access_token in memory only, never localStorage
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
-    
+
     // Store access token temporarily in a short-lived cookie for the callback page
     res.cookie("auth_callback_token", accessToken, {
       httpOnly: false, // Frontend needs to read this once
@@ -207,7 +207,7 @@ router.get("/discord/callback", authRateLimit, async (req: Request, res: Respons
       maxAge: 60 * 1000, // 1 minute - just enough for the callback page to read
       path: "/auth/callback",
     });
-    
+
     res.redirect(`${frontendUrl}/auth/callback`);
   } catch (error) {
     console.error("Discord OAuth error:", error);

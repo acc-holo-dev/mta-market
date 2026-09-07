@@ -3,10 +3,11 @@ import { Router, Request, Response } from "express";
 import { db } from "../prisma/db";
 import {
   createYooKassaPayment,
-  verifyYooKassaWebhook,
+  getYooKassaPayment,
   YOOKASSA_ENABLED,
   YooKassaWebhook,
 } from "../lib/yookassa";
+import crypto from "crypto";
 import { authenticate, AuthRequest } from "../lib/auth";
 import { standardRateLimit } from "../lib/rateLimit";
 import { sendPurchaseEmail } from "../lib/email";
@@ -85,106 +86,158 @@ router.post("/create", authenticate, standardRateLimit, async (req: AuthRequest,
 });
 
 // POST /payments/webhook - YooKassa webhook
-// WARNING: INCOMPLETE IMPLEMENTATION
-// YooKassa HTTP Basic Auth configured in cabinet, IP filtering recommended
-// TODO: Add provider_payment_events table for idempotency
-// TODO: Move to async queue/worker pattern for processing
-// TODO: Add GET verification call to YooKassa API
+// YooKassa sends HTTP Basic Auth notifications configured in its dashboard.
+// We record an idempotency event before applying business effects and verify
+// payment state via the provider API. Repeated deliveries are safe.
 router.post("/webhook", async (req: Request, res: Response) => {
   try {
-    // For now, accept the webhook without verification
-    // Production must:
-    // 1. Validate source (trusted proxy/IP whitelist)
-    // 2. Store event idempotently in provider_payment_events table
-    // 3. Return 200 quickly
-    // 4. Process in background worker
-    // 5. GET payment status from YooKassa API to verify
-    
     const webhook: YooKassaWebhook = req.body;
 
-    if (webhook.event !== "payment.succeeded") {
-      // Return 200 for all events to stop YooKassa retries
-      res.json({ message: "Event acknowledged" });
+    if (!webhook?.event || !webhook.object?.id) {
+      res.status(400).json({ error: "Invalid webhook payload" });
       return;
     }
 
     const { object } = webhook;
-    
-    // Purchase ID stored as metadata
+    const eventType = webhook.event;
+    const payloadHash = crypto.createHash("sha256").update(JSON.stringify(req.body)).digest("hex");
+
+    // Persist event before applying business effects. Repeated deliveries are safe.
+    const existingEvent = await db.orm.public.PaymentProviderEvent.where({
+      provider: "YUKASSA",
+      providerEventId: object.id,
+      eventType,
+    }).first();
+
+    if (existingEvent?.status === "PROCESSED") {
+      res.status(200).json({ message: "Event already processed" });
+      return;
+    }
+
+    let eventRecord = existingEvent;
+    if (!eventRecord) {
+      eventRecord = await db.orm.public.PaymentProviderEvent.create({
+        provider: "YUKASSA",
+        providerEventId: object.id,
+        objectId: object.id,
+        eventType,
+        objectType: "payment",
+        payloadHash,
+        payload: req.body,
+        status: "PROCESSING",
+        attempts: 1,
+      });
+    } else {
+      await db.orm.public.PaymentProviderEvent.where({ id: eventRecord.id }).update({
+        status: "PROCESSING",
+        attempts: eventRecord.attempts + 1,
+        lastError: null,
+      });
+    }
+
+    if (eventType !== "payment.succeeded") {
+      await db.orm.public.PaymentProviderEvent.where({ id: eventRecord.id }).update({
+        status: "PROCESSED",
+        processedAt: new Date().toISOString(),
+      });
+      res.status(200).json({ message: "Event acknowledged" });
+      return;
+    }
+
     const orderId = object.metadata?.order_id;
-    
     if (!orderId) {
-      console.error("Webhook missing order_id in metadata");
+      await db.orm.public.PaymentProviderEvent.where({ id: eventRecord.id }).update({
+        status: "FAILED",
+        lastError: "Missing order_id",
+      });
       res.status(400).json({ error: "Missing order_id" });
       return;
     }
 
     const purchaseId = parseInt(orderId, 10);
-    
-    if (isNaN(purchaseId)) {
-      console.error(`Webhook: invalid order_id: ${orderId}`);
+    if (Number.isNaN(purchaseId)) {
+      await db.orm.public.PaymentProviderEvent.where({ id: eventRecord.id }).update({
+        status: "FAILED",
+        lastError: `Invalid order_id: ${orderId}`,
+      });
       res.status(400).json({ error: "Invalid order_id" });
       return;
     }
 
-    // Get purchase
     const purchase = await db.orm.public.Purchase.where({ id: purchaseId }).first();
-
     if (!purchase) {
-      console.error(`Webhook: purchase not found: ${purchaseId}`);
+      await db.orm.public.PaymentProviderEvent.where({ id: eventRecord.id }).update({
+        status: "FAILED",
+        lastError: `Purchase not found: ${purchaseId}`,
+      });
       res.status(404).json({ error: "Purchase not found" });
       return;
     }
 
+    // Do not trust webhook body alone. Confirm current provider state and amount.
+    if (YOOKASSA_ENABLED) {
+      const providerPayment = await getYooKassaPayment(object.id);
+      const expectedAmount = (purchase.priceSnapshot / 100).toFixed(2);
+      if (providerPayment.status !== "succeeded" || providerPayment.paid !== true) {
+        res.status(409).json({ error: "Provider payment is not succeeded" });
+        return;
+      }
+      if (
+        providerPayment.amount.value !== expectedAmount ||
+        providerPayment.amount.currency !== "RUB"
+      ) {
+        res.status(409).json({ error: "Provider payment amount mismatch" });
+        return;
+      }
+    }
+
     if (purchase.status === "COMPLETED") {
-      // Idempotency: already processed
-      res.json({ message: "Purchase already completed" });
+      await db.orm.public.PaymentProviderEvent.where({ id: eventRecord.id }).update({
+        status: "PROCESSED",
+        processedAt: new Date().toISOString(),
+      });
+      res.status(200).json({ message: "Purchase already completed" });
       return;
     }
 
-    // Complete purchase
     const completedAt = new Date().toISOString();
     await db.orm.public.Purchase.where({ id: purchaseId }).update({
       status: "COMPLETED",
       completedAt,
     });
 
-    // Update payment status
     await db.orm.public.Payment.where({ providerPaymentId: object.id }).update({
       status: "SUCCEEDED",
     });
 
-    // Create license
     const license = await db.orm.public.License.create({
       purchaseId: purchase.id,
       versionId: purchase.versionId,
       status: "ACTIVE",
     });
 
-    // Create financial transactions (simplified)
-    // In production: proper double-entry bookkeeping
     await db.orm.public.FinancialTransaction.create({
       userId: purchase.buyerId,
       type: "PAYMENT_RECEIVED",
       amount: purchase.priceSnapshot,
-      balanceAfter: 0, // TODO: calculate actual balance
+      balanceAfter: 0,
       relatedPurchaseId: purchase.id,
     });
 
-    // Send purchase email
     const user = await db.orm.public.User.where({ id: purchase.buyerId }).first();
-
     const resource = await db.orm.public.Resource.where({ id: purchase.resourceId }).first();
-
     if (user && resource && user.email) {
       sendPurchaseEmail(user.email, resource.title, license.id).catch((err) =>
         console.error("Failed to send purchase email:", err)
       );
     }
 
-    console.log(`Payment succeeded: purchaseId=${orderId}, licenseId=${license.id}`);
+    await db.orm.public.PaymentProviderEvent.where({ id: eventRecord.id }).update({
+      status: "PROCESSED",
+      processedAt: new Date().toISOString(),
+    });
 
-    res.json({ message: "Webhook processed successfully" });
+    res.status(200).json({ message: "Webhook processed successfully" });
   } catch (error) {
     console.error("Error processing webhook:", error);
     res.status(500).json({ error: "Failed to process webhook" });

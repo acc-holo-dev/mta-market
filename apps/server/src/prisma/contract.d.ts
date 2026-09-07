@@ -33,7 +33,7 @@ import type {
 } from '@prisma/orm-postgres/contract/types';
 
 export type StorageHash =
-  StorageHashBase<'8f19548abd77c9a147dd12b7ec94c2c650a50b6dc3dbdde7abfb78af3f70558a'>;
+  StorageHashBase<'2e5cbee6c20beb141a612d0b628ac5f3ece622e099faa982de25284eaad3fa23'>;
 export type ExecutionHash =
   ExecutionHashBase<'1e7db2e9cebeb214c87808c50bb2152fa89151dceb8d51779228c397345c9b1b'>;
 export type ProfileHash =
@@ -306,6 +306,21 @@ export type FieldOutputTypes = {
       readonly succeededAt: CodecTypes['pg/timestamptz-string@1']['output'] | null;
       readonly failedAt: CodecTypes['pg/timestamptz-string@1']['output'] | null;
     };
+    readonly PaymentProviderEvent: {
+      readonly id: CodecTypes['pg/int4@1']['output'];
+      readonly provider: 'YUKASSA' | 'STRIPE' | 'TEST';
+      readonly providerEventId: CodecTypes['pg/text@1']['output'];
+      readonly objectId: CodecTypes['pg/text@1']['output'];
+      readonly eventType: CodecTypes['pg/text@1']['output'];
+      readonly objectType: CodecTypes['pg/text@1']['output'] | null;
+      readonly payloadHash: CodecTypes['pg/text@1']['output'];
+      readonly payload: CodecTypes['pg/json@1']['output'] | null;
+      readonly status: 'RECEIVED' | 'PROCESSING' | 'PROCESSED' | 'FAILED';
+      readonly attempts: CodecTypes['pg/int4@1']['output'];
+      readonly lastError: CodecTypes['pg/text@1']['output'] | null;
+      readonly receivedAt: CodecTypes['pg/timestamptz-string@1']['output'];
+      readonly processedAt: CodecTypes['pg/timestamptz-string@1']['output'] | null;
+    };
     readonly Purchase: {
       readonly id: CodecTypes['pg/int4@1']['output'];
       readonly buyerId: CodecTypes['pg/int4@1']['output'];
@@ -447,6 +462,21 @@ export type FieldInputTypes = {
       readonly createdAt: CodecTypes['pg/timestamptz-string@1']['input'];
       readonly succeededAt: CodecTypes['pg/timestamptz-string@1']['input'] | null;
       readonly failedAt: CodecTypes['pg/timestamptz-string@1']['input'] | null;
+    };
+    readonly PaymentProviderEvent: {
+      readonly id: CodecTypes['pg/int4@1']['input'];
+      readonly provider: 'YUKASSA' | 'STRIPE' | 'TEST';
+      readonly providerEventId: CodecTypes['pg/text@1']['input'];
+      readonly objectId: CodecTypes['pg/text@1']['input'];
+      readonly eventType: CodecTypes['pg/text@1']['input'];
+      readonly objectType: CodecTypes['pg/text@1']['input'] | null;
+      readonly payloadHash: CodecTypes['pg/text@1']['input'];
+      readonly payload: CodecTypes['pg/json@1']['input'] | null;
+      readonly status: 'RECEIVED' | 'PROCESSING' | 'PROCESSED' | 'FAILED';
+      readonly attempts: CodecTypes['pg/int4@1']['input'];
+      readonly lastError: CodecTypes['pg/text@1']['input'] | null;
+      readonly receivedAt: CodecTypes['pg/timestamptz-string@1']['input'];
+      readonly processedAt: CodecTypes['pg/timestamptz-string@1']['input'] | null;
     };
     readonly Purchase: {
       readonly id: CodecTypes['pg/int4@1']['input'];
@@ -590,6 +620,21 @@ export type StorageColumnTypes = {
       readonly status: 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'REFUNDED';
       readonly succeededAt: CodecTypes['pg/timestamptz-string@1']['output'] | null;
     };
+    readonly paymentProviderEvent: {
+      readonly attempts: CodecTypes['pg/int4@1']['output'];
+      readonly eventType: CodecTypes['pg/text@1']['output'];
+      readonly id: CodecTypes['pg/int4@1']['output'];
+      readonly lastError: CodecTypes['pg/text@1']['output'] | null;
+      readonly objectId: CodecTypes['pg/text@1']['output'];
+      readonly objectType: CodecTypes['pg/text@1']['output'] | null;
+      readonly payload: CodecTypes['pg/json@1']['output'] | null;
+      readonly payloadHash: CodecTypes['pg/text@1']['output'];
+      readonly processedAt: CodecTypes['pg/timestamptz-string@1']['output'] | null;
+      readonly provider: 'YUKASSA' | 'STRIPE' | 'TEST';
+      readonly providerEventId: CodecTypes['pg/text@1']['output'];
+      readonly receivedAt: CodecTypes['pg/timestamptz-string@1']['output'];
+      readonly status: 'RECEIVED' | 'PROCESSING' | 'PROCESSED' | 'FAILED';
+    };
     readonly purchase: {
       readonly buyerId: CodecTypes['pg/int4@1']['output'];
       readonly completedAt: CodecTypes['pg/timestamptz-string@1']['output'] | null;
@@ -731,6 +776,21 @@ export type StorageColumnInputTypes = {
       readonly purchaseId: CodecTypes['pg/int4@1']['input'];
       readonly status: 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'REFUNDED';
       readonly succeededAt: CodecTypes['pg/timestamptz-string@1']['input'] | null;
+    };
+    readonly paymentProviderEvent: {
+      readonly attempts: CodecTypes['pg/int4@1']['input'];
+      readonly eventType: CodecTypes['pg/text@1']['input'];
+      readonly id: CodecTypes['pg/int4@1']['input'];
+      readonly lastError: CodecTypes['pg/text@1']['input'] | null;
+      readonly objectId: CodecTypes['pg/text@1']['input'];
+      readonly objectType: CodecTypes['pg/text@1']['input'] | null;
+      readonly payload: CodecTypes['pg/json@1']['input'] | null;
+      readonly payloadHash: CodecTypes['pg/text@1']['input'];
+      readonly processedAt: CodecTypes['pg/timestamptz-string@1']['input'] | null;
+      readonly provider: 'YUKASSA' | 'STRIPE' | 'TEST';
+      readonly providerEventId: CodecTypes['pg/text@1']['input'];
+      readonly receivedAt: CodecTypes['pg/timestamptz-string@1']['input'];
+      readonly status: 'RECEIVED' | 'PROCESSING' | 'PROCESSED' | 'FAILED';
     };
     readonly purchase: {
       readonly buyerId: CodecTypes['pg/int4@1']['input'];
@@ -1295,6 +1355,107 @@ type ContractBase = Omit<
                   };
                 },
               ];
+            };
+            readonly paymentProviderEvent: {
+              columns: {
+                readonly id: {
+                  readonly nativeType: 'int4';
+                  readonly codecId: 'pg/int4@1';
+                  readonly nullable: false;
+                  readonly default: {
+                    readonly kind: 'function';
+                    readonly expression: 'autoincrement()';
+                  };
+                };
+                readonly provider: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly providerEventId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly objectId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly eventType: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly objectType: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+                readonly payloadHash: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly payload: {
+                  readonly nativeType: 'json';
+                  readonly codecId: 'pg/json@1';
+                  readonly nullable: true;
+                };
+                readonly status: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                  readonly default: {
+                    readonly kind: 'literal';
+                    readonly value: DefaultLiteralValue<'pg/text@1', 'RECEIVED'>;
+                  };
+                };
+                readonly attempts: {
+                  readonly nativeType: 'int4';
+                  readonly codecId: 'pg/int4@1';
+                  readonly nullable: false;
+                  readonly default: {
+                    readonly kind: 'literal';
+                    readonly value: DefaultLiteralValue<'pg/int4@1', 0>;
+                  };
+                };
+                readonly lastError: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+                readonly receivedAt: {
+                  readonly nativeType: 'timestamptz';
+                  readonly codecId: 'pg/timestamptz-string@1';
+                  readonly nullable: false;
+                  readonly default: { readonly kind: 'function'; readonly expression: 'now()' };
+                };
+                readonly processedAt: {
+                  readonly nativeType: 'timestamptz';
+                  readonly codecId: 'pg/timestamptz-string@1';
+                  readonly nullable: true;
+                };
+              };
+              primaryKey: { readonly columns: readonly ['id'] };
+              uniques: readonly [
+                { readonly columns: readonly ['provider', 'providerEventId', 'eventType'] },
+              ];
+              indexes: readonly [
+                {
+                  readonly name: 'paymentProviderEvent_objectId_idx_08ca88de';
+                  readonly prefix: 'paymentProviderEvent_objectId_idx';
+                  readonly columns: readonly ['objectId'];
+                  readonly unique: false;
+                },
+                {
+                  readonly name: 'paymentProviderEvent_status_idx_e98638ab';
+                  readonly prefix: 'paymentProviderEvent_status_idx';
+                  readonly columns: readonly ['status'];
+                  readonly unique: false;
+                },
+              ];
+              foreignKeys: readonly [];
             };
             readonly purchase: {
               columns: {
@@ -1918,6 +2079,10 @@ type ContractBase = Omit<
               readonly kind: 'valueSet';
               readonly values: readonly ['PENDING', 'SUCCEEDED', 'FAILED', 'REFUNDED'];
             };
+            readonly ProviderEventStatus: {
+              readonly kind: 'valueSet';
+              readonly values: readonly ['RECEIVED', 'PROCESSING', 'PROCESSED', 'FAILED'];
+            };
             readonly PurchaseStatus: {
               readonly kind: 'valueSet';
               readonly values: readonly ['PENDING', 'COMPLETED', 'REFUNDED', 'DISPUTED'];
@@ -1976,6 +2141,10 @@ type ContractBase = Omit<
       readonly model: 'Installation';
     };
     readonly payment: { readonly namespace: 'public' & NamespaceId; readonly model: 'Payment' };
+    readonly paymentProviderEvent: {
+      readonly namespace: 'public' & NamespaceId;
+      readonly model: 'PaymentProviderEvent';
+    };
     readonly financialTransaction: {
       readonly namespace: 'public' & NamespaceId;
       readonly model: 'FinancialTransaction';
@@ -2388,6 +2557,88 @@ type ContractBase = Omit<
                 readonly createdAt: { readonly column: 'createdAt' };
                 readonly succeededAt: { readonly column: 'succeededAt' };
                 readonly failedAt: { readonly column: 'failedAt' };
+              };
+            };
+          };
+          readonly PaymentProviderEvent: {
+            readonly fields: {
+              readonly id: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/int4@1' };
+              };
+              readonly provider: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly providerEventId: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly objectId: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly eventType: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly objectType: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly payloadHash: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly payload: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/json@1' };
+              };
+              readonly status: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly attempts: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/int4@1' };
+              };
+              readonly lastError: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly receivedAt: {
+                readonly nullable: false;
+                readonly type: {
+                  readonly kind: 'scalar';
+                  readonly codecId: 'pg/timestamptz-string@1';
+                };
+              };
+              readonly processedAt: {
+                readonly nullable: true;
+                readonly type: {
+                  readonly kind: 'scalar';
+                  readonly codecId: 'pg/timestamptz-string@1';
+                };
+              };
+            };
+            readonly relations: Record<string, never>;
+            readonly storage: {
+              readonly table: 'paymentProviderEvent';
+              readonly namespaceId: 'public';
+              readonly fields: {
+                readonly id: { readonly column: 'id' };
+                readonly provider: { readonly column: 'provider' };
+                readonly providerEventId: { readonly column: 'providerEventId' };
+                readonly objectId: { readonly column: 'objectId' };
+                readonly eventType: { readonly column: 'eventType' };
+                readonly objectType: { readonly column: 'objectType' };
+                readonly payloadHash: { readonly column: 'payloadHash' };
+                readonly payload: { readonly column: 'payload' };
+                readonly status: { readonly column: 'status' };
+                readonly attempts: { readonly column: 'attempts' };
+                readonly lastError: { readonly column: 'lastError' };
+                readonly receivedAt: { readonly column: 'receivedAt' };
+                readonly processedAt: { readonly column: 'processedAt' };
               };
             };
           };
@@ -3105,6 +3356,15 @@ type ContractBase = Omit<
               { readonly name: 'SUCCEEDED'; readonly value: 'SUCCEEDED' },
               { readonly name: 'FAILED'; readonly value: 'FAILED' },
               { readonly name: 'REFUNDED'; readonly value: 'REFUNDED' },
+            ];
+          };
+          readonly ProviderEventStatus: {
+            readonly codecId: 'pg/text@1';
+            readonly members: readonly [
+              { readonly name: 'RECEIVED'; readonly value: 'RECEIVED' },
+              { readonly name: 'PROCESSING'; readonly value: 'PROCESSING' },
+              { readonly name: 'PROCESSED'; readonly value: 'PROCESSED' },
+              { readonly name: 'FAILED'; readonly value: 'FAILED' },
             ];
           };
           readonly TransactionType: {
