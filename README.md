@@ -1,6 +1,6 @@
 # 🎮 MTA Market
 
-> Production-ready DRM-защищённая площадка продаж серверных ресурсов для MTA:SA
+> **MVP / Pre-Production** — DRM-защищённая площадка продаж серверных ресурсов для MTA:SA
 
 [![CI/CD](https://github.com/acc-holo-dev/mta-market/actions/workflows/ci.yml/badge.svg)](https://github.com/acc-holo-dev/mta-market/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -8,9 +8,30 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
 [![Next.js](https://img.shields.io/badge/Next.js-15-black.svg)](https://nextjs.org/)
 
-## 🎉 Проект полностью реализован!
+## ⚠️ Production Status
 
-**100% complete** — Production-ready маркетплейс с полным backend API, современным frontend и автоматизированным deployment.
+**This project is in active development (MVP / Pre-Production stage).**
+
+What works:
+- ✅ Backend API (38 endpoints)
+- ✅ Frontend (Next.js 15)
+- ✅ OAuth2 Discord authentication
+- ✅ Development payment simulation
+- ✅ Basic DRM licensing
+- ✅ Docker deployment
+
+What's in progress:
+- 🔨 Production YooKassa integration
+- 🔨 Secure token handling (HttpOnly cookies)
+- 🔨 Complete DRM cryptographic protocol
+- 🔨 Artifact signing & verification
+- 🔨 Financial ledger & reconciliation
+- 🔨 Moderation workflow
+- 🔨 Production security hardening
+
+**Do not use with real money until production checklist is complete.**
+
+See [PRODUCTION_CHECKLIST.md](PRODUCTION_CHECKLIST.md) for required gates.
 
 ## ✨ Что реализовано
 

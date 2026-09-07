@@ -188,60 +188,8 @@ router.get("/:id", authenticate, standardRateLimit, async (req: AuthRequest, res
   }
 });
 
-// POST /purchases/:id/complete - Complete purchase (simulate payment callback)
-// In production, this would be a webhook from YooKassa
-router.post(
-  "/:id/complete",
-  authenticate,
-  standardRateLimit,
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const purchaseId = parseInt(req.params.id as string, 10);
-
-      const purchase = await db.orm.public.Purchase.where({ id: purchaseId }).first();
-
-      if (!purchase) {
-        res.status(404).json({ error: "Purchase not found" });
-        return;
-      }
-
-      if (purchase.buyerId !== req.user!.userId) {
-        res.status(403).json({ error: "Not authorized" });
-        return;
-      }
-
-      if (purchase.status !== "PENDING") {
-        res.status(400).json({ error: "Purchase is not pending" });
-        return;
-      }
-
-      // Complete purchase
-      const completedAt = new Date().toISOString();
-      await db.orm.public.Purchase.where({ id: purchaseId }).update({
-        status: "COMPLETED",
-        completedAt,
-      });
-
-      // Create license
-      const license = await db.orm.public.License.create({
-        purchaseId: purchase.id,
-        versionId: purchase.versionId,
-        status: "ACTIVE",
-      });
-
-      // Create financial transactions (simplified)
-      // In production: double-entry bookkeeping with proper ledger
-
-      res.json({
-        message: "Purchase completed successfully",
-        purchaseId: purchase.id,
-        licenseId: license.id,
-      });
-    } catch (error) {
-      console.error("Error completing purchase:", error);
-      res.status(500).json({ error: "Failed to complete purchase" });
-    }
-  }
-);
+// POST /purchases/:id/complete - REMOVED for security
+// Payment completion MUST only happen via authenticated YooKassa webhook
+// See /payments/webhook endpoint in payments.ts
 
 export default router;

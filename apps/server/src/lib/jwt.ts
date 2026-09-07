@@ -1,7 +1,11 @@
 // JWT utility for MTA Market authentication
 import jwt from "jsonwebtoken";
 
-const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_change_in_production";
+if (!process.env.JWT_SECRET) {
+  throw new Error("FATAL: JWT_SECRET environment variable is required. Generate with: openssl rand -base64 64");
+}
+
+const JWT_SECRET: string = process.env.JWT_SECRET;
 const JWT_ACCESS_EXPIRY = process.env.JWT_ACCESS_EXPIRY || "15m";
 const JWT_REFRESH_EXPIRY = process.env.JWT_REFRESH_EXPIRY || "7d";
 

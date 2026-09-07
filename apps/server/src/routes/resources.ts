@@ -130,7 +130,23 @@ router.patch("/:slug", authenticate, standardRateLimit, async (req: AuthRequest,
     if (title) updateData.title = title;
     if (description) updateData.description = description;
     if (price !== undefined) updateData.price = Math.round(price * 100);
-    if (status) updateData.status = status;
+    
+    // Sellers cannot directly set PUBLISHED status - only admin/moderator can
+    // Allowed seller transitions: DRAFT -> IN_REVIEW, REJECTED -> IN_REVIEW
+    if (status) {
+      if (status === "PUBLISHED") {
+        res.status(403).json({ error: "Cannot set PUBLISHED status directly. Submit for review first." });
+        return;
+      }
+      
+      const allowedStatuses = ["DRAFT", "IN_REVIEW"];
+      if (!allowedStatuses.includes(status)) {
+        res.status(400).json({ error: `Invalid status. Allowed: ${allowedStatuses.join(", ")}` });
+        return;
+      }
+      
+      updateData.status = status;
+    }
 
     const updated = await db.orm.public.Resource.where({ id: resource.id }).update(updateData);
 

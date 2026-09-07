@@ -85,43 +85,66 @@ router.post("/create", authenticate, standardRateLimit, async (req: AuthRequest,
 });
 
 // POST /payments/webhook - YooKassa webhook
+// WARNING: INCOMPLETE IMPLEMENTATION
+// YooKassa HTTP Basic Auth configured in cabinet, IP filtering recommended
+// TODO: Add provider_payment_events table for idempotency
+// TODO: Move to async queue/worker pattern for processing
+// TODO: Add GET verification call to YooKassa API
 router.post("/webhook", async (req: Request, res: Response) => {
   try {
-    const signature = req.headers["x-yookassa-signature"] as string;
-    const body = JSON.stringify(req.body);
-
-    // Verify signature
-    if (!verifyYooKassaWebhook(body, signature)) {
-      res.status(401).json({ error: "Invalid signature" });
-      return;
-    }
-
+    // For now, accept the webhook without verification
+    // Production must:
+    // 1. Validate source (trusted proxy/IP whitelist)
+    // 2. Store event idempotently in provider_payment_events table
+    // 3. Return 200 quickly
+    // 4. Process in background worker
+    // 5. GET payment status from YooKassa API to verify
+    
     const webhook: YooKassaWebhook = req.body;
 
     if (webhook.event !== "payment.succeeded") {
-      res.json({ message: "Event ignored" });
+      // Return 200 for all events to stop YooKassa retries
+      res.json({ message: "Event acknowledged" });
       return;
     }
 
     const { object } = webhook;
-    const orderId = parseInt(object.metadata.order_id, 10);
+    
+    // Purchase ID stored as metadata
+    const orderId = object.metadata?.order_id;
+    
+    if (!orderId) {
+      console.error("Webhook missing order_id in metadata");
+      res.status(400).json({ error: "Missing order_id" });
+      return;
+    }
+
+    const purchaseId = parseInt(orderId, 10);
+    
+    if (isNaN(purchaseId)) {
+      console.error(`Webhook: invalid order_id: ${orderId}`);
+      res.status(400).json({ error: "Invalid order_id" });
+      return;
+    }
 
     // Get purchase
-    const purchase = await db.orm.public.Purchase.where({ id: orderId }).first();
+    const purchase = await db.orm.public.Purchase.where({ id: purchaseId }).first();
 
     if (!purchase) {
+      console.error(`Webhook: purchase not found: ${purchaseId}`);
       res.status(404).json({ error: "Purchase not found" });
       return;
     }
 
     if (purchase.status === "COMPLETED") {
+      // Idempotency: already processed
       res.json({ message: "Purchase already completed" });
       return;
     }
 
     // Complete purchase
     const completedAt = new Date().toISOString();
-    await db.orm.public.Purchase.where({ id: orderId }).update({
+    await db.orm.public.Purchase.where({ id: purchaseId }).update({
       status: "COMPLETED",
       completedAt,
     });

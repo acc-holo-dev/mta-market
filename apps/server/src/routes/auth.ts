@@ -186,11 +186,29 @@ router.get("/discord/callback", authRateLimit, async (req: Request, res: Respons
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days
     });
 
-    // Redirect to frontend with tokens
+    // Store refresh token in HttpOnly cookie
+    res.cookie("refresh_token", refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      path: "/",
+    });
+
+    // Redirect to frontend with access token in a temporary session
+    // Frontend should store access_token in memory only, never localStorage
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
-    res.redirect(
-      `${frontendUrl}/auth/callback?access_token=${accessToken}&refresh_token=${refreshToken}`
-    );
+    
+    // Store access token temporarily in a short-lived cookie for the callback page
+    res.cookie("auth_callback_token", accessToken, {
+      httpOnly: false, // Frontend needs to read this once
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 60 * 1000, // 1 minute - just enough for the callback page to read
+      path: "/auth/callback",
+    });
+    
+    res.redirect(`${frontendUrl}/auth/callback`);
   } catch (error) {
     console.error("Discord OAuth error:", error);
     res.status(500).json({ error: "Authentication failed" });
@@ -200,7 +218,7 @@ router.get("/discord/callback", authRateLimit, async (req: Request, res: Respons
 // POST /auth/refresh - Refresh access token
 router.post("/refresh", authRateLimit, async (req: Request, res: Response) => {
   try {
-    const { refreshToken } = req.body;
+    const refreshToken = req.cookies?.refresh_token;
 
     if (!refreshToken) {
       res.status(400).json({ error: "Refresh token required" });
@@ -247,7 +265,7 @@ router.post("/refresh", authRateLimit, async (req: Request, res: Response) => {
 // POST /auth/logout - Logout
 router.post("/logout", authRateLimit, async (req: Request, res: Response) => {
   try {
-    const { refreshToken } = req.body;
+    const refreshToken = req.cookies?.refresh_token;
 
     if (!refreshToken) {
       res.status(400).json({ error: "Refresh token required" });
@@ -260,6 +278,14 @@ router.post("/logout", authRateLimit, async (req: Request, res: Response) => {
     if (session) {
       await db.orm.public.Session.where({ id: session.id }).delete();
     }
+
+    // Clear refresh token cookie
+    res.clearCookie("refresh_token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+    });
 
     res.json({ message: "Logged out successfully" });
   } catch (error) {
