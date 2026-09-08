@@ -4,9 +4,8 @@
  * Static analysis of uploaded artifacts before sandbox execution.
  */
 
-import { createReadStream } from 'fs';
-import { Extract } from 'unzipper';
-import { pipeline } from 'stream/promises';
+import { PassThrough } from 'stream';
+import { Parse } from 'unzipper';
 import type {
   StaticValidationResult,
   ArchiveEntry,
@@ -148,37 +147,39 @@ async function extractArchiveInfo(buffer: Buffer): Promise<{
   let totalUncompressed = 0;
 
   return new Promise((resolve, reject) => {
-    const extract = Extract({ path: '/tmp/sandbox-extract' });
-    
-    extract.on('entry', (entry: any) => {
+    // PLAN B-001: static analysis must NOT touch the host filesystem.
+    // Parse inspects entries in memory (autodrain discards content);
+    // the previous Extract({path}) actually wrote files to a fixed temp dir.
+    const parse = Parse();
+
+    parse.on('entry', (entry: any) => {
       const archiveEntry: ArchiveEntry = {
         path: entry.path,
-        type: entry.type === 'Directory' ? 'directory' : 
+        type: entry.type === 'Directory' ? 'directory' :
               entry.type === 'SymbolicLink' ? 'symlink' : 'file',
         size: entry.vars?.compressedSize || 0,
         uncompressedSize: entry.vars?.uncompressedSize || 0,
         permissions: entry.props?.mode?.toString(8)
       };
-      
+
       entries.push(archiveEntry);
       totalUncompressed += archiveEntry.uncompressedSize;
-      
+
       entry.autodrain();
     });
 
-    extract.on('finish', () => {
+    parse.on('finish', () => {
       resolve({ entries, totalUncompressed });
     });
 
-    extract.on('error', (error: Error) => {
+    parse.on('error', (error: Error) => {
       reject(error);
     });
 
-    // Pipe buffer to extract
-    const stream = require('stream');
-    const bufferStream = new stream.PassThrough();
+    // Pipe buffer to parse
+    const bufferStream = new PassThrough();
     bufferStream.end(buffer);
-    bufferStream.pipe(extract);
+    bufferStream.pipe(parse);
   });
 }
 

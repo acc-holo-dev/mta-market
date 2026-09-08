@@ -11,6 +11,9 @@ export default defineConfig({
     include: ["tests/**/*.test.ts"],
     testTimeout: 30000,
     hookTimeout: 30000,
+    // Integration suites share one PostgreSQL: files must not run in
+    // parallel or they destroy each other's fixtures (resetTestEntities).
+    fileParallelism: false,
     env: {
       DATABASE_URL: TEST_DATABASE_URL,
       JWT_SECRET: process.env.JWT_SECRET || "test_secret_min_32_chars_long_xxxxxxxxxxxx",

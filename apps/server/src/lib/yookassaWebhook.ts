@@ -48,6 +48,7 @@ export function isYooKassaIP(ip: string): boolean {
 /**
  * Verify Basic Auth credentials for YooKassa webhook
  * YooKassa sends: Authorization: Basic base64(shopId:notificationPassword)
+ * Comparison is timing-safe to avoid credential oracles.
  */
 export function verifyYooKassaAuth(authHeader: string | undefined, expectedShopId: string, expectedPassword: string): boolean {
   if (!authHeader || !authHeader.startsWith('Basic ')) {
@@ -56,28 +57,35 @@ export function verifyYooKassaAuth(authHeader: string | undefined, expectedShopI
 
   const base64Credentials = authHeader.substring(6);
   const credentials = Buffer.from(base64Credentials, 'base64').toString('utf-8');
-  const [shopId, password] = credentials.split(':');
+  const separator = credentials.indexOf(':');
+  if (separator === -1) {
+    return false;
+  }
+  const shopId = credentials.slice(0, separator);
+  const password = credentials.slice(separator + 1);
 
-  return shopId === expectedShopId && password === expectedPassword;
+  const shopIdOk = timingSafeEqualStr(shopId, expectedShopId);
+  const passwordOk = timingSafeEqualStr(password, expectedPassword);
+  return shopIdOk && passwordOk;
+}
+
+/** Timing-safe string comparison (equal-length hashing to avoid length leaks). */
+function timingSafeEqualStr(a: string, b: string): boolean {
+  const ha = crypto.createHash('sha256').update(a).digest();
+  const hb = crypto.createHash('sha256').update(b).digest();
+  return crypto.timingSafeEqual(ha, hb);
 }
 
 /**
- * Get client IP from request, handling proxies
+ * Get the client IP for the webhook allowlist.
+ *
+ * TASK A-010: do NOT parse X-Forwarded-For manually — a spoofable,
+ * attacker-controlled header. Express computes req.ip from the trusted
+ * proxy chain (app.set('trust proxy', 1) matches the nginx topology), so
+ * req.ip is the address of the direct peer (the proxy) or the real client
+ * when a trusted proxy forwarded it. Only when no proxy topology is
+ * configured does req.ip degrade to the socket address.
  */
-export function getClientIP(req: any): string {
-  // Check X-Forwarded-For (if behind proxy)
-  const forwarded = req.headers['x-forwarded-for'];
-  if (forwarded) {
-    const ips = forwarded.split(',');
-    return ips[0].trim();
-  }
-
-  // Check X-Real-IP
-  const realIP = req.headers['x-real-ip'];
-  if (realIP) {
-    return realIP;
-  }
-
-  // Fallback to socket
-  return req.socket.remoteAddress || req.connection.remoteAddress || 'unknown';
+export function getClientIP(req: { ip?: string; socket?: { remoteAddress?: string } }): string {
+  return req.ip || req.socket?.remoteAddress || 'unknown';
 }

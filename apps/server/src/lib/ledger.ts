@@ -55,8 +55,10 @@ export async function recordSellerRevenue(options: RecordSellerRevenueOptions): 
 
 /**
  * Records revenue split for a completed purchase:
- * seller gets priceSnapshot - platformFee; platform keeps platformFee.
+ * seller gets finalPrice - platformFee; platform keeps platformFee.
  * Reads fee breakdown from the purchase snapshot (immutable).
+ * INVARIANT: the split is validated against the FINAL price (after
+ * discounts) — the pre-discount priceSnapshot is not the settled amount.
  */
 export async function settlePurchaseRevenue(purchase: {
   id: string;
@@ -65,6 +67,7 @@ export async function settlePurchaseRevenue(purchase: {
   priceSnapshot: number;
   platformFee: number;
   sellerRevenue: number;
+  finalPrice: number;
 }): Promise<void> {
   // Resolve seller from the resource (purchase snapshot holds resourceId)
   const resource = await db.orm.public.Resource.where({ id: purchase.resourceId }).first();
@@ -75,12 +78,12 @@ export async function settlePurchaseRevenue(purchase: {
 
   const sellerId = resource.sellerId;
 
-  // Invariant: fee breakdown must add up
-  if (purchase.platformFee + purchase.sellerRevenue !== purchase.priceSnapshot) {
+  // Invariant: fee breakdown must add up against the FINAL price
+  if (purchase.platformFee + purchase.sellerRevenue !== purchase.finalPrice) {
     throw new Error(
       `Ledger invariant violated for purchase ${purchase.id}: ` +
         `platformFee(${purchase.platformFee}) + sellerRevenue(${purchase.sellerRevenue}) ` +
-        `!= priceSnapshot(${purchase.priceSnapshot})`
+        `!= finalPrice(${purchase.finalPrice})`
     );
   }
 

@@ -1,9 +1,14 @@
 // Resource Versions API routes
 import { Router, Response } from "express";
+import path from "path";
 import { authenticate, AuthRequest } from "../lib/auth";
 import { standardRateLimit } from "../lib/rateLimit";
 import { db } from "../prisma/db";
 import { S3_ENABLED, getS3DownloadUrl, SIGNED_URL_TTL } from "../lib/s3";
+import { resolveLocalUploadPath } from "../lib/upload";
+import { loadArtifactBuffer } from "../lib/storage";
+import { validateArtifact } from "../lib/sandbox/service";
+import { signVersionArtifact } from "../lib/artifact/signing";
 
 const router: Router = Router();
 
@@ -73,6 +78,19 @@ router.post(
         return;
       }
 
+      // PLAN B-001/B-002 pipeline: the artifact must live in OUR storage so it
+      // can be validated, signed and later served through authorized downloads.
+      // External URLs cannot be validated or signed — reject them here.
+      const artifactBuffer = await loadArtifactBuffer(fileUrl);
+      if (!artifactBuffer) {
+        res.status(400).json({
+          error: "Artifact not found in storage",
+          message:
+            "fileUrl must reference an artifact uploaded via POST /upload/resource (external URLs are not supported).",
+        });
+        return;
+      }
+
       const newVersion = await db.orm.public.ResourceVersion.create({
         resourceId: resource.id,
         version,
@@ -82,7 +100,34 @@ router.post(
         fileChecksum,
       });
 
-      res.status(201).json(newVersion);
+      try {
+        // PLAN B-001: static validation (+ sandbox execution when Docker is
+        // available). A failed validation rolls the version back — a version
+        // that cannot be validated must never enter the publication pipeline.
+        const validation = await validateArtifact(newVersion.id, artifactBuffer);
+        if (!validation.passed) {
+          await db.orm.public.ResourceVersion.where({ id: newVersion.id }).delete();
+          res.status(422).json({
+            error: "Artifact validation failed",
+            validation: validation.staticValidation,
+          });
+          return;
+        }
+
+        // PLAN B-002: canonical manifest + SHA-256 + Ed25519 signature.
+        const signed = await signVersionArtifact(newVersion.id, artifactBuffer);
+
+        res.status(201).json({
+          ...newVersion,
+          signed: true,
+          artifactHash: signed.artifactHash,
+          manifestHash: signed.manifestHash,
+        });
+      } catch (pipelineError) {
+        // Roll back the version: an unvalidated/unsigned version must not linger.
+        await db.orm.public.ResourceVersion.where({ id: newVersion.id }).delete().catch(() => undefined);
+        throw pipelineError;
+      }
     } catch (error) {
       console.error("Error creating version:", error);
       res.status(500).json({ error: "Failed to create version" });
@@ -158,30 +203,37 @@ router.get(
 
       console.info(`Download authorized: User ${req.user!.userId} downloading ${slug} v${version}`);
 
-      // SECURITY: Generate short-lived signed URL (never expose public URLs for paid artifacts)
-      // fileUrl stores the S3 object key for S3 storage, or a local /uploads path for dev storage
-      let downloadUrl: string;
-
+      // TASK A-009: paid artifacts are never exposed via permanent public URLs.
+      // - S3/R2: short-lived signed GetObject URL (TTL-capped in lib/s3).
+      // - Local storage: the file is streamed through THIS authenticated,
+      //   entitlement-checked endpoint; there is no public static /uploads route.
       if (S3_ENABLED) {
-        // Production: fileUrl contains the S3 object key
-        downloadUrl = await getS3DownloadUrl(resourceVersion.fileUrl);
-      } else {
-        // Development only: local storage with direct path
-        if (process.env.NODE_ENV === 'production') {
-          res.status(500).json({ error: "S3 must be enabled in production" });
-          return;
-        }
-        // Local development storage: fileUrl is /uploads/<filename>
-        downloadUrl = resourceVersion.fileUrl;
+        // Production: fileUrl stores the S3 object key
+        const downloadUrl = await getS3DownloadUrl(resourceVersion.fileUrl);
+
+        res.json({
+          downloadUrl,
+          version: resourceVersion.version,
+          fileSize: resourceVersion.fileSize,
+          checksum: resourceVersion.fileChecksum,
+          expiresIn: SIGNED_URL_TTL,
+        });
+        return;
       }
 
-      res.json({
-        downloadUrl,
-        version: resourceVersion.version,
-        fileSize: resourceVersion.fileSize,
-        checksum: resourceVersion.fileChecksum,
-        expiresIn: S3_ENABLED ? SIGNED_URL_TTL : null,
-      });
+      // Local storage mode (development): stream the file after authorization.
+      if (process.env.NODE_ENV === "production") {
+        res.status(500).json({ error: "S3 must be enabled in production" });
+        return;
+      }
+
+      const localPath = resolveLocalUploadPath(resourceVersion.fileUrl);
+      if (!localPath) {
+        res.status(400).json({ error: "Invalid storage reference" });
+        return;
+      }
+
+      res.download(localPath, `${slug}-${resourceVersion.version}${path.extname(localPath)}`);
     } catch (error) {
       console.error("Error getting download URL:", error);
       res.status(500).json({ error: "Failed to get download URL" });

@@ -11,6 +11,7 @@ import { generateAccessToken } from "../src/lib/jwt";
 import { createServerSigningKey } from "../src/lib/drm/service";
 import { generateInstallationKeypair, signChallenge, generateNonce } from "../src/lib/drm/crypto";
 import { generatePublisherKeypair } from "../src/lib/artifact/crypto";
+import { resetTestEntities, createTestUser } from "./helpers/db-reset";
 
 const app = request(createApp());
 
@@ -39,39 +40,7 @@ const dbAvailable = await (async (): Promise<boolean> => {
 })();
 
 async function cleanup(): Promise<void> {
-  // FK-safe, idempotent cleanup that works across runs (no run-specific
-  // suffixes): purchases cascade to licenses -> installations -> leases;
-  // resources cascade to versions -> artifact signatures.
-  try {
-    const purchases = await db.orm.public.Purchase.where({ buyerId: BUYER_ID }).all();
-    for (const p of purchases) {
-      await db.orm.public.Purchase.where({ id: p.id }).delete();
-    }
-  } catch (e) {
-    console.warn("[drm-v2.test] cleanup purchases:", e instanceof Error ? e.message : e);
-  }
-  try {
-    const resources = await db.orm.public.Resource.where({ sellerId: SELLER_ID }).all();
-    for (const r of resources) {
-      await db.orm.public.Resource.where({ id: r.id }).delete();
-    }
-  } catch (e) {
-    console.warn("[drm-v2.test] cleanup resources:", e instanceof Error ? e.message : e);
-  }
-  try {
-    // PublisherKey blocks user deletion (FK restrict)
-    const keys = await db.orm.public.PublisherKey.where({ sellerId: SELLER_ID }).all();
-    for (const k of keys) {
-      await db.orm.public.PublisherKey.where({ id: k.id }).delete();
-    }
-  } catch (e) {
-    console.warn("[drm-v2.test] cleanup publisher keys:", e instanceof Error ? e.message : e);
-  }
-  for (const uid of [BUYER_ID, SELLER_ID, STRANGER_ID]) {
-    await db.orm.public.User.where({ id: uid }).delete().catch((e) => {
-      console.warn("[drm-v2.test] cleanup user:", uid, e instanceof Error ? e.message : e);
-    });
-  }
+  await resetTestEntities();
 }
 
 beforeAll(async () => {
@@ -79,22 +48,9 @@ beforeAll(async () => {
 
   await cleanup();
 
-  // Users
-  await db.orm.public.User.create({
-    id: BUYER_ID, email: `buyer-${SUFFIX}@test.local`, username: `buyer_${SUFFIX}`,
-    role: "USER", status: "ACTIVE",
-  });
-  await db.orm.public.User.create({
-    id: SELLER_ID, email: `seller-${SUFFIX}@test.local`, username: `seller_${SUFFIX}`,
-    role: "USER", status: "ACTIVE",
-  });
-  await db.orm.public.User.create({
-    id: STRANGER_ID, email: `stranger-${SUFFIX}@test.local`, username: `stranger_${SUFFIX}`,
-    role: "USER", status: "ACTIVE",
-  });
-
-  buyerToken = generateAccessToken({ userId: BUYER_ID, email: `buyer-${SUFFIX}@test.local`, role: "USER" });
-  strangerToken = generateAccessToken({ userId: STRANGER_ID, email: `stranger-${SUFFIX}@test.local`, role: "USER" });
+  buyerToken = await createTestUser(BUYER_ID, `buyer_${SUFFIX}`, "USER", generateAccessToken);
+  await createTestUser(SELLER_ID, `seller_${SUFFIX}`, "USER", generateAccessToken);
+  strangerToken = await createTestUser(STRANGER_ID, `stranger_${SUFFIX}`, "USER", generateAccessToken);
 
   // Seller -> resource -> version -> purchase -> license chain
   const resource = await db.orm.public.Resource.create({

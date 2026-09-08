@@ -49,12 +49,15 @@ services:
       PORT: 3001
       DATABASE_URL: postgresql://mtamarket:dev_password@postgres:5432/mtamarket
       REDIS_URL: redis://redis:6379
-      JWT_SECRET: ${JWT_SECRET:-your-secret-key-min-32-chars-change-in-production}
+      # TASK A-012: no public fallback secrets — the container must fail
+      # closed (startup validation exits non-zero) when the secret is absent.
+      JWT_SECRET: ${JWT_SECRET}
       JWT_ACCESS_EXPIRY: ${JWT_ACCESS_EXPIRY:-15m}
       JWT_REFRESH_EXPIRY: ${JWT_REFRESH_EXPIRY:-7d}
       DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID}
       DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET}
       DISCORD_REDIRECT_URI: ${DISCORD_REDIRECT_URI:-http://localhost:3001/auth/discord/callback}
+      DRM_SERVER_PRIVATE_KEY: ${DRM_SERVER_PRIVATE_KEY}
       BASE_URL: ${BASE_URL:-http://localhost:3001}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       UPLOAD_DIR: ./uploads

@@ -10,6 +10,12 @@ import {
   paginationSchema,
   resourceFiltersSchema,
 } from "../lib/validation";
+import {
+  isResourceStatus,
+  isTransitionAllowed,
+  RESOURCE_STATUSES,
+  type ResourceStatus,
+} from "../lib/moderation";
 
 const router: Router = Router();
 
@@ -136,23 +142,25 @@ router.patch("/:slug", authenticate, standardRateLimit, async (req: AuthRequest,
     if (description) updateData.description = description;
     if (price !== undefined) updateData.price = Math.round(price * 100);
 
-    // Sellers cannot directly set PUBLISHED or SUSPENDED status - only admin/moderator can
-    // Allowed seller transitions: DRAFT -> PENDING_REVIEW, SUSPENDED -> PENDING_REVIEW
+    // TASK A-008: sellers may only submit (DRAFT -> PENDING_REVIEW) or
+    // withdraw (PENDING_REVIEW -> DRAFT). Publishing, suspending, unsuspending
+    // and unpublishing are moderation-only — transition matrix, not a blocklist
+    // (the old allowlist let sellers "unsuspend" via SUSPENDED -> DRAFT).
     if (status) {
-      // Block privileged statuses
-      const privilegedStatuses = ["PUBLISHED", "SUSPENDED"];
-      if (privilegedStatuses.includes(status)) {
-        console.warn(`Resource status bypass attempt: User ${req.user!.userId} tried to set status ${status} on resource ${resource.id}`);
-        res.status(403).json({ 
-          error: "Forbidden status", 
-          message: "Cannot set PUBLISHED or SUSPENDED status directly. Submit for review first." 
-        });
+      if (!isResourceStatus(status)) {
+        res.status(400).json({ error: `Invalid status. Allowed: DRAFT, PENDING_REVIEW` });
         return;
       }
 
-      const allowedStatuses = ["DRAFT", "PENDING_REVIEW"];
-      if (!allowedStatuses.includes(status)) {
-        res.status(400).json({ error: `Invalid status. Allowed: ${allowedStatuses.join(", ")}` });
+      const from = resource.status as ResourceStatus;
+      if (!isTransitionAllowed(from, status, "seller")) {
+        console.warn(
+          `Resource status transition denied: User ${req.user!.userId} tried ${from} -> ${status} on resource ${resource.id}`
+        );
+        res.status(403).json({
+          error: "Forbidden status transition",
+          message: `Sellers may only submit (DRAFT -> PENDING_REVIEW) or withdraw (PENDING_REVIEW -> DRAFT). Current status: ${from}.`,
+        });
         return;
       }
 

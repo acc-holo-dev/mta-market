@@ -5,6 +5,9 @@ import { standardRateLimit } from "../lib/rateLimit";
 import { validateCuid } from "../middleware/validateCuid";
 import { db } from "../prisma/db";
 import { sendResourcePublishedEmail } from "../lib/email";
+import { isResourceStatus, isTransitionAllowed, type ResourceStatus } from "../lib/moderation";
+import { hasValidSignature } from "../lib/artifact/signing";
+import { getSandboxRun } from "../lib/sandbox/service";
 
 const router: Router = Router();
 
@@ -55,7 +58,7 @@ router.get(
   }
 );
 
-// PATCH /admin/resources/:id/status - Update resource status
+// PATCH /admin/resources/:id/status - Update resource status (moderation)
 router.patch(
   "/resources/:id/status",
   authenticate,
@@ -72,11 +75,56 @@ router.patch(
         return;
       }
 
+      // TASK A-008: status must be a valid enum value and the transition
+      // must be allowed by the moderation state machine (J-001).
+      if (!isResourceStatus(status)) {
+        res.status(400).json({ error: `Invalid status. Allowed: DRAFT, PENDING_REVIEW, PUBLISHED, SUSPENDED` });
+        return;
+      }
+
       const resource = await db.orm.public.Resource.where({ id: resourceId }).first();
 
       if (!resource) {
         res.status(404).json({ error: "Resource not found" });
         return;
+      }
+
+      const from = resource.status as ResourceStatus;
+      if (!isTransitionAllowed(from, status, "admin")) {
+        res.status(400).json({
+          error: "Invalid status transition",
+          message: `Transition ${from} -> ${status} is not allowed for moderators.`,
+        });
+        return;
+      }
+
+      // PLAN B-001 publication gate: a version may only go PUBLISHED when
+      // every version of the resource is signed and passed validation
+      // (sandbox execution may be PENDING when Docker is unavailable —
+      // manual review path — but FAILED validation blocks publication).
+      if (status === "PUBLISHED") {
+        const versions = await db.orm.public.ResourceVersion.where({ resourceId }).all();
+        for (const version of versions) {
+          const signed = await hasValidSignature(version.id);
+          if (!signed) {
+            res.status(409).json({
+              error: "Version is not signed",
+              message: `Version ${version.version} has no valid artifact signature. Re-upload the artifact to sign it.`,
+              version: version.version,
+            });
+            return;
+          }
+
+          const run = await getSandboxRun(version.id);
+          if (run && run.status === "FAILED") {
+            res.status(409).json({
+              error: "Version failed validation",
+              message: `Version ${version.version} failed sandbox/static validation and cannot be published.`,
+              version: version.version,
+            });
+            return;
+          }
+        }
       }
 
       await db.orm.public.Resource.where({ id: resourceId }).update({ status });
@@ -94,6 +142,7 @@ router.patch(
 
       res.json({
         message: "Resource status updated",
+        from,
         status,
         reason,
       });

@@ -83,6 +83,28 @@ export async function deleteFromS3(key: string): Promise<void> {
 }
 
 /**
+ * Read an object from the private bucket (used to load artifacts for
+ * validation/signing — never exposed to clients directly).
+ */
+export async function s3GetObject(key: string): Promise<Buffer> {
+  if (!s3Client) {
+    throw new Error("S3 is not enabled");
+  }
+
+  const command = new GetObjectCommand({
+    Bucket: S3_BUCKET,
+    Key: key,
+  });
+
+  const response = await s3Client.send(command);
+  const bytes = await response.Body?.transformToByteArray();
+  if (!bytes) {
+    throw new Error(`S3 object is empty: ${key}`);
+  }
+  return Buffer.from(bytes);
+}
+
+/**
  * Generate a short-lived signed URL for downloading a private artifact.
  * SECURITY: Uses GetObjectCommand (read-only). Never expose public URLs for paid content.
  */

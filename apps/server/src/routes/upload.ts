@@ -22,29 +22,33 @@ router.post(
         return;
       }
 
+      // Compute checksum BEFORE any cleanup (the local temp file is removed
+      // after an S3 upload, so it must be read first).
+      const buffer = fs.readFileSync(req.file.path);
+      const checksum = crypto.createHash("sha256").update(buffer).digest("hex");
+
       let fileUrl: string;
       let fileKey: string | null = null;
 
       // Upload to S3 if enabled, otherwise use local storage
       if (S3_ENABLED) {
-        const buffer = fs.readFileSync(req.file.path);
         fileKey = await uploadToS3({
           buffer,
           originalName: req.file.originalname,
           mimeType: req.file.mimetype,
           folder: "resources",
         });
-        fileUrl = getS3PublicUrl(fileKey);
+        // TASK A-009: store the OBJECT KEY, never a public URL — paid
+        // artifacts are downloaded exclusively via short-lived signed URLs.
+        fileUrl = fileKey;
 
         // Delete local file after S3 upload
         deleteFile(req.file.filename);
       } else {
-        fileUrl = getFileUrl(req.file.filename);
+        // Local storage: opaque reference; downloads go through the
+        // authorized versions download route (no public static serving).
+        fileUrl = `/uploads/${req.file.filename}`;
       }
-
-      // Calculate checksum
-      const buffer = S3_ENABLED ? fs.readFileSync(req.file.path) : fs.readFileSync(req.file.path);
-      const checksum = crypto.createHash("sha256").update(buffer).digest("hex");
 
       res.status(201).json({
         fileUrl,

@@ -11,12 +11,14 @@ export const email = z.string().email();
 export const url = z.string().url();
 
 // Resource creation/update
+// NOTE: type enum mirrors the contract ResourceType (SCRIPT/MAP/MODEL/...)
+// — the previous values (SCRIPTS/MAPS/...) failed the DB CHECK constraint.
 export const createResourceSchema = z.object({
   title: z.string().min(3).max(100),
   slug: slug.max(60),
   description: z.string().min(10).max(5000),
   price: nonNegativeInt.max(100000000), // 0 = free resource, max 1M RUB
-  type: z.enum(["GAMEMODE", "MAPS", "VEHICLES", "SCRIPTS", "TOOLS", "ASSETS", "OTHER"]),
+  type: z.enum(["SCRIPT", "MAP", "MODEL", "TEXTURE", "SOUND", "GAMEMODE"]),
   tags: z.array(z.string().max(30)).max(10).optional(),
 });
 

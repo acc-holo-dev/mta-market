@@ -58,6 +58,23 @@ export function validateEnvironment(): ValidationResult {
       errors.push("DISCORD_REDIRECT_URI is required in production");
     }
 
+    // TASK A-012: DRM signing keys are production-critical — without the
+    // private key the server cannot issue leases. Fail closed at startup
+    // instead of at the first activation attempt.
+    if (!process.env.DRM_SERVER_PRIVATE_KEY) {
+      errors.push(
+        "DRM_SERVER_PRIVATE_KEY is required in production. Generate with: pnpm --filter @mta-market/server drm:keygen"
+      );
+    }
+
+    // TASK A-012/B-002: artifact signing key is production-critical —
+    // versions cannot be signed (and thus published) without it.
+    if (!process.env.ARTIFACT_SIGNING_PRIVATE_KEY) {
+      errors.push(
+        "ARTIFACT_SIGNING_PRIVATE_KEY is required in production. Generate with the artifact keygen CLI and store in the secret manager."
+      );
+    }
+
     // YooKassa configuration (if enabled)
     if (process.env.YOOKASSA_ENABLED === "true") {
       if (!process.env.YOOKASSA_SHOP_ID) {

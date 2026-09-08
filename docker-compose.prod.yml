@@ -51,6 +51,10 @@ services:
       DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID}
       DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET}
       DISCORD_REDIRECT_URI: ${DISCORD_REDIRECT_URI}
+      # TASK A-012: DRM signing key is a required production secret
+      DRM_SERVER_PRIVATE_KEY: ${DRM_SERVER_PRIVATE_KEY}
+      # TASK A-012/B-002: artifact signing key is a required production secret
+      ARTIFACT_SIGNING_PRIVATE_KEY: ${ARTIFACT_SIGNING_PRIVATE_KEY}
       BASE_URL: ${BASE_URL}
       FRONTEND_URL: ${FRONTEND_URL}
       UPLOAD_DIR: ./uploads

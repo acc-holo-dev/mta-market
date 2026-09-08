@@ -55,8 +55,10 @@ router.post("/create", authenticate, standardRateLimit, async (req: AuthRequest,
 
     if (YOOKASSA_ENABLED) {
       // Create payment in YooKassa
+      // TASK A-011: the provider amount must equal the order FINAL total
+      // (after discounts) — never the pre-discount snapshot.
       const payment = await createYooKassaPayment({
-        amount: purchase.priceSnapshot,
+        amount: purchase.finalPrice,
         description: `Покупка ресурса: ${resource.title}`,
         orderId: purchase.id.toString(),
         returnUrl: `${process.env.FRONTEND_URL}/purchases/${purchase.id}`,
@@ -67,7 +69,7 @@ router.post("/create", authenticate, standardRateLimit, async (req: AuthRequest,
         purchaseId: purchase.id,
         provider: "YUKASSA",
         providerPaymentId: payment.id,
-        amount: purchase.priceSnapshot,
+        amount: purchase.finalPrice,
         currency: "RUB",
         status: "PENDING",
       });
@@ -95,9 +97,19 @@ router.post("/create", authenticate, standardRateLimit, async (req: AuthRequest,
 // payment state via the provider API. Repeated deliveries are safe.
 router.post("/webhook", async (req: Request, res: Response) => {
   try {
+    // TASK A-010: when the provider is not configured there is no way to
+    // verify transport authenticity or re-fetch provider state — the endpoint
+    // must be DISABLED, not open. (Previously the IP/auth/re-fetch checks were
+    // all skipped when YOOKASSA_ENABLED=false, leaving an unauthenticated
+    // purchase-completion bypass.)
+    if (!YOOKASSA_ENABLED) {
+      res.status(503).json({ error: "Payment provider is not configured" });
+      return;
+    }
+
     // Security Layer 1: IP Whitelist
     const clientIP = getClientIP(req);
-    if (YOOKASSA_ENABLED && !isYooKassaIP(clientIP)) {
+    if (!isYooKassaIP(clientIP)) {
       console.warn(`Webhook rejected: IP ${clientIP} not in YooKassa whitelist`);
       res.status(403).json({ error: "Forbidden: Invalid source IP" });
       return;
@@ -105,7 +117,7 @@ router.post("/webhook", async (req: Request, res: Response) => {
 
     // Security Layer 2: Basic Auth
     const notificationPassword = process.env.YOOKASSA_NOTIFICATION_PASSWORD || "";
-    if (YOOKASSA_ENABLED && !verifyYooKassaAuth(req.headers.authorization, YOOKASSA_SHOP_ID, notificationPassword)) {
+    if (!verifyYooKassaAuth(req.headers.authorization, YOOKASSA_SHOP_ID, notificationPassword)) {
       console.warn(`Webhook rejected: Invalid Basic Auth from ${clientIP}`);
       res.status(401).json({ error: "Unauthorized: Invalid credentials" });
       return;
@@ -195,23 +207,61 @@ router.post("/webhook", async (req: Request, res: Response) => {
     }
 
     // Do not trust webhook body alone. Confirm current provider state and amount.
-    if (YOOKASSA_ENABLED) {
-      const providerPayment = await getYooKassaPayment(object.id);
-      const expectedAmount = (purchase.priceSnapshot / 100).toFixed(2);
-      if (providerPayment.status !== "succeeded" || providerPayment.paid !== true) {
-        res.status(409).json({ error: "Provider payment is not succeeded" });
-        return;
-      }
-      if (
-        providerPayment.amount.value !== expectedAmount ||
-        providerPayment.amount.currency !== "RUB"
-      ) {
-        res.status(409).json({ error: "Provider payment amount mismatch" });
-        return;
-      }
+    // TASK A-010/A-011: provider re-fetch + amount/currency/reference invariants.
+    const providerPayment = await getYooKassaPayment(object.id);
+    const expectedAmount = (purchase.finalPrice / 100).toFixed(2);
+    if (providerPayment.status !== "succeeded" || providerPayment.paid !== true) {
+      await db.orm.public.PaymentProviderEvent.where({ id: eventRecord.id }).update({
+        status: "FAILED",
+        lastError: "Provider payment is not succeeded",
+      });
+      res.status(409).json({ error: "Provider payment is not succeeded" });
+      return;
+    }
+    if (
+      providerPayment.amount.value !== expectedAmount ||
+      providerPayment.amount.currency !== "RUB"
+    ) {
+      // TASK A-011: amount/currency mismatch -> quarantine, no entitlement.
+      await db.orm.public.PaymentProviderEvent.where({ id: eventRecord.id }).update({
+        status: "FAILED",
+        lastError: `Amount mismatch: provider ${providerPayment.amount.value} ${providerPayment.amount.currency}, expected ${expectedAmount} RUB`,
+      });
+      console.error(
+        `PAYMENT QUARANTINED: provider payment ${object.id} amount ${providerPayment.amount.value} ${providerPayment.amount.currency} != order final total ${expectedAmount} RUB (purchase ${purchase.id})`
+      );
+      res.status(409).json({ error: "Provider payment amount mismatch" });
+      return;
+    }
+
+    // TASK A-011: the provider payment reference must belong to THIS purchase.
+    const existingPayment = await db.orm.public.Payment.where({
+      providerPaymentId: object.id,
+    }).first();
+    if (existingPayment && existingPayment.purchaseId !== purchase.id) {
+      await db.orm.public.PaymentProviderEvent.where({ id: eventRecord.id }).update({
+        status: "FAILED",
+        lastError: `Payment ${object.id} is bound to purchase ${existingPayment.purchaseId}, webhook claims ${purchase.id}`,
+      });
+      console.error(
+        `PAYMENT QUARANTINED: provider payment ${object.id} bound to purchase ${existingPayment.purchaseId} but webhook claims purchase ${purchase.id}`
+      );
+      res.status(409).json({ error: "Payment reference mismatch" });
+      return;
     }
 
     if (purchase.status === "COMPLETED") {
+      // Idempotent reprocessing: make sure the entitlement exists (a previous
+      // attempt may have failed between the purchase update and license
+      // creation), then acknowledge.
+      const existingLicense = await db.orm.public.License.where({ purchaseId: purchase.id }).first();
+      if (!existingLicense) {
+        await db.orm.public.License.create({
+          purchaseId: purchase.id,
+          versionId: purchase.versionId,
+          status: "ACTIVE",
+        });
+      }
       await db.orm.public.PaymentProviderEvent.where({ id: eventRecord.id }).update({
         status: "PROCESSED",
         processedAt: new Date().toISOString(),
@@ -226,15 +276,32 @@ router.post("/webhook", async (req: Request, res: Response) => {
       completedAt,
     });
 
-    await db.orm.public.Payment.where({ providerPaymentId: object.id }).update({
-      status: "SUCCEEDED",
-    });
+    if (existingPayment) {
+      await db.orm.public.Payment.where({ providerPaymentId: object.id }).update({
+        status: "SUCCEEDED",
+      });
+    } else {
+      // Provider-confirmed payment without a local record (e.g. created via
+      // the provider dashboard): persist it bound to this purchase.
+      await db.orm.public.Payment.create({
+        purchaseId: purchase.id,
+        provider: "YUKASSA",
+        providerPaymentId: object.id,
+        amount: purchase.finalPrice,
+        currency: "RUB",
+        status: "SUCCEEDED",
+      });
+    }
 
-    const license = await db.orm.public.License.create({
-      purchaseId: purchase.id,
-      versionId: purchase.versionId,
-      status: "ACTIVE",
-    });
+    // Create license only if it does not exist yet (purchaseId is unique).
+    const licenseExisting = await db.orm.public.License.where({ purchaseId: purchase.id }).first();
+    const license = licenseExisting
+      ? licenseExisting
+      : await db.orm.public.License.create({
+          purchaseId: purchase.id,
+          versionId: purchase.versionId,
+          status: "ACTIVE",
+        });
 
     // Settle revenue: seller gets sellerRevenue, platform keeps platformFee.
     // Uses immutable purchase snapshot; validates fee invariants.

@@ -61,6 +61,23 @@ describe("A-005: production simulate paths", () => {
   });
 });
 
+describe("A-010: webhook disabled when provider is not configured", () => {
+  it("returns 503 for /payments/webhook when YOOKASSA_ENABLED=false (no unverified bypass)", async () => {
+    vi.resetModules();
+    process.env.YOOKASSA_ENABLED = "false";
+    const { createApp } = await import("../src/app");
+    const app = request(createApp());
+
+    const res = await app.post("/payments/webhook").send({
+      event: "payment.succeeded",
+      object: { id: "x", metadata: { order_id: "y" } },
+    });
+    expect(res.status).toBe(503);
+    delete process.env.YOOKASSA_ENABLED;
+    vi.resetModules();
+  });
+});
+
 describe("A-003: CORS origin model", () => {
   it("allows preflight from an allowlisted origin with credentials", async () => {
     vi.resetModules();

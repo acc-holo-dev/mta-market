@@ -28,5 +28,12 @@ export {
   serializeManifest
 } from './manifest';
 
-// NOTE: the signing service (signing.ts) is parked in src/attic until
-// PLAN Phase B (B-002) integrates it with the contract ORM API.
+// Export signing service (main API) — PLAN B-002: single signing
+// implementation shared by the web pipeline (and later the CLI).
+export {
+  signVersionArtifact,
+  verifyStoredArtifact,
+  getManifest,
+  hasValidSignature,
+  generatePlatformSigningKeypair
+} from './signing';
