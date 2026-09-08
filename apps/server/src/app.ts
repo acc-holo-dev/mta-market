@@ -5,6 +5,7 @@
 import express, { Express } from "express";
 import cookieParser from "cookie-parser";
 import cors from "cors";
+import { requestIdMiddleware } from "./middleware/requestId";
 import authRoutes from "./routes/auth";
 import resourcesRoutes from "./routes/resources";
 import versionsRoutes from "./routes/versions";
@@ -49,6 +50,8 @@ export function createApp(): Express {
 
   app.use(express.json({ limit: "10mb" }));
   app.use(cookieParser());
+  // PLAN B-007: request_id on every request (header + logs).
+  app.use(requestIdMiddleware);
 
   const allowedOrigins = getAllowedOrigins();
   app.use(

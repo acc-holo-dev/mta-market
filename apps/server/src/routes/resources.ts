@@ -39,8 +39,11 @@ router.get(
         .offset(skip)
         .all();
 
-      // Count total (simplified for now)
-      const total = resources.length;
+      // PLAN B-004: total is the collection size (COUNT), never page.length.
+      const countResult = await db.orm.public.Resource.where({ status: "PUBLISHED" }).aggregate(
+        (agg: any) => ({ total: agg.count() })
+      );
+      const total = Number(countResult.total);
 
       res.json({
         data: resources,

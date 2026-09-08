@@ -40,7 +40,11 @@ router.get(
         .offset(skip)
         .all();
 
-      const total = resources.length;
+      // PLAN B-004: honest total via COUNT aggregate.
+      const countResult = await db.orm.public.Resource.where({ status: status as any }).aggregate(
+        (agg: any) => ({ total: agg.count() })
+      );
+      const total = Number(countResult.total);
 
       res.json({
         data: resources,
@@ -181,7 +185,12 @@ router.get(
           .all();
       }
 
-      const total = users.length;
+      // PLAN B-004: honest total via COUNT aggregate.
+      const countQuery = status
+        ? db.orm.public.User.where({ status: status as any })
+        : db.orm.public.User.where({});
+      const countResult = await countQuery.aggregate((agg: any) => ({ total: agg.count() }));
+      const total = Number(countResult.total);
 
       res.json({
         data: users,
@@ -321,34 +330,58 @@ router.get(
   standardRateLimit,
   async (req: AuthRequest, res: Response) => {
     try {
-      // Get counts (simplified - in production use aggregations)
-      const users = await db.orm.public.User.all();
-      const resources = await db.orm.public.Resource.all();
-      const purchases = await db.orm.public.Purchase.all();
-      const reviews = await db.orm.public.Review.all();
+      // PLAN B-005: aggregates in the database (COUNT/GROUP BY) instead of
+      // full table loads. The endpoint is rate-limited (standardRateLimit).
+      const toCountMap = (rows: Array<{ status: string; n: number }>): Record<string, number> => {
+        const map: Record<string, number> = {};
+        for (const row of rows) map[row.status] = Number(row.n);
+        return map;
+      };
+
+      const userCounts = toCountMap(
+        await db.orm.public.User.groupBy(["status"]).aggregate((agg: any) => ({ n: agg.count() }))
+      );
+      const resourceCounts = toCountMap(
+        await db.orm.public.Resource.groupBy(["status"]).aggregate((agg: any) => ({ n: agg.count() }))
+      );
+      const purchaseCounts = toCountMap(
+        await db.orm.public.Purchase.groupBy(["status"]).aggregate((agg: any) => ({ n: agg.count() }))
+      );
+      const reviewAgg = await db.orm.public.Review.aggregate((agg: any) => ({
+        total: agg.count(),
+        averageRating: agg.avg("rating"),
+      }));
 
       const stats = {
         users: {
-          total: users.length,
-          active: users.filter((u) => u.status === "ACTIVE").length,
-          banned: users.filter((u) => u.status === "BANNED").length,
+          total: Number(userCounts.ACTIVE ?? 0) + Number(userCounts.SUSPENDED ?? 0) + Number(userCounts.BANNED ?? 0),
+          active: Number(userCounts.ACTIVE ?? 0),
+          banned: Number(userCounts.BANNED ?? 0),
         },
         resources: {
-          total: resources.length,
-          published: resources.filter((r) => r.status === "PUBLISHED").length,
-          draft: resources.filter((r) => r.status === "DRAFT").length,
-          pendingReview: resources.filter((r) => r.status === "PENDING_REVIEW").length,
-          suspended: resources.filter((r) => r.status === "SUSPENDED").length,
+          total:
+            Number(resourceCounts.DRAFT ?? 0) +
+            Number(resourceCounts.PENDING_REVIEW ?? 0) +
+            Number(resourceCounts.PUBLISHED ?? 0) +
+            Number(resourceCounts.SUSPENDED ?? 0),
+          published: Number(resourceCounts.PUBLISHED ?? 0),
+          draft: Number(resourceCounts.DRAFT ?? 0),
+          pendingReview: Number(resourceCounts.PENDING_REVIEW ?? 0),
+          suspended: Number(resourceCounts.SUSPENDED ?? 0),
         },
         purchases: {
-          total: purchases.length,
-          completed: purchases.filter((p) => p.status === "COMPLETED").length,
-          pending: purchases.filter((p) => p.status === "PENDING").length,
+          total:
+            Number(purchaseCounts.PENDING ?? 0) +
+            Number(purchaseCounts.COMPLETED ?? 0) +
+            Number(purchaseCounts.REFUNDED ?? 0) +
+            Number(purchaseCounts.DISPUTED ?? 0) +
+            Number(purchaseCounts.FAILED ?? 0),
+          completed: Number(purchaseCounts.COMPLETED ?? 0),
+          pending: Number(purchaseCounts.PENDING ?? 0),
         },
         reviews: {
-          total: reviews.length,
-          averageRating:
-            reviews.length > 0 ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length : 0,
+          total: Number(reviewAgg.total ?? 0),
+          averageRating: Math.round(Number(reviewAgg.averageRating ?? 0) * 10) / 10,
         },
       };
 
