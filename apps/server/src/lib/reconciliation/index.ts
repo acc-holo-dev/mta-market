@@ -16,6 +16,14 @@ export {
   getReports
 } from './service';
 
+// Export internal ledger reconciliation (seller balances vs purchases)
+// Note: only functions are exported to avoid type conflicts with ./types
+export {
+  reconcileAllPurchases,
+  isReconciled,
+  getReconciliationStatus
+} from './internal';
+
 // Export job scheduler
 export {
   runDailyReconciliation,

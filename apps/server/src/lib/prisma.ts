@@ -17,4 +17,11 @@ export const prisma: typeof db.orm.public = {
   FinancialTransaction: db.orm.public.FinancialTransaction,
   SellerBalance: db.orm.public.SellerBalance,
   Review: db.orm.public.Review,
+  // Added in TASK-014/015/016
+  Discount: db.orm.public.Discount,
+  Order: db.orm.public.Order,
+  OrderItem: db.orm.public.OrderItem,
+  Service: db.orm.public.Service,
+  ServiceOrderItem: db.orm.public.ServiceOrderItem,
+  ServicePurchase: db.orm.public.ServicePurchase,
 };
