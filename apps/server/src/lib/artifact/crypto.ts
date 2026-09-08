@@ -72,17 +72,10 @@ export function verifyArtifactSignature(input: VerificationInput): VerificationR
   const { manifest, signature, publicKey, artifactHash } = input;
 
   try {
-    // 1. Verify manifest hash matches stored hash
-    const computedHash = hashManifest(manifest);
-    if (computedHash !== manifest.sha256) {
-      return {
-        valid: false,
-        errors: ['Manifest hash mismatch'],
-        warnings: []
-      };
-    }
-
-    // 2. Verify artifact hash matches
+    // 1. Verify artifact hash matches the manifest's declared artifact hash.
+    // NOTE: manifest.sha256 is the ARTIFACT file hash, not the manifest's own
+    // hash. The manifest integrity is bound via hashManifest(manifest) inside
+    // the signing payload (see createSigningPayload) — do not conflate the two.
     if (artifactHash !== manifest.sha256) {
       return {
         valid: false,
@@ -91,14 +84,14 @@ export function verifyArtifactSignature(input: VerificationInput): VerificationR
       };
     }
 
-    // 3. Create canonical signing payload
+    // 2. Create canonical signing payload (must match signArtifact exactly)
     const payload = createSigningPayload(manifest, artifactHash);
 
-    // 4. Decode public key and signature
+    // 3. Decode public key and signature
     const publicKeyBuffer = Buffer.from(publicKey, 'base64');
     const signatureBuffer = Buffer.from(signature, 'base64');
 
-    // 5. Verify signature
+    // 4. Verify signature
     const isValid = verify(
       null, // Ed25519 doesn't use a digest
       Buffer.from(payload, 'utf-8'),

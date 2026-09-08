@@ -28,17 +28,19 @@ router.get("/:slug/reviews", standardRateLimit, async (req, res: Response) => {
       return;
     }
 
-    const reviews = await db.orm.public.Review.where({ resourceId: resource.id })
+    // The contract query builder has no SQL OFFSET; fetch the resource's
+    // reviews and slice the page in memory. total is the real collection
+    // size (never page.length — see PLAN B-004 invariant).
+    const allReviews = await db.orm.public.Review.where({ resourceId: resource.id })
       .orderBy((m) => m.createdAt.desc())
-      .limit(limitNum)
-      .offset(skip)
       .all();
 
-    const total = reviews.length;
+    const total = allReviews.length;
+    const reviews = allReviews.slice(skip, skip + limitNum);
 
-    // Calculate average rating
+    // Calculate average rating over ALL reviews of the resource
     const avgRating =
-      reviews.length > 0 ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length : 0;
+      total > 0 ? allReviews.reduce((sum, r) => sum + r.rating, 0) / total : 0;
 
     res.json({
       data: reviews,

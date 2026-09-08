@@ -1,10 +1,12 @@
 /**
  * TASK-018: Reconciliation Service
- * 
+ *
  * Financial reconciliation between internal ledger and payment providers.
+ * Rewritten against the contract ORM (db.orm.public.*) — the previous version
+ * targeted a classic Prisma Client API that does not exist in this project.
  */
 
-import { prisma } from '../prisma';
+import { db } from '../../prisma/db';
 import type {
   ReconciliationInput,
   ReconciliationResult,
@@ -16,32 +18,30 @@ import type {
 
 /**
  * Run reconciliation for a time period
- * 
+ *
  * Compares internal financial records with provider records.
  * Never auto-corrects money - only creates alerts.
  */
 export async function reconcile(input: ReconciliationInput): Promise<ReconciliationResult> {
   const { provider, reportType, periodStart, periodEnd } = input;
-  
+
   console.log(`[Reconciliation] Starting ${reportType} reconciliation for ${provider}`);
   console.log(`[Reconciliation] Period: ${periodStart.toISOString()} to ${periodEnd.toISOString()}`);
-  
+
   // Create report record
-  const report = await prisma.reconciliationReport.create({
-    data: {
-      provider,
-      reportType,
-      periodStart: periodStart.toISOString(),
-      periodEnd: periodEnd.toISOString(),
-      internalCount: 0,
-      internalTotal: 0,
-      providerCount: 0,
-      providerTotal: 0,
-      mismatchCount: 0,
-      status: 'IN_PROGRESS'
-    }
+  const report = await db.orm.public.ReconciliationReport.create({
+    provider,
+    reportType: reportType as 'PAYMENT' | 'REFUND' | 'PAYOUT',
+    periodStart: periodStart.toISOString(),
+    periodEnd: periodEnd.toISOString(),
+    internalCount: 0,
+    internalTotal: 0,
+    providerCount: 0,
+    providerTotal: 0,
+    mismatchCount: 0,
+    status: 'IN_PROGRESS'
   });
-  
+
   try {
     // 1. Fetch internal transactions
     const internalTransactions = await fetchInternalTransactions(
@@ -50,9 +50,9 @@ export async function reconcile(input: ReconciliationInput): Promise<Reconciliat
       periodStart,
       periodEnd
     );
-    
+
     console.log(`[Reconciliation] Found ${internalTransactions.length} internal transactions`);
-    
+
     // 2. Fetch provider transactions
     const providerTransactions = await fetchProviderTransactions(
       provider,
@@ -60,50 +60,47 @@ export async function reconcile(input: ReconciliationInput): Promise<Reconciliat
       periodStart,
       periodEnd
     );
-    
+
     console.log(`[Reconciliation] Found ${providerTransactions.length} provider transactions`);
-    
+
     // 3. Calculate totals
     const internalTotal = internalTransactions.reduce((sum, t) => sum + t.amount, 0);
     const providerTotal = providerTransactions.reduce((sum, t) => sum + t.amount, 0);
-    
+
     // 4. Compare transactions
     const mismatches = compareTransactions(internalTransactions, providerTransactions);
-    
+
     console.log(`[Reconciliation] Found ${mismatches.length} mismatches`);
-    
+
     // 5. Store mismatches
     if (mismatches.length > 0) {
-      await prisma.reconciliationMismatch.createMany({
-        data: mismatches.map(m => ({
+      for (const m of mismatches) {
+        await db.orm.public.ReconciliationMismatch.create({
           reportId: report.id,
           type: m.type,
-          internalId: m.internalId,
-          providerId: m.providerId,
-          expectedAmount: m.expectedAmount,
-          actualAmount: m.actualAmount,
+          internalId: m.internalId ?? null,
+          providerId: m.providerId ?? null,
+          expectedAmount: m.expectedAmount ?? null,
+          actualAmount: m.actualAmount ?? null,
           description: m.description
-        }))
-      });
-      
+        });
+      }
+
       // Send alert if mismatches found
       await sendAlert(report.id, mismatches);
     }
-    
+
     // 6. Update report
-    await prisma.reconciliationReport.update({
-      where: { id: report.id },
-      data: {
-        internalCount: internalTransactions.length,
-        internalTotal,
-        providerCount: providerTransactions.length,
-        providerTotal,
-        mismatchCount: mismatches.length,
-        status: 'COMPLETED',
-        completedAt: new Date().toISOString()
-      }
+    await db.orm.public.ReconciliationReport.where({ id: report.id }).update({
+      internalCount: internalTransactions.length,
+      internalTotal,
+      providerCount: providerTransactions.length,
+      providerTotal,
+      mismatchCount: mismatches.length,
+      status: 'COMPLETED',
+      completedAt: new Date().toISOString()
     });
-    
+
     return {
       reportId: report.id,
       internalCount: internalTransactions.length,
@@ -113,72 +110,69 @@ export async function reconcile(input: ReconciliationInput): Promise<Reconciliat
       mismatches,
       status: mismatches.length > 0 ? 'mismatches_found' : 'ok'
     };
-    
+
   } catch (error) {
     console.error('[Reconciliation] Error:', error);
-    
+
     // Update report as failed
-    await prisma.reconciliationReport.update({
-      where: { id: report.id },
-      data: {
-        status: 'FAILED',
-        completedAt: new Date().toISOString(),
-        errorMessage: error instanceof Error ? error.message : 'Unknown error'
-      }
+    await db.orm.public.ReconciliationReport.where({ id: report.id }).update({
+      status: 'FAILED',
+      completedAt: new Date().toISOString(),
+      errorMessage: error instanceof Error ? error.message : 'Unknown error'
     });
-    
+
     throw error;
   }
 }
 
 /**
- * Fetch internal transactions for period
+ * Fetch internal transactions for period.
+ * The contract ORM where() supports equality filters, so the date-range
+ * filter is applied in memory (B-003 may push it into SQL later).
  */
 async function fetchInternalTransactions(
   provider: string,
-  reportType: string,
+  _reportType: string,
   periodStart: Date,
   periodEnd: Date
 ): Promise<InternalTransaction[]> {
-  // Fetch from Payment model
-  const payments = await prisma.payment.findMany({
-    where: {
-      provider: provider.toUpperCase() as any,
-      createdAt: {
-        gte: periodStart.toISOString(),
-        lte: periodEnd.toISOString()
-      }
-    }
-  });
-  
-  return payments.map(p => ({
-    id: p.id,
-    externalId: p.providerPaymentId,
-    amount: p.amount,
-    status: p.status,
-    createdAt: p.createdAt,
-    type: 'payment'
-  }));
+  const payments = await db.orm.public.Payment.where({
+    provider: provider.toUpperCase() as 'YUKASSA' | 'STRIPE' | 'TEST'
+  }).all();
+
+  return payments
+    .filter((p) => {
+      const createdAt = new Date(p.createdAt);
+      return createdAt >= periodStart && createdAt <= periodEnd;
+    })
+    .map((p) => ({
+      id: p.id,
+      externalId: p.providerPaymentId,
+      amount: p.amount,
+      status: p.status,
+      createdAt: p.createdAt,
+      type: 'payment' as const
+    }));
 }
 
 /**
  * Fetch provider transactions (mock implementation)
- * 
+ *
  * In production: Use YooKassa API, Stripe API, etc.
  */
 async function fetchProviderTransactions(
   provider: string,
-  reportType: string,
-  periodStart: Date,
-  periodEnd: Date
+  _reportType: string,
+  _periodStart: Date,
+  _periodEnd: Date
 ): Promise<ProviderTransaction[]> {
   console.log(`[Reconciliation] Fetching ${provider} transactions (MOCK)`);
-  
+
   // Mock implementation
   // In production: Call provider API
   // const yookassa = new YooKassaClient();
   // return await yookassa.getPayments({ from: periodStart, to: periodEnd });
-  
+
   return [];
 }
 
@@ -190,15 +184,15 @@ function compareTransactions(
   provider: ProviderTransaction[]
 ): Mismatch[] {
   const mismatches: Mismatch[] = [];
-  
+
   // Create maps for quick lookup
   const internalMap = new Map(internal.map(t => [t.externalId, t]));
   const providerMap = new Map(provider.map(t => [t.id, t]));
-  
+
   // Check for missing internal records
   for (const providerTx of provider) {
     const internalTx = internalMap.get(providerTx.id);
-    
+
     if (!internalTx) {
       mismatches.push({
         type: 'MISSING_INTERNAL',
@@ -208,7 +202,7 @@ function compareTransactions(
       });
       continue;
     }
-    
+
     // Check amount mismatch
     if (internalTx.amount !== providerTx.amount) {
       mismatches.push({
@@ -220,7 +214,7 @@ function compareTransactions(
         description: `Amount mismatch: internal ${internalTx.amount}, provider ${providerTx.amount}`
       });
     }
-    
+
     // Check status mismatch
     if (internalTx.status !== providerTx.status) {
       mismatches.push({
@@ -231,7 +225,7 @@ function compareTransactions(
       });
     }
   }
-  
+
   // Check for missing provider records
   for (const internalTx of internal) {
     if (!providerMap.has(internalTx.externalId)) {
@@ -243,7 +237,7 @@ function compareTransactions(
       });
     }
   }
-  
+
   return mismatches;
 }
 
@@ -252,14 +246,14 @@ function compareTransactions(
  */
 async function sendAlert(reportId: string, mismatches: Mismatch[]): Promise<void> {
   console.log(`[Reconciliation] ALERT: ${mismatches.length} mismatches found in report ${reportId}`);
-  
+
   // In production: Send email, webhook, Slack notification
   // await sendEmail({
   //   to: 'finance@mtamarket.com',
   //   subject: 'Reconciliation Alert',
   //   body: `Found ${mismatches.length} mismatches...`
   // });
-  
+
   for (const mismatch of mismatches) {
     console.log(`  - ${mismatch.type}: ${mismatch.description}`);
   }
@@ -269,19 +263,19 @@ async function sendAlert(reportId: string, mismatches: Mismatch[]): Promise<void
  * Get reconciliation summary
  */
 export async function getReconciliationSummary(): Promise<ReconciliationSummary> {
-  const reports = await prisma.reconciliationReport.findMany();
-  const mismatches = await prisma.reconciliationMismatch.findMany();
-  
+  const reports = await db.orm.public.ReconciliationReport.where({}).all();
+  const mismatches = await db.orm.public.ReconciliationMismatch.where({}).all();
+
   const reportsWithMismatches = reports.filter(r => r.mismatchCount > 0).length;
   const unresolvedMismatches = mismatches.filter(m => !m.resolved).length;
-  
+
   const totalAmountDiscrepancy = mismatches.reduce((sum, m) => {
-    if (m.type === 'AMOUNT_MISMATCH' && m.expectedAmount && m.actualAmount) {
+    if (m.type === 'AMOUNT_MISMATCH' && m.expectedAmount !== null && m.actualAmount !== null) {
       return sum + Math.abs(m.expectedAmount - m.actualAmount);
     }
     return sum;
   }, 0);
-  
+
   return {
     totalReports: reports.length,
     reportsWithMismatches,
@@ -299,42 +293,44 @@ export async function resolveMismatch(
   resolvedBy: string,
   resolution: string
 ): Promise<void> {
-  await prisma.reconciliationMismatch.update({
-    where: { id: mismatchId },
-    data: {
-      resolved: true,
-      resolvedAt: new Date().toISOString(),
-      resolvedBy,
-      resolution
-    }
+  await db.orm.public.ReconciliationMismatch.where({ id: mismatchId }).update({
+    resolved: true,
+    resolvedAt: new Date().toISOString(),
+    resolvedBy,
+    resolution
   });
-  
+
   console.log(`[Reconciliation] Mismatch ${mismatchId} resolved by ${resolvedBy}`);
 }
 
 /**
- * Get report with mismatches
+ * Get report with mismatches.
+ * Return type annotated loosely: the ORM row type is not nameable across
+ * pnpm store paths (TS2742) when emitting declarations.
  */
-export async function getReport(reportId: string) {
-  return await prisma.reconciliationReport.findUnique({
-    where: { id: reportId },
-    include: {
-      mismatches: true
-    }
-  });
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function getReport(reportId: string): Promise<any | null> {
+  const report = await db.orm.public.ReconciliationReport.where({ id: reportId }).first();
+
+  if (!report) {
+    return null;
+  }
+
+  const mismatches = await db.orm.public.ReconciliationMismatch.where({
+    reportId
+  }).all();
+
+  return { ...report, mismatches };
 }
 
 /**
- * Get all reports
+ * Get all reports (latest first)
  */
-export async function getReports(limit: number = 50) {
-  return await prisma.reconciliationReport.findMany({
-    orderBy: { createdAt: 'desc' },
-    take: limit,
-    include: {
-      _count: {
-        select: { mismatches: true }
-      }
-    }
-  });
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function getReports(limit: number = 50): Promise<any[]> {
+  return await db.orm.public.ReconciliationReport
+    .where({})
+    .orderBy((m) => m.createdAt.desc())
+    .limit(limit)
+    .all();
 }

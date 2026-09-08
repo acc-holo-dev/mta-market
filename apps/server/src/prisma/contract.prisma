@@ -16,7 +16,7 @@ enum UserStatus {
 }
 
 model User {
-  id            String       @id @default(cuid())
+  id            String       @id @default(uuid())
   email         String       @unique
   emailVerified TimestamptzString?
   username      String?      @unique
@@ -31,11 +31,9 @@ model User {
   sessions      Session[]
   resources     Resource[]
   services      Service[]
-  orders        Order[]
   purchases     Purchase[]
   servicePurchases ServicePurchase[]
   reviews       Review[]
-  discounts     Discount[]    // Discounts created by this user (admin/seller)
   sellerBalance SellerBalance?
   transactions  FinancialTransaction[]
   publisherKeys PublisherKey[]
@@ -45,7 +43,7 @@ model User {
 }
 
 model Account {
-  id                String  @id @default(cuid())
+  id                String  @id @default(uuid())
   userId            String
   provider          String
   providerAccountId String
@@ -63,7 +61,7 @@ model Account {
 }
 
 model Session {
-  id                 String    @id @default(cuid())
+  id                 String    @id @default(uuid())
   userId             String
   refreshTokenHash   String    @unique  // SHA-256 hash of refresh token
   tokenFamily        String?   // For rotation: identifies token lineage
@@ -99,7 +97,7 @@ enum ResourceStatus {
 }
 
 model Resource {
-  id          String         @id @default(cuid())
+  id          String         @id @default(uuid())
   sellerId    String
   slug        String         @unique
   title       String
@@ -113,8 +111,6 @@ model Resource {
   seller     User              @relation(fields: [sellerId], references: [id], onDelete: Cascade)
   versions   ResourceVersion[]
   reviews    Review[]
-  discounts  Discount[]        // Discounts for this specific resource
-  orderItems OrderItem[]       // Order items referencing this resource
 
   @@index([sellerId])
   @@index([status])
@@ -137,7 +133,7 @@ enum ServiceStatus {
 }
 
 model Service {
-  id           String        @id @default(cuid())
+  id           String        @id @default(uuid())
   sellerId     String
   slug         String        @unique
   title        String
@@ -151,8 +147,6 @@ model Service {
   updatedAt    temporal.updatedAtString()
 
   seller           User                @relation(fields: [sellerId], references: [id], onDelete: Cascade)
-  reviews          Review[]
-  discounts        Discount[]
   serviceOrderItems ServiceOrderItem[]
 
   @@index([sellerId])
@@ -161,7 +155,7 @@ model Service {
 }
 
 model ServiceOrderItem {
-  id                String  @id @default(cuid())
+  id                String  @id @default(uuid())
   orderId           String
   serviceId         String
   quantity          Int     @default(1)
@@ -172,7 +166,6 @@ model ServiceOrderItem {
   buyerNotes        String? // Special requirements from buyer
   createdAt         TimestamptzString @default(now())
 
-  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   service   Service  @relation(fields: [serviceId], references: [id], onDelete: Restrict)
   servicePurchase ServicePurchase?
 
@@ -189,7 +182,7 @@ enum ServicePurchaseStatus {
 }
 
 model ServicePurchase {
-  id                  String                @id @default(cuid())
+  id                  String                @id @default(uuid())
   serviceOrderItemId  String                @unique
   buyerId             String
   serviceId           String
@@ -214,7 +207,7 @@ model ServicePurchase {
 }
 
 model ResourceVersion {
-  id           String @id @default(cuid())
+  id           String @id @default(uuid())
   resourceId   String
   version      String
   changelog    String?
@@ -243,8 +236,8 @@ enum PurchaseStatus {
 
 
 model Purchase {
-  id                 String         @id @default(cuid())
-  orderItemId        String         @unique // One purchase per order item
+  id                 String         @id @default(uuid())
+  orderItemId        String?        @unique // Phase C bridge: link to OrderItem when commerce rewrite lands
   buyerId            String
   resourceId         String
   versionId          String
@@ -258,7 +251,6 @@ model Purchase {
   completedAt        TimestamptzString?
   refundedAt         TimestamptzString?
 
-  orderItem OrderItem       @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
   buyer     User            @relation(fields: [buyerId], references: [id], onDelete: Restrict)
   version   ResourceVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
   license   License?
@@ -275,7 +267,7 @@ enum LicenseStatus {
 }
 
 model License {
-  id           String        @id @default(cuid())
+  id           String        @id @default(uuid())
   purchaseId   String        @unique
   versionId    String
   serverSerial String?
@@ -300,7 +292,7 @@ enum InstallationStatus {
 }
 
 model Installation {
-  id            String             @id @default(cuid())
+  id            String             @id @default(uuid())
   licenseId     String
   publicKey     String             @unique // Ed25519 public key (client-side generated)
   challenge     String?            // Pending verification challenge
@@ -339,8 +331,8 @@ enum PaymentStatus {
 }
 
 model Payment {
-  id                String          @id @default(cuid())
-  orderId           String          @unique // One payment per order
+  id                String          @id @default(uuid())
+  purchaseId        String          @unique // Phase C bridge: one payment per purchase until Order aggregate lands (E-007)
   provider          PaymentProvider
   providerPaymentId String          @unique
   status            PaymentStatus   @default(PENDING)
@@ -350,8 +342,6 @@ model Payment {
   createdAt         TimestamptzString @default(now())
   succeededAt       TimestamptzString?
   failedAt          TimestamptzString?
-
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([providerPaymentId])
   @@index([status])
@@ -366,7 +356,7 @@ enum ProviderEventStatus {
 
 // Immutable/idempotent record of every payment-provider webhook.
 model PaymentProviderEvent {
-  id              String              @id @default(cuid())
+  id              String              @id @default(uuid())
   provider        PaymentProvider
   providerEventId String
   objectId        String
@@ -396,13 +386,13 @@ enum TransactionType {
 }
 
 model FinancialTransaction {
-  id                String          @id @default(cuid())
+  id                String          @id @default(uuid())
   userId            String
   type              TransactionType
   amount            Int
   balanceAfter      Int
-  relatedPurchaseId Int?
-  relatedPayoutId   Int?
+  relatedPurchaseId String?
+  relatedPayoutId   String?
   metadata          Json?
   createdAt         TimestamptzString @default(now())
 
@@ -424,8 +414,8 @@ model SellerBalance {
 }
 
 model Review {
-  id         String @id @default(cuid())
-  resourceId Int
+  id         String @id @default(uuid())
+  resourceId String
   buyerId    String
   rating     Int
   comment    String?
@@ -452,7 +442,7 @@ enum KeyStatus {
 
 // Publisher cryptographic keys for signing artifacts
 model PublisherKey {
-  id          String    @id @default(cuid())
+  id          String    @id @default(uuid())
   sellerId    String
   keyType     String    @default("ED25519") // ED25519, RSA
   publicKey   String    // Base64 encoded public key
@@ -473,7 +463,7 @@ model PublisherKey {
 
 // Cryptographic signatures for resource artifacts
 model ArtifactSignature {
-  id           String @id @default(cuid())
+  id           String @id @default(uuid())
   versionId    String @unique
   keyId        String
   signature    String  // Base64 encoded signature
@@ -498,7 +488,7 @@ model ArtifactSignature {
 
 // Server cryptographic keys for signing DRM leases
 model ServerSigningKey {
-  id         String    @id @default(cuid())
+  id         String    @id @default(uuid())
   keyType    String    @default("ED25519") // ED25519, RSA
   publicKey  String    // Base64 encoded public key
   algorithm  String    @default("EdDSA")   // EdDSA, RS256
@@ -515,7 +505,7 @@ model ServerSigningKey {
 
 // DRM lease issued to installation for resource access
 model Lease {
-  id               String @id @default(cuid())
+  id               String @id @default(uuid())
   installationId   String
   licenseId        String
   resourceId       String
@@ -555,7 +545,7 @@ enum SandboxStatus {
 
 // Sandbox execution run for artifact validation
 model SandboxRun {
-  id                 String        @id @default(cuid())
+  id                 String        @id @default(uuid())
   versionId          String
   status             SandboxStatus @default(PENDING)
   startedAt          TimestamptzString @default(now())
@@ -604,7 +594,7 @@ enum MismatchType {
 
 // Reconciliation report for comparing internal vs provider records
 model ReconciliationReport {
-  id                String                 @id @default(cuid())
+  id                String                 @id @default(uuid())
   provider          String                 // YUKASSA, STRIPE, etc.
   reportType        ReconciliationReportType
   periodStart       TimestamptzString
@@ -629,7 +619,7 @@ model ReconciliationReport {
 
 // Individual mismatch found during reconciliation
 model ReconciliationMismatch {
-  id               String        @id @default(cuid())
+  id               String        @id @default(uuid())
   reportId         String
   type             MismatchType
   internalId       String?       // Internal transaction ID

@@ -1,9 +1,14 @@
-// Global state management with Zustand
+// Global auth state (Zustand)
+// TASK A-001/D-006 browser token policy:
+// - refresh token: HttpOnly cookie only (never enters JS, never stored here);
+// - access token: memory only (this store) — survives SPA navigation,
+//   dies with the page; a page reload silently re-authenticates via
+//   the refresh cookie (see lib/api.ts bootstrap);
+// - nothing auth-related is persisted to localStorage/sessionStorage.
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
 
-interface User {
-  id: number;
+export interface User {
+  id: string;
   email: string;
   username: string;
   displayName: string | null;
@@ -15,51 +20,36 @@ interface User {
 interface AuthState {
   user: User | null;
   accessToken: string | null;
-  refreshToken: string | null;
-  setAuth: (user: User, accessToken: string, refreshToken: string) => void;
+  /** Login: store user + in-memory access token. */
+  setAuth: (user: User, accessToken: string) => void;
+  /** Replace the in-memory access token after a silent refresh. */
+  setAccessToken: (accessToken: string) => void;
   setUser: (user: User) => void;
   clearAuth: () => void;
   isAuthenticated: () => boolean;
 }
 
-export const useAuthStore = create<AuthState>()(
-  persist(
-    (set, get) => ({
-      user: null,
-      accessToken: null,
-      refreshToken: null,
+export const useAuthStore = create<AuthState>()((set, get) => ({
+  user: null,
+  accessToken: null,
 
-      setAuth: (user, accessToken, refreshToken) => {
-        set({ user, accessToken, refreshToken });
-        if (typeof window !== "undefined") {
-          localStorage.setItem("accessToken", accessToken);
-          localStorage.setItem("refreshToken", refreshToken);
-        }
-      },
+  setAuth: (user, accessToken) => {
+    set({ user, accessToken });
+  },
 
-      setUser: (user) => {
-        set({ user });
-      },
+  setAccessToken: (accessToken) => {
+    set({ accessToken });
+  },
 
-      clearAuth: () => {
-        set({ user: null, accessToken: null, refreshToken: null });
-        if (typeof window !== "undefined") {
-          localStorage.removeItem("accessToken");
-          localStorage.removeItem("refreshToken");
-        }
-      },
+  setUser: (user) => {
+    set({ user });
+  },
 
-      isAuthenticated: () => {
-        return get().accessToken !== null;
-      },
-    }),
-    {
-      name: "auth-storage",
-      partialize: (state) => ({
-        user: state.user,
-        accessToken: state.accessToken,
-        refreshToken: state.refreshToken,
-      }),
-    }
-  )
-);
+  clearAuth: () => {
+    set({ user: null, accessToken: null });
+  },
+
+  isAuthenticated: () => {
+    return get().accessToken !== null;
+  },
+}));

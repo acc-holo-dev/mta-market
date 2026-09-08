@@ -4,6 +4,7 @@ import { authRateLimit } from "../lib/rateLimit";
 import { authenticate, AuthRequest } from "../lib/auth";
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from "../lib/jwt";
 import { hashRefreshToken, generateTokenId, verifyRefreshTokenHash } from "../lib/tokenSecurity";
+import { setRefreshCookie, clearRefreshCookie } from "../lib/cookies";
 import { db } from "../prisma/db";
 import { sendWelcomeEmail } from "../lib/email";
 
@@ -192,28 +193,13 @@ router.get("/discord/callback", authRateLimit, async (req: Request, res: Respons
       userAgent: req.headers["user-agent"],
     });
 
-    // Store refresh token in HttpOnly cookie
-    res.cookie("refresh_token", refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      path: "/",
-    });
+    // Store refresh token in HttpOnly cookie (TASK A-001/D-006).
+    // The access token is NOT stored in any cookie: the frontend callback
+    // page exchanges the refresh cookie for an access token via
+    // POST /auth/refresh and keeps it in memory only.
+    setRefreshCookie(res, refreshToken);
 
-    // Redirect to frontend with access token in a temporary session
-    // Frontend should store access_token in memory only, never localStorage
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
-
-    // Store access token temporarily in a short-lived cookie for the callback page
-    res.cookie("auth_callback_token", accessToken, {
-      httpOnly: false, // Frontend needs to read this once
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 60 * 1000, // 1 minute - just enough for the callback page to read
-      path: "/auth/callback",
-    });
-
     res.redirect(`${frontendUrl}/auth/callback`);
   } catch (error) {
     console.error("Discord OAuth error:", error);
@@ -251,19 +237,30 @@ router.post("/refresh", authRateLimit, async (req: Request, res: Response) => {
     // SECURITY: Check for token reuse (rotation detection)
     if (session.reuseDetected) {
       console.error(`TOKEN REUSE DETECTED: Session ${session.id}, User ${session.userId}, TokenFamily ${session.tokenFamily}`);
-      
-      // Revoke all sessions in this token family
+
+      // Revoke all sessions in this token family.
+      // NOTE: the contract ORM's delete() removes a single row per call,
+      // so the family is drained in a loop until it is empty.
       if (session.tokenFamily) {
-        await db.orm.public.Session.where({ tokenFamily: session.tokenFamily }).delete();
+        let guard = 0;
+        while (guard++ < 1000) {
+          const familySessions = await db.orm.public.Session.where({
+            tokenFamily: session.tokenFamily,
+          }).all();
+          if (familySessions.length === 0) break;
+          for (const familySession of familySessions) {
+            await db.orm.public.Session.where({ id: familySession.id }).delete();
+          }
+        }
         console.warn(`Revoked all sessions in token family ${session.tokenFamily}`);
       } else {
         await db.orm.public.Session.where({ id: session.id }).delete();
       }
-      
-      res.clearCookie("refresh_token");
-      res.status(401).json({ 
-        error: "Token reuse detected", 
-        message: "All sessions revoked for security. Please log in again." 
+
+      clearRefreshCookie(res);
+      res.status(401).json({
+        error: "Token reuse detected",
+        message: "All sessions revoked for security. Please log in again."
       });
       return;
     }
@@ -272,7 +269,7 @@ router.post("/refresh", authRateLimit, async (req: Request, res: Response) => {
     if (expiresAt < new Date()) {
       // Delete expired session
       await db.orm.public.Session.where({ id: session.id }).delete();
-      res.clearCookie("refresh_token");
+      clearRefreshCookie(res);
       res.status(401).json({ error: "Session expired" });
       return;
     }
@@ -298,14 +295,8 @@ router.post("/refresh", authRateLimit, async (req: Request, res: Response) => {
       userAgent: req.headers["user-agent"],
     });
 
-    // Set new refresh token cookie
-    res.cookie("refresh_token", newRefreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-      path: "/",
-    });
+    // Set new refresh token cookie (rotation)
+    setRefreshCookie(res, newRefreshToken);
 
     res.json({
       accessToken: newAccessToken,
@@ -336,12 +327,7 @@ router.post("/logout", authRateLimit, async (req: Request, res: Response) => {
     }
 
     // Clear refresh token cookie
-    res.clearCookie("refresh_token", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-    });
+    clearRefreshCookie(res);
 
     res.json({ message: "Logged out successfully" });
   } catch (error) {

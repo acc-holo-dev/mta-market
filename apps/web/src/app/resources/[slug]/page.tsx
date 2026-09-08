@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { Star, Download, Package, ShieldCheck } from "lucide-react";
 
 interface Resource {
-  id: number;
+  id: string;
   slug: string;
   title: string;
   description: string;

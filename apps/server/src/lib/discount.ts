@@ -1,5 +1,9 @@
-// Discount service - apply and validate discount campaigns
-import { db } from "../prisma/db";
+// Discount pricing helpers.
+// PLAN.md Phase C (C-004..C-008) will introduce the DiscountCampaign model and
+// backend-only discount calculation. Until that contract exists, discount
+// validation explicitly reports "not available" instead of silently ignoring
+// codes, and price math stays pure (frontend price is never trusted).
+// NOTE: this module intentionally performs NO database access.
 
 export interface DiscountValidationResult {
   valid: boolean;
@@ -21,106 +25,30 @@ export interface ApplyDiscountRequest {
 }
 
 /**
- * Validate and calculate discount
+ * Validate and calculate a discount.
+ * Phase C bridge: no DiscountCampaign model exists in the contract yet,
+ * so every code is rejected with an explicit reason.
  */
 export async function validateDiscount(
-  request: ApplyDiscountRequest
+  _request: ApplyDiscountRequest
 ): Promise<DiscountValidationResult> {
-  let discount;
-
-  // Find discount by code or ID
-  if (request.code) {
-    discount = await db.orm.public.Discount.where({ code: request.code }).first();
-  } else if (request.discountId) {
-    discount = await db.orm.public.Discount.where({ id: request.discountId }).first();
-  } else {
-    return { valid: false, error: "No discount code or ID provided" };
-  }
-
-  if (!discount) {
-    return { valid: false, error: "Invalid discount code" };
-  }
-
-  // Check if discount has started
-  const now = new Date();
-  const startsAt = new Date(discount.startsAt);
-  if (now < startsAt) {
-    return { valid: false, error: "Discount not yet active" };
-  }
-
-  // Check if discount has expired
-  if (discount.expiresAt) {
-    const expiresAt = new Date(discount.expiresAt);
-    if (now > expiresAt) {
-      return { valid: false, error: "Discount has expired" };
-    }
-  }
-
-  // Check usage limit
-  if (discount.usageLimit && discount.usageCount >= discount.usageLimit) {
-    return { valid: false, error: "Discount usage limit reached" };
-  }
-
-  // Check if discount applies to this resource
-  if (discount.resourceId && discount.resourceId !== request.resourceId) {
-    return { valid: false, error: "Discount does not apply to this resource" };
-  }
-
-  // Check minimum purchase amount
-  if (discount.minPurchase && request.originalPrice < discount.minPurchase) {
-    return {
-      valid: false,
-      error: `Minimum purchase amount: ${(discount.minPurchase / 100).toFixed(2)} RUB`,
-    };
-  }
-
-  // Calculate discount amount
-  let discountAmount = 0;
-
-  if (discount.type === "PERCENTAGE") {
-    discountAmount = Math.round((request.originalPrice * discount.value) / 100);
-  } else if (discount.type === "FIXED") {
-    discountAmount = discount.value;
-  }
-
-  // Apply maximum discount cap
-  if (discount.maxDiscount && discountAmount > discount.maxDiscount) {
-    discountAmount = discount.maxDiscount;
-  }
-
-  // Discount cannot exceed original price
-  if (discountAmount > request.originalPrice) {
-    discountAmount = request.originalPrice;
-  }
-
-  // Discount cannot make price negative
-  if (discountAmount < 0) {
-    discountAmount = 0;
-  }
-
   return {
-    valid: true,
-    discount: {
-      id: discount.id,
-      name: discount.name,
-      type: discount.type as "PERCENTAGE" | "FIXED",
-      value: discount.value,
-      discountAmount,
-    },
+    valid: false,
+    error: "Discount campaigns are not available yet",
   };
 }
 
 /**
- * Apply discount and increment usage count
+ * Apply discount and increment usage count.
+ * Phase C bridge: no-op until the DiscountCampaign model exists (C-007
+ * defines the atomicity requirements for the real implementation).
  */
-export async function applyDiscount(discountId: string): Promise<void> {
-  await db.orm.public.Discount.where({ id: discountId }).update({
-    usageCount: { increment: 1 },
-  });
+export async function applyDiscount(_discountId: string): Promise<void> {
+  // Intentionally empty: nothing to increment without the model.
 }
 
 /**
- * Calculate final price after discount
+ * Calculate final price after discount. Pure function.
  */
 export function calculateFinalPrice(originalPrice: number, discountAmount: number): number {
   const finalPrice = originalPrice - discountAmount;
@@ -128,25 +56,8 @@ export function calculateFinalPrice(originalPrice: number, discountAmount: numbe
 }
 
 /**
- * Get active discounts for a resource
- */
-export async function getActiveDiscounts(resourceId?: string): Promise<any[]> {
-  const now = new Date().toISOString();
-
-  const query: any = {
-    startsAt: { lte: now },
-    OR: [{ expiresAt: null }, { expiresAt: { gte: now } }],
-  };
-
-  if (resourceId) {
-    query.OR = [{ resourceId }, { resourceId: null }]; // Resource-specific or platform-wide
-  }
-
-  return await db.orm.public.Discount.where(query).all();
-}
-
-/**
- * Check if user can create discount (admin or resource seller)
+ * Check if user can create discount (admin or resource seller).
+ * Pure policy helper retained for Phase C.
  */
 export function canCreateDiscount(userId: string, sellerId: string, isAdmin: boolean): boolean {
   return isAdmin || userId === sellerId;

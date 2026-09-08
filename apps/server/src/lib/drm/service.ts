@@ -1,10 +1,19 @@
 /**
- * TASK-020: DRM Protocol v2 Service
- * 
- * High-level service for DRM v2 protocol operations.
+ * TASK-020 / PLAN A-006: DRM Protocol v2 Service
+ *
+ * High-level service for DRM v2 protocol operations, rewritten against the
+ * contract ORM (db.orm.public.*) — the previous version targeted a classic
+ * Prisma Client API that does not exist in this project.
+ *
+ * Ownership model (PLAN INV-007):
+ * - installation registration requires an authenticated user AND a license
+ *   the user owns (license -> purchase.buyerId);
+ * - the installation is permanently bound to that license at registration;
+ * - lease activation can only happen for the bound license of a verified
+ *   installation (challenge/response proves possession of the private key).
  */
 
-import { prisma } from '../prisma';
+import { db } from '../../prisma/db';
 import type {
   InstallationRegistration,
   InstallationResponse,
@@ -21,8 +30,6 @@ import {
   generateChallenge,
   verifyChallengeResponse,
   signLease,
-  generateNonce,
-  isValidNonce,
   calculateLeaseExpiry
 } from './crypto';
 import { DRM_ERROR_CODES } from './types';
@@ -31,36 +38,35 @@ import { DRM_ERROR_CODES } from './types';
 const DEFAULT_LEASE_DURATION_SECONDS = 7 * 24 * 60 * 60;
 
 /**
- * Generate server signing keypair
- * 
- * Should be called once during initial setup.
- * Private key MUST be stored securely (ENV/KMS/Vault).
+ * Generate server signing keypair.
+ *
+ * Should be called once during initial setup (CLI: pnpm drm:keygen).
+ * Private key MUST be stored securely (ENV/KMS/Vault) — it is returned
+ * exactly once and never persisted by this service.
  */
 export async function createServerSigningKey(): Promise<ServerKeyPair> {
   const { generatePublisherKeypair } = await import('../artifact/crypto');
-  
+
   // Check if active key already exists
-  const existingKey = await prisma.serverSigningKey.findFirst({
-    where: { status: 'ACTIVE' }
-  });
-  
+  const existingKey = await db.orm.public.ServerSigningKey.where({
+    status: 'ACTIVE'
+  }).first();
+
   if (existingKey) {
     throw new Error('Active server signing key already exists');
   }
-  
+
   // Generate keypair
   const { publicKey, privateKey } = generatePublisherKeypair();
-  
+
   // Store public key in database
-  const key = await prisma.serverSigningKey.create({
-    data: {
-      keyType: 'ED25519',
-      publicKey,
-      algorithm: 'EdDSA',
-      status: 'ACTIVE'
-    }
+  const key = await db.orm.public.ServerSigningKey.create({
+    keyType: 'ED25519',
+    publicKey,
+    algorithm: 'EdDSA',
+    status: 'ACTIVE'
   });
-  
+
   return {
     keyId: key.id,
     publicKey,
@@ -69,42 +75,63 @@ export async function createServerSigningKey(): Promise<ServerKeyPair> {
 }
 
 /**
- * Register new installation
- * 
- * Client generates keypair and sends public key.
- * Server generates challenge for verification.
+ * Register new installation for a license the authenticated user owns.
+ *
+ * Client generates keypair and sends public key. Server verifies license
+ * ownership, binds the installation to the license and issues a challenge
+ * for possession-of-private-key verification.
  */
 export async function registerInstallation(
-  input: InstallationRegistration
+  input: InstallationRegistration,
+  ownerId: string
 ): Promise<InstallationResponse> {
-  const { publicKey, mtaVersion, moduleVersion, serverSerial, serverName } = input;
-  
-  // Check if public key already registered
-  const existing = await prisma.installation.findUnique({
-    where: { publicKey }
-  });
-  
+  const { publicKey, licenseId, mtaVersion, moduleVersion, serverSerial, serverName } = input;
+
+  // License must exist and be active
+  const license = await db.orm.public.License.where({ id: licenseId }).first();
+
+  if (!license) {
+    throw new Error(DRM_ERROR_CODES.INVALID_LICENSE);
+  }
+
+  if (license.status !== 'ACTIVE') {
+    throw new Error(`License is ${license.status.toLowerCase()}`);
+  }
+
+  // INV-007: the authenticated user must own the license
+  // (license -> purchase -> buyerId)
+  const purchase = await db.orm.public.Purchase.where({ id: license.purchaseId }).first();
+
+  if (!purchase) {
+    throw new Error(DRM_ERROR_CODES.INVALID_LICENSE);
+  }
+
+  if (purchase.buyerId !== ownerId) {
+    throw new Error(DRM_ERROR_CODES.LICENSE_NOT_OWNED);
+  }
+
+  // Public key must not already be registered
+  const existing = await db.orm.public.Installation.where({ publicKey }).first();
+
   if (existing) {
     throw new Error('Installation with this public key already exists');
   }
-  
+
   // Generate challenge
   const challenge = generateChallenge();
-  
-  // Create installation record (pending verification)
-  const installation = await prisma.installation.create({
-    data: {
-      licenseId: '', // Will be set during activation
-      publicKey,
-      challenge,
-      serverSerial,
-      serverName,
-      mtaVersion,
-      moduleVersion,
-      status: 'PENDING_VERIFICATION'
-    }
+
+  // Create installation record (pending verification), bound to the license
+  const installation = await db.orm.public.Installation.create({
+    licenseId,
+    publicKey,
+    challenge,
+    serverSerial: serverSerial || null,
+    serverName: serverName || null,
+    mtaVersion,
+    moduleVersion,
+    status: 'PENDING_VERIFICATION'
   });
-  
+
   return {
     installationId: installation.id,
     challenge
@@ -112,54 +139,53 @@ export async function registerInstallation(
 }
 
 /**
- * Verify installation challenge response
- * 
- * Client signs challenge with private key.
- * Server verifies signature with public key.
+ * Verify installation challenge response.
+ *
+ * Client signs the challenge with its private key. Server verifies the
+ * signature with the registered public key. This proves possession of the
+ * installation private key without it ever leaving the installation.
  */
 export async function verifyInstallation(
   input: ChallengeVerification
 ): Promise<VerificationResult> {
   const { installationId, challengeResponse } = input;
-  
-  // Get installation
-  const installation = await prisma.installation.findUnique({
-    where: { id: installationId }
-  });
-  
+
+  const installation = await db.orm.public.Installation.where({ id: installationId }).first();
+
   if (!installation) {
     throw new Error(DRM_ERROR_CODES.INSTALLATION_NOT_FOUND);
   }
-  
-  if (installation.status !== 'PENDING_VERIFICATION') {
-    throw new Error('Installation already verified or revoked');
+
+  if (installation.status === 'REVOKED') {
+    throw new Error(DRM_ERROR_CODES.INSTALLATION_REVOKED);
   }
-  
+
+  if (installation.status !== 'PENDING_VERIFICATION') {
+    throw new Error('Installation already verified');
+  }
+
   if (!installation.challenge) {
     throw new Error('No challenge found for installation');
   }
-  
+
   // Verify signature
   const isValid = verifyChallengeResponse(
     installation.challenge,
     challengeResponse,
     installation.publicKey
   );
-  
+
   if (!isValid) {
     throw new Error(DRM_ERROR_CODES.INVALID_CHALLENGE_RESPONSE);
   }
-  
+
   // Mark as verified
-  await prisma.installation.update({
-    where: { id: installationId },
-    data: {
-      status: 'ACTIVE',
-      verifiedAt: new Date().toISOString(),
-      challenge: null // Clear challenge after verification
-    }
+  await db.orm.public.Installation.where({ id: installationId }).update({
+    status: 'ACTIVE',
+    verifiedAt: new Date().toISOString(),
+    challenge: null // Clear challenge after verification
   });
-  
+
   return {
     verified: true,
     installationId
@@ -167,167 +193,169 @@ export async function verifyInstallation(
 }
 
 /**
- * Activate license and generate signed lease
- * 
- * Verifies ownership and generates time-limited lease.
+ * Activate license and generate signed lease.
+ *
+ * The installation must be verified (challenge passed) and the requested
+ * license must be the one the installation is bound to. Ownership was
+ * proven at registration time; possession of the installation key was
+ * proven at verification time.
  */
 export async function activateLicense(
   input: LeaseRequest,
   privateKey: string
 ): Promise<SignedLease> {
   const { licenseId, installationId, nonce } = input;
-  
+
   // Validate nonce format
-  if (!isValidNonce(nonce)) {
+  if (!/^[a-f0-9]{64}$/i.test(nonce)) {
     throw new Error('Invalid nonce format');
   }
-  
-  // Check if nonce already used
-  const existingLease = await prisma.lease.findUnique({
-    where: { nonce }
-  });
-  
+
+  // Check if nonce already used (replay protection)
+  const existingLease = await db.orm.public.Lease.where({ nonce }).first();
+
   if (existingLease) {
     throw new Error(DRM_ERROR_CODES.NONCE_ALREADY_USED);
   }
-  
+
   // Get installation
-  const installation = await prisma.installation.findUnique({
-    where: { id: installationId }
-  });
-  
+  const installation = await db.orm.public.Installation.where({ id: installationId }).first();
+
   if (!installation) {
     throw new Error(DRM_ERROR_CODES.INSTALLATION_NOT_FOUND);
   }
-  
+
+  if (installation.status === 'REVOKED') {
+    throw new Error(DRM_ERROR_CODES.INSTALLATION_REVOKED);
+  }
+
   if (installation.status !== 'ACTIVE') {
     throw new Error(DRM_ERROR_CODES.INSTALLATION_NOT_VERIFIED);
   }
-  
-  // Get license with resource info
-  const license = await prisma.license.findUnique({
-    where: { id: licenseId },
-    include: {
-      purchase: {
-        include: {
-          version: {
-            include: {
-              signature: true
-            }
-          }
-        }
-      }
-    }
-  });
-  
+
+  // INV-007/INV-011: a lease can only be issued for the license the
+  // installation is bound to — never for an arbitrary license id.
+  if (installation.licenseId !== licenseId) {
+    throw new Error(DRM_ERROR_CODES.LICENSE_INSTALLATION_MISMATCH);
+  }
+
+  // Get license
+  const license = await db.orm.public.License.where({ id: licenseId }).first();
+
   if (!license) {
     throw new Error(DRM_ERROR_CODES.INVALID_LICENSE);
   }
-  
+
   if (license.status !== 'ACTIVE') {
     throw new Error(`License is ${license.status.toLowerCase()}`);
   }
-  
-  // Verify ownership (license belongs to same user as installation)
-  // TODO: Add proper ownership check when user relation is available
-  
-  // Get artifact signature
-  const signature = license.purchase.version.signature;
+
+  // Resolve the purchase for resource binding
+  const purchase = await db.orm.public.Purchase.where({ id: license.purchaseId }).first();
+
+  if (!purchase) {
+    throw new Error(DRM_ERROR_CODES.INVALID_LICENSE);
+  }
+
+  // Get artifact signature for the licensed version
+  const signature = await db.orm.public.ArtifactSignature.where({
+    versionId: license.versionId
+  }).first();
+
   if (!signature) {
     throw new Error('Resource version not signed');
   }
-  
+
   // Get active server signing key
-  const serverKey = await prisma.serverSigningKey.findFirst({
-    where: { status: 'ACTIVE' }
-  });
-  
+  const serverKey = await db.orm.public.ServerSigningKey.where({ status: 'ACTIVE' }).first();
+
   if (!serverKey) {
     throw new Error('No active server signing key');
   }
-  
-  // Create lease payload
+
+  // Create lease payload (serverKeyId is bound into the signature)
   const issuedAt = new Date().toISOString();
   const expiresAt = calculateLeaseExpiry(DEFAULT_LEASE_DURATION_SECONDS);
-  
+
   const leasePayload = {
-    protocolVersion: 2,
+    protocolVersion: 2 as const,
     licenseId,
     installationId,
-    resourceId: license.purchase.resourceId,
+    resourceId: purchase.resourceId,
     resourceVersionId: license.versionId,
     artifactHash: signature.artifactHash,
     issuedAt,
     expiresAt,
     nonce,
+    serverKeyId: serverKey.id,
     capabilities: ['run', 'update'] as Capability[]
   };
-  
+
   // Sign lease
   const leaseSignature = signLease(leasePayload, privateKey);
-  
+
   // Store lease in database
-  await prisma.lease.create({
-    data: {
-      installationId,
-      licenseId,
-      resourceId: leasePayload.resourceId,
-      resourceVersionId: leasePayload.resourceVersionId,
-      artifactHash: leasePayload.artifactHash,
-      nonce,
-      protocolVersion: 2,
-      serverKeyId: serverKey.id,
-      signature: leaseSignature,
-      capabilities: leasePayload.capabilities,
-      issuedAt,
-      expiresAt
-    }
+  await db.orm.public.Lease.create({
+    installationId,
+    licenseId,
+    resourceId: leasePayload.resourceId,
+    resourceVersionId: leasePayload.resourceVersionId,
+    artifactHash: leasePayload.artifactHash,
+    nonce,
+    protocolVersion: 2,
+    serverKeyId: serverKey.id,
+    signature: leaseSignature,
+    capabilities: leasePayload.capabilities,
+    issuedAt,
+    expiresAt
   });
-  
-  // Update installation's licenseId
-  await prisma.installation.update({
-    where: { id: installationId },
-    data: { licenseId }
-  });
-  
+
   // Return signed lease
   return {
     ...leasePayload,
-    serverKeyId: serverKey.id,
     signature: leaseSignature
   };
 }
 
 /**
- * Record heartbeat from installation
- * 
- * Updates last seen timestamp and checks lease validity.
+ * Record heartbeat from installation.
+ *
+ * Updates last seen timestamp and reports lease validity. Revoked
+ * installations are rejected outright.
  */
 export async function recordHeartbeat(
   input: HeartbeatRequest
 ): Promise<HeartbeatResponse> {
-  const { installationId, resourceId, uptime, lastError } = input;
-  
+  const { installationId, resourceId } = input;
+
+  const installation = await db.orm.public.Installation.where({ id: installationId }).first();
+
+  if (!installation) {
+    throw new Error(DRM_ERROR_CODES.INSTALLATION_NOT_FOUND);
+  }
+
+  if (installation.status === 'REVOKED') {
+    throw new Error(DRM_ERROR_CODES.INSTALLATION_REVOKED);
+  }
+
   // Update installation heartbeat
-  await prisma.installation.update({
-    where: { id: installationId },
-    data: { lastHeartbeat: new Date().toISOString() }
+  await db.orm.public.Installation.where({ id: installationId }).update({
+    lastHeartbeat: new Date().toISOString()
   });
-  
-  // Check if lease is still valid
-  const lease = await prisma.lease.findFirst({
-    where: {
-      installationId,
-      resourceId
-    },
-    orderBy: { issuedAt: 'desc' }
-  });
-  
+
+  // Latest lease for this installation + resource
+  const leases = await db.orm.public.Lease
+    .where({ installationId, resourceId })
+    .orderBy((m) => m.issuedAt.desc())
+    .limit(1)
+    .all();
+  const lease = leases[0];
+
   const leaseValid = lease ? new Date(lease.expiresAt) > new Date() : false;
-  
-  // TODO: Check for updates
+
+  // TODO (Phase I): check for newer published versions
   const shouldUpdate = false;
-  
+
   return {
     acknowledged: true,
     leaseValid,
@@ -337,67 +365,59 @@ export async function recordHeartbeat(
 }
 
 /**
- * Revoke installation
- * 
- * Prevents future lease generation for this installation.
+ * Revoke installation.
+ *
+ * Prevents future lease generation for this installation. Already issued
+ * leases keep their natural expiry (documented policy, see ADR-001).
  */
 export async function revokeInstallation(
   installationId: string,
   revokedBy: string,
   reason: string
 ): Promise<void> {
-  await prisma.installation.update({
-    where: { id: installationId },
-    data: {
-      status: 'REVOKED',
-      revokedAt: new Date().toISOString(),
-      revokedBy,
-      revocationReason: reason
-    }
+  await db.orm.public.Installation.where({ id: installationId }).update({
+    status: 'REVOKED',
+    revokedAt: new Date().toISOString(),
+    revokedBy,
+    revocationReason: reason
   });
 }
 
 /**
- * Get active server public key
- * 
+ * Get active server public key.
+ *
  * Used by clients to verify lease signatures.
  */
 export async function getServerPublicKey(): Promise<string> {
-  const key = await prisma.serverSigningKey.findFirst({
-    where: { status: 'ACTIVE' }
-  });
-  
+  const key = await db.orm.public.ServerSigningKey.where({ status: 'ACTIVE' }).first();
+
   if (!key) {
     throw new Error('No active server signing key');
   }
-  
+
   return key.publicKey;
 }
 
 /**
- * Get lease by installation and resource
+ * Get active (unexpired) lease for installation and resource.
  */
 export async function getActiveLease(
   installationId: string,
   resourceId: string
 ): Promise<SignedLease | null> {
-  const lease = await prisma.lease.findFirst({
-    where: {
-      installationId,
-      resourceId,
-      expiresAt: {
-        gt: new Date().toISOString()
-      }
-    },
-    orderBy: { issuedAt: 'desc' }
-  });
-  
-  if (!lease) {
+  const leases = await db.orm.public.Lease
+    .where({ installationId, resourceId })
+    .orderBy((m) => m.issuedAt.desc())
+    .limit(1)
+    .all();
+  const lease = leases[0];
+
+  if (!lease || new Date(lease.expiresAt) <= new Date()) {
     return null;
   }
-  
+
   return {
-    protocolVersion: lease.protocolVersion,
+    protocolVersion: 2,
     licenseId: lease.licenseId,
     installationId: lease.installationId,
     resourceId: lease.resourceId,

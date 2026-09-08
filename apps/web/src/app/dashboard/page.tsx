@@ -4,15 +4,15 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/auth";
-import api from "@/lib/api";
+import api, { bootstrapSession } from "@/lib/api";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import Link from "next/link";
 import { Package, ShoppingBag, Star, Plus } from "lucide-react";
 
 interface Purchase {
-  id: number;
-  resourceId: number;
+  id: string;
+  resourceId: string;
   status: string;
   priceSnapshot: number;
   createdAt: string;
@@ -27,10 +27,19 @@ export default function DashboardPage() {
   const { user, isAuthenticated } = useAuthStore();
 
   useEffect(() => {
-    if (!isAuthenticated()) {
-      router.push("/auth/login");
-    }
-  }, [isAuthenticated, router]);
+    // Access token lives in memory only: after a page reload the store is
+    // empty, so silently restore the session from the refresh cookie first.
+    let cancelled = false;
+    (async () => {
+      const ok = await bootstrapSession();
+      if (!cancelled && !ok) {
+        router.push("/auth/login");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
   const { data: purchases } = useQuery({
     queryKey: ["purchases"],

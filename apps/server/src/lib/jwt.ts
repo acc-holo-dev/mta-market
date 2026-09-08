@@ -1,5 +1,10 @@
 // JWT utility for MTA Market authentication
+// TASK A-001/D-005: access and refresh tokens are structurally distinct.
+// A refresh token must never be accepted as an access token and vice versa.
+// Refresh tokens carry a unique jti so every issued token is distinct
+// (rotation auditing; also prevents hash collisions for identical payloads).
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
 
 if (!process.env.JWT_SECRET) {
   throw new Error(
@@ -17,19 +22,38 @@ export interface JWTPayload {
   role: string;
 }
 
+interface AccessJWTPayload extends JWTPayload {
+  type: "access";
+}
+
+interface RefreshJWTPayload extends JWTPayload {
+  type: "refresh";
+}
+
 export function generateAccessToken(payload: JWTPayload): string {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_ACCESS_EXPIRY } as any);
+  return jwt.sign({ ...payload, type: "access" } satisfies AccessJWTPayload, JWT_SECRET, {
+    expiresIn: JWT_ACCESS_EXPIRY,
+  } as any);
 }
 
 export function generateRefreshToken(payload: JWTPayload): string {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_REFRESH_EXPIRY } as any);
+  return jwt.sign(
+    { ...payload, type: "refresh", jti: crypto.randomBytes(16).toString("hex") },
+    JWT_SECRET,
+    { expiresIn: JWT_REFRESH_EXPIRY } as any
+  );
 }
 
 export function verifyAccessToken(token: string): JWTPayload | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as JWTPayload;
+    const decoded = jwt.verify(token, JWT_SECRET) as AccessJWTPayload;
+    // SECURITY: reject refresh tokens presented as access tokens.
+    if (decoded.type !== "access") {
+      return null;
+    }
+    return { userId: decoded.userId, email: decoded.email, role: decoded.role };
   } catch {
     return null;
   }
@@ -37,7 +61,12 @@ export function verifyAccessToken(token: string): JWTPayload | null {
 
 export function verifyRefreshToken(token: string): JWTPayload | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as JWTPayload;
+    const decoded = jwt.verify(token, JWT_SECRET) as RefreshJWTPayload;
+    // SECURITY: reject access tokens presented as refresh tokens.
+    if (decoded.type !== "refresh") {
+      return null;
+    }
+    return { userId: decoded.userId, email: decoded.email, role: decoded.role };
   } catch {
     return null;
   }

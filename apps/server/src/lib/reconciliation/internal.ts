@@ -2,7 +2,7 @@
 // Verifies financial consistency between Purchase records and SellerBalance ledger
 // Runs periodically to detect discrepancies and flag issues
 
-import { db } from "../prisma/db";
+import { db } from "../../prisma/db";
 
 export interface ReconciliationResult {
   timestamp: string;

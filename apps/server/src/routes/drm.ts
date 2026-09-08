@@ -1,165 +1,39 @@
-// DRM API routes for MTA servers (License & Installation management)
+// DRM v1 routes — DEPRECATED activation protocol (PLAN TASK A-007, ADR-001).
+//
+// Decision: option A — v1 activation protocol is deprecated and blocked.
+// - POST /drm/activate and POST /drm/verify return 410 Gone.
+//   Reasons: fake keypairs (crypto.randomBytes as "keys"), private key
+//   returned to the client over HTTP, private key used as a bearer secret,
+//   and incompatibility with the current contract schema (no privateKey
+//   field on Installation). DRM v2 (/drm/v2/*) is the only activation protocol.
+// - License MANAGEMENT endpoints (my-licenses, revoke) remain active: they
+//   are authenticated, ownership-checked and not part of the activation protocol.
 import { Router, Response } from "express";
 import { authenticate, AuthRequest } from "../lib/auth";
-import { strictRateLimit, standardRateLimit } from "../lib/rateLimit";
+import { standardRateLimit } from "../lib/rateLimit";
 import { validateCuid } from "../middleware/validateCuid";
 import { db } from "../prisma/db";
-import crypto from "crypto";
-import { sendLicenseActivatedEmail } from "../lib/email";
 
 const router: Router = Router();
 
-// POST /drm/activate - Activate license on MTA server
-// SECURITY: Requires authentication to verify license ownership
-router.post("/activate", authenticate, strictRateLimit, async (req: AuthRequest, res: Response) => {
-  try {
-    const { licenseKey, serverSerial, serverName } = req.body;
-
-    if (!licenseKey || !serverSerial) {
-      res.status(400).json({ error: "Missing required fields" });
-      return;
-    }
-
-    // Find license by purchaseId (simplified - in production use encrypted licenseKey)
-    const license = await db.orm.public.License.where({ id: licenseKey }).first();
-
-    if (!license) {
-      res.status(404).json({ error: "Invalid license key" });
-      return;
-    }
-
-    if (license.status !== "ACTIVE") {
-      res.status(403).json({ error: "License is not active" });
-      return;
-    }
-
-    // SECURITY: Verify ownership - user must own the purchase associated with this license
-    const purchase = await db.orm.public.Purchase.where({ id: license.purchaseId }).first();
-
-    if (!purchase) {
-      res.status(500).json({ error: "Associated purchase not found" });
-      return;
-    }
-
-    if (purchase.buyerId !== req.user!.userId) {
-      console.warn(`License activation denied: User ${req.user!.userId} attempted to activate license ${license.id} owned by ${purchase.buyerId}`);
-      res.status(403).json({ error: "Not authorized: You do not own this license" });
-      return;
-    }
-
-    console.info(`License activation: User ${req.user!.userId} activating license ${license.id} on server ${serverSerial}`);
-
-    // Check if license is already bound to another server
-    if (license.serverSerial && license.serverSerial !== serverSerial) {
-      res.status(403).json({ error: "License is already bound to another server" });
-      return;
-    }
-
-    // Bind license to server if not bound
-    if (!license.serverSerial) {
-      await db.orm.public.License.where({ id: license.id }).update({
-        serverSerial,
-        activatedAt: new Date().toISOString(),
-      });
-    }
-
-    // Check if installation already exists
-    const existingInstallation = await db.orm.public.Installation.where({
-      licenseId: license.id,
-      serverSerial,
-    }).first();
-
-    if (existingInstallation) {
-      res.json({
-        publicKey: existingInstallation.publicKey,
-        privateKey: existingInstallation.privateKey,
-        status: "already_activated",
-      });
-      return;
-    }
-
-    // Generate keypair for this installation
-    const publicKey = crypto.randomBytes(32).toString("hex");
-    const privateKey = crypto.randomBytes(32).toString("hex");
-
-    const installation = await db.orm.public.Installation.create({
-      licenseId: license.id,
-      publicKey,
-      privateKey,
-      serverSerial,
-      serverName: serverName || null,
-      status: "ACTIVE",
-    });
-
-    // Send license activation email
-    const user = await db.orm.public.User.where({ id: purchase.buyerId }).first();
-    const resource = await db.orm.public.Resource.where({ id: purchase.resourceId }).first();
-
-    if (user && resource && user.email) {
-      sendLicenseActivatedEmail(user.email, resource.title, serverName || serverSerial).catch(
-        (err) => console.error("Failed to send activation email:", err)
-      );
-    }
-
-    res.status(201).json({
-      publicKey: installation.publicKey,
-      privateKey: installation.privateKey,
-      status: "activated",
-    });
-  } catch (error) {
-    console.error("Error activating license:", error);
-    res.status(500).json({ error: "Failed to activate license" });
-  }
+// POST /drm/activate - BLOCKED (deprecated v1 activation protocol)
+router.post("/activate", (_req, res: Response) => {
+  res.status(410).json({
+    error: "DRM v1 activation protocol is deprecated and blocked",
+    message: "Use the DRM v2 protocol (/drm/v2/*). See ADR-001 in mta-market-document.",
+    protocol: "v1",
+    status: "deprecated",
+  });
 });
 
-// POST /drm/verify - Verify installation keypair
-router.post("/verify", standardRateLimit, async (req, res: Response) => {
-  try {
-    const { publicKey, privateKey, serverSerial } = req.body;
-
-    if (!publicKey || !privateKey || !serverSerial) {
-      res.status(400).json({ error: "Missing required fields" });
-      return;
-    }
-
-    const installation = await db.orm.public.Installation.where({
-      publicKey,
-      privateKey,
-      serverSerial,
-    }).first();
-
-    if (!installation) {
-      res.status(404).json({ valid: false, error: "Invalid installation" });
-      return;
-    }
-
-    if (installation.status !== "ACTIVE") {
-      res.status(403).json({ valid: false, error: "Installation is not active" });
-      return;
-    }
-
-    // Get license info
-    const license = await db.orm.public.License.where({ id: installation.licenseId }).first();
-
-    if (!license || license.status !== "ACTIVE") {
-      res.status(403).json({ valid: false, error: "License is not active" });
-      return;
-    }
-
-    // Update heartbeat
-    await db.orm.public.Installation.where({ id: installation.id }).update({
-      lastHeartbeat: new Date().toISOString(),
-    });
-
-    res.json({
-      valid: true,
-      licenseId: license.id,
-      expiresAt: license.expiresAt,
-    });
-  } catch (error) {
-    console.error("Error verifying installation:", error);
-    res.status(500).json({ error: "Failed to verify installation" });
-  }
+// POST /drm/verify - BLOCKED (deprecated v1 activation protocol)
+router.post("/verify", (_req, res: Response) => {
+  res.status(410).json({
+    error: "DRM v1 verification protocol is deprecated and blocked",
+    message: "Use the DRM v2 protocol (/drm/v2/installations/:id/verify). See ADR-001.",
+    protocol: "v1",
+    status: "deprecated",
+  });
 });
 
 // GET /drm/my-licenses - Get user's licenses (authenticated)

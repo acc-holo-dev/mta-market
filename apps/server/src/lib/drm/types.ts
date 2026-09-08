@@ -11,6 +11,7 @@ export interface InstallationKeypair {
 
 export interface InstallationRegistration {
   publicKey: string;
+  licenseId: string; // License being activated; ownership verified against authenticated user
   mtaVersion: string;
   moduleVersion: string;
   serverSerial?: string;
@@ -91,6 +92,7 @@ export interface LeasePayload {
   issuedAt: string;
   expiresAt: string;
   nonce: string;
+  serverKeyId: string; // Bound into the signature: identifies the verifying key
   capabilities: Capability[];
 }
 
@@ -121,6 +123,8 @@ export interface DRMError {
 // DRM Error Codes
 export const DRM_ERROR_CODES = {
   INVALID_LICENSE: 'DRM_INVALID_LICENSE',
+  LICENSE_NOT_OWNED: 'DRM_LICENSE_NOT_OWNED',
+  LICENSE_INSTALLATION_MISMATCH: 'DRM_LICENSE_INSTALLATION_MISMATCH',
   INSTALLATION_NOT_FOUND: 'DRM_INSTALLATION_NOT_FOUND',
   INSTALLATION_NOT_VERIFIED: 'DRM_INSTALLATION_NOT_VERIFIED',
   INSTALLATION_REVOKED: 'DRM_INSTALLATION_REVOKED',

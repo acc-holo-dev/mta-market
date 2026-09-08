@@ -2,8 +2,11 @@
 
 import { Suspense, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import axios from "axios";
 import { useAuthStore } from "@/store/auth";
-import api from "@/lib/api";
+import api, { bootstrapSession } from "@/lib/api";
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
 function AuthCallbackContent() {
   const searchParams = useSearchParams();
@@ -12,24 +15,30 @@ function AuthCallbackContent() {
 
   useEffect(() => {
     const handleCallback = async () => {
-      const accessToken = searchParams.get("access_token");
-      const refreshToken = searchParams.get("refresh_token");
-
-      if (!accessToken || !refreshToken) {
-        router.push("/auth/login?error=missing_tokens");
+      // TASK A-001: the server never puts tokens in the URL. The OAuth
+      // callback left an HttpOnly refresh cookie on the API origin; the
+      // access token is obtained via /auth/refresh and kept in memory only.
+      const error = searchParams.get("error");
+      if (error) {
+        router.push(`/auth/login?error=${encodeURIComponent(error)}`);
         return;
       }
 
       try {
-        // Fetch user info
+        // Exchange the refresh cookie for an access token (memory only).
+        const { data } = await axios.post<{ accessToken: string }>(
+          `${API_BASE_URL}/auth/refresh`,
+          null,
+          { withCredentials: true }
+        );
+        const accessToken = data.accessToken;
+
+        // Load the profile with the fresh access token.
         const { data: user } = await api.get("/auth/me", {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
+          headers: { Authorization: `Bearer ${accessToken}` },
         });
 
-        // Save auth state
-        setAuth(user, accessToken, refreshToken);
+        setAuth(user, accessToken);
 
         // Redirect to dashboard
         router.push("/dashboard");
@@ -53,6 +62,9 @@ function AuthCallbackContent() {
 }
 
 export default function AuthCallbackPage() {
+  // bootstrapSession is exported for app-level reload recovery; the callback
+  // page performs its own explicit refresh exchange above.
+  void bootstrapSession;
   return (
     <Suspense
       fallback={

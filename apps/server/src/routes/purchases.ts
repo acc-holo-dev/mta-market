@@ -4,9 +4,10 @@ import { authenticate, AuthRequest } from "../lib/auth";
 import { standardRateLimit } from "../lib/rateLimit";
 import { db } from "../prisma/db";
 import { validateDiscount, applyDiscount, calculateFinalPrice } from "../lib/discount";
-import crypto from "crypto";
-import { validate, validateParam } from "../middleware/validate";
+import { validate } from "../middleware/validate";
+import { validateCuid } from "../middleware/validateCuid";
 import { createPurchaseSchema } from "../lib/validation";
+import { settlePurchaseRevenue } from "../lib/ledger";
 
 const router: Router = Router();
 
@@ -90,18 +91,13 @@ router.post(
       const platformFee = Math.round(finalPrice * 0.1); // 10% of final price
       const sellerRevenue = finalPrice - platformFee;
 
-      // Generate payment ID (for paid resources)
-      const paymentId = finalPrice > 0 ? crypto.randomBytes(16).toString("hex") : null;
-
       // Create purchase
       const purchase = await db.orm.public.Purchase.create({
         buyerId: req.user!.userId,
         resourceId: resource.id,
         versionId: version.id,
-        paymentId,
         status: finalPrice === 0 ? "COMPLETED" : "PENDING", // Free/fully discounted = completed immediately
         priceSnapshot,
-        discountId,
         discountSnapshot: discountAmount,
         finalPrice,
         platformFee,
@@ -117,7 +113,7 @@ router.post(
         });
 
         // Settle revenue (even for free: track metrics)
-        await settlePurchaseRevenue(purchase.id);
+        await settlePurchaseRevenue(purchase);
 
         res.status(201).json({
           purchaseId: purchase.id,
@@ -137,7 +133,6 @@ router.post(
       // Paid resource: redirect to payment
       res.status(201).json({
         purchaseId: purchase.id,
-        paymentId: purchase.paymentId,
         amount: finalPrice,
         originalAmount: priceSnapshot,
         currency: "RUB",
@@ -204,10 +199,10 @@ router.get(
   "/:id",
   authenticate,
   standardRateLimit,
-  validateParam("id", "int"),
+  validateCuid("id"),
   async (req: AuthRequest, res: Response) => {
     try {
-      const purchaseId = (req as any).validatedParams.id;
+      const purchaseId = req.params.id as string;
 
       const purchase = await db.orm.public.Purchase.where({ id: purchaseId }).first();
 

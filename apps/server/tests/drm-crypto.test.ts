@@ -100,18 +100,18 @@ describe('DRM Protocol v2 - Cryptography', () => {
         issuedAt: new Date().toISOString(),
         expiresAt: new Date(Date.now() + 86400000).toISOString(),
         nonce: 'b'.repeat(64),
+        serverKeyId: 'key-123',
         capabilities: ['run', 'update'] as Capability[]
       };
-      
+
       const signature = signLease(leasePayload, serverKeypair.privateKey);
       expect(signature).toBeDefined();
-      
+
       const signedLease = {
         ...leasePayload,
-        serverKeyId: 'key-123',
         signature
       };
-      
+
       const result = verifyLeaseSignature(signedLease, serverKeypair.publicKey);
       expect(result.valid).toBe(true);
       expect(result.errors).toHaveLength(0);
@@ -130,11 +130,12 @@ describe('DRM Protocol v2 - Cryptography', () => {
         issuedAt: new Date(Date.now() - 100000).toISOString(),
         expiresAt: new Date(Date.now() - 10000).toISOString(), // Expired
         nonce: 'b'.repeat(64),
+        serverKeyId: 'key-123',
         capabilities: ['run'] as Capability[]
       };
-      
+
       const signature = signLease(leasePayload, serverKeypair.privateKey);
-      const signedLease = { ...leasePayload, serverKeyId: 'key-123', signature };
+      const signedLease = { ...leasePayload, signature };
       
       const result = verifyLeaseSignature(signedLease, serverKeypair.publicKey);
       expect(result.valid).toBe(false);
@@ -178,11 +179,12 @@ describe('DRM Protocol v2 - Cryptography', () => {
         issuedAt: new Date().toISOString(),
         expiresAt: new Date(Date.now() + 86400000).toISOString(),
         nonce: 'b'.repeat(64),
+        serverKeyId: 'key-123',
         capabilities: ['run']
       };
-      
+
       const signature = signLease(leasePayload, serverKeypair.privateKey);
-      const signedLease = { ...leasePayload, serverKeyId: 'key-123', signature };
+      const signedLease = { ...leasePayload, signature };
       
       const result = verifyLeaseSignature(signedLease, serverKeypair.publicKey);
       expect(result.valid).toBe(false);

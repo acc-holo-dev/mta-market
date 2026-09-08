@@ -76,7 +76,7 @@ export async function sendWelcomeEmail(email: string, username: string): Promise
 export async function sendPurchaseEmail(
   email: string,
   resourceTitle: string,
-  licenseId: number
+  licenseId: string
 ): Promise<void> {
   await sendEmail({
     to: email,

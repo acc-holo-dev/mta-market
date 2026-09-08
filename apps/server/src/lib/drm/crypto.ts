@@ -1,36 +1,60 @@
 /**
- * TASK-020: DRM Protocol v2 - Cryptography
- * 
- * Cryptographic operations for DRM v2 protocol.
- * Reuses Ed25519 functions from artifact signing module.
+ * TASK-020 / PLAN A-006: DRM Protocol v2 - Cryptography
+ *
+ * Ed25519 operations for the DRM v2 protocol, implemented directly over
+ * well-defined byte payloads:
+ * - challenge/response: the signature covers the raw challenge bytes;
+ * - lease: the signature covers the canonical JSON of the lease payload
+ *   (keys sorted, no whitespace, signature field excluded).
+ *
+ * The previous implementation routed challenge/lease signing through the
+ * artifact-manifest machinery (signArtifact with a "mock manifest"), which
+ * was structurally broken: verifyArtifactSignature requires
+ * manifest.sha256 === hashManifest(manifest), a self-referential condition
+ * the mock could never satisfy. Caught by the (previously never-run)
+ * drm-crypto test suite.
  */
 
-import { randomBytes, createHash } from 'crypto';
-import { 
-  generatePublisherKeypair, 
-  signArtifact, 
-  verifyArtifactSignature,
-  canonicalJSON 
-} from '../artifact/crypto';
-import type { 
-  InstallationKeypair, 
-  SignedLease, 
+import { randomBytes, createHash, sign, verify } from 'crypto';
+import { canonicalJSON, generatePublisherKeypair } from '../artifact/crypto';
+import type {
+  InstallationKeypair,
+  SignedLease,
   LeasePayload,
-  LeaseVerificationResult 
+  LeaseVerificationResult
 } from './types';
+
+/** Decode a base64 DER private key (PKCS8) into a node crypto key input. */
+function privateKeyInput(base64: string) {
+  return {
+    key: Buffer.from(base64, 'base64'),
+    format: 'der' as const,
+    type: 'pkcs8' as const
+  };
+}
+
+/** Decode a base64 DER public key (SPKI) into a node crypto key input. */
+function publicKeyInput(base64: string) {
+  return {
+    key: Buffer.from(base64, 'base64'),
+    format: 'der' as const,
+    type: 'spki' as const
+  };
+}
 
 /**
  * Generate Ed25519 keypair for installation (client-side)
- * 
+ *
  * Same as publisher keypair, but used for installation identity.
  */
 export function generateInstallationKeypair(): InstallationKeypair {
+  // Reuse the artifact keypair generator (same Ed25519 DER encoding).
   return generatePublisherKeypair();
 }
 
 /**
  * Generate random challenge for installation verification
- * 
+ *
  * @returns Base64 encoded random challenge (32 bytes)
  */
 export function generateChallenge(): string {
@@ -38,124 +62,90 @@ export function generateChallenge(): string {
 }
 
 /**
- * Sign challenge with installation private key
- * 
- * This is done client-side in the MTA module.
- * 
- * @param challenge - Base64 encoded challenge
- * @param privateKey - Installation's private key
- * @returns Base64 encoded signature
+ * Sign challenge with installation private key (client-side in the module).
+ * The signature covers the raw challenge bytes.
  */
 export function signChallenge(challenge: string, privateKey: string): string {
   const challengeBuffer = Buffer.from(challenge, 'base64');
-  
-  // Reuse artifact signing (same Ed25519 signature)
-  const mockManifest = { challenge: challenge };
-  const mockHash = createHash('sha256').update(challengeBuffer).digest('hex');
-  
-  return signArtifact({
-    manifest: mockManifest as any,
-    artifactHash: mockHash,
-    privateKey
-  });
+  const signature = sign(null, challengeBuffer, privateKeyInput(privateKey));
+  return signature.toString('base64');
 }
 
 /**
- * Verify challenge response signature
- * 
- * @param challenge - Original challenge sent to client
- * @param challengeResponse - Client's signature
- * @param publicKey - Installation's public key
- * @returns True if signature is valid
+ * Verify challenge response signature against the installation public key.
  */
 export function verifyChallengeResponse(
   challenge: string,
   challengeResponse: string,
   publicKey: string
 ): boolean {
-  const challengeBuffer = Buffer.from(challenge, 'base64');
-  const mockManifest = { 
-    challenge: challenge,
-    sha256: createHash('sha256').update(challengeBuffer).digest('hex')
-  };
-  const mockHash = createHash('sha256').update(challengeBuffer).digest('hex');
-  
-  const result = verifyArtifactSignature({
-    manifest: mockManifest as any,
-    signature: challengeResponse,
-    publicKey,
-    artifactHash: mockHash
-  });
-  
-  return result.valid;
+  try {
+    const challengeBuffer = Buffer.from(challenge, 'base64');
+    return verify(
+      null,
+      challengeBuffer,
+      publicKeyInput(publicKey),
+      Buffer.from(challengeResponse, 'base64')
+    );
+  } catch {
+    return false;
+  }
 }
 
 /**
- * Sign DRM lease with server's private key
- * 
- * @param lease - Lease payload
- * @param privateKey - Server's signing private key
- * @returns Base64 encoded signature
+ * Canonical signing bytes for a lease: canonical JSON of the payload
+ * (signature field excluded by canonicalJSON, keys sorted, no whitespace).
+ */
+function leaseSigningBytes(lease: Omit<SignedLease, 'signature'> | LeasePayload): Buffer {
+  const canonical = canonicalJSON(lease);
+  return Buffer.from(canonical, 'utf-8');
+}
+
+/**
+ * Sign DRM lease with server's private key.
  */
 export function signLease(lease: LeasePayload, privateKey: string): string {
-  // Create canonical payload
-  const payload = createLeaseSigningPayload(lease);
-  
-  // Reuse artifact signing
-  return signArtifact({
-    manifest: { ...lease } as any,
-    artifactHash: payload,
-    privateKey
-  });
+  const signature = sign(null, leaseSigningBytes(lease), privateKeyInput(privateKey));
+  return signature.toString('base64');
 }
 
 /**
- * Verify lease signature with server's public key
- * 
- * @param lease - Signed lease
- * @param serverPublicKey - Server's public key
- * @returns Verification result
+ * Verify lease signature with server's public key, then check expiry and
+ * protocol version.
  */
 export function verifyLeaseSignature(
   lease: SignedLease,
   serverPublicKey: string
 ): LeaseVerificationResult {
   try {
-    // Extract payload
     const { signature, ...payload } = lease;
-    
-    // Create canonical signing payload
-    const signingPayload = createLeaseSigningPayload(payload);
-    
-    // Verify signature
-    const result = verifyArtifactSignature({
-      manifest: { ...payload, sha256: signingPayload } as any,
-      signature,
-      publicKey: serverPublicKey,
-      artifactHash: signingPayload
-    });
-    
-    if (!result.valid) {
+
+    // 1. Signature over the canonical payload
+    const ok = verify(
+      null,
+      leaseSigningBytes(payload),
+      publicKeyInput(serverPublicKey),
+      Buffer.from(signature, 'base64')
+    );
+
+    if (!ok) {
       return {
         valid: false,
         errors: ['Invalid lease signature'],
         warnings: []
       };
     }
-    
-    // Check expiry
-    const now = Date.now();
-    const expiresAt = new Date(lease.expiresAt).getTime();
-    
-    if (now > expiresAt) {
+
+    // 2. Expiry
+    if (Date.now() > new Date(lease.expiresAt).getTime()) {
       return {
         valid: false,
         errors: ['Lease expired'],
         warnings: []
       };
     }
-    
-    // Check protocol version
+
+    // 3. Protocol version
     if (lease.protocolVersion !== 2) {
       return {
         valid: false,
@@ -163,7 +153,7 @@ export function verifyLeaseSignature(
         warnings: []
       };
     }
-    
+
     return {
       valid: true,
       errors: [],
@@ -185,18 +175,8 @@ export function verifyLeaseSignature(
 }
 
 /**
- * Create canonical signing payload for lease
- * 
- * Format: hash(canonicalJSON(lease))
- */
-function createLeaseSigningPayload(lease: any): string {
-  const canonical = canonicalJSON(lease);
-  return createHash('sha256').update(canonical).digest('hex');
-}
-
-/**
  * Generate random nonce for replay protection
- * 
+ *
  * @returns Random hex string (32 bytes)
  */
 export function generateNonce(): string {
@@ -205,7 +185,7 @@ export function generateNonce(): string {
 
 /**
  * Validate nonce format
- * 
+ *
  * @param nonce - Nonce to validate
  * @returns True if valid format
  */
@@ -216,7 +196,7 @@ export function isValidNonce(nonce: string): boolean {
 
 /**
  * Hash lease for storage/comparison
- * 
+ *
  * @param lease - Lease object
  * @returns SHA-256 hash
  */
@@ -227,7 +207,7 @@ export function hashLease(lease: SignedLease): string {
 
 /**
  * Calculate lease expiry time
- * 
+ *
  * @param durationSeconds - Duration in seconds
  * @returns ISO 8601 timestamp
  */
@@ -238,7 +218,7 @@ export function calculateLeaseExpiry(durationSeconds: number): string {
 
 /**
  * Check if lease is expired
- * 
+ *
  * @param expiresAt - ISO 8601 timestamp
  * @returns True if expired
  */
@@ -248,7 +228,7 @@ export function isLeaseExpired(expiresAt: string): boolean {
 
 /**
  * Get remaining lease time in seconds
- * 
+ *
  * @param expiresAt - ISO 8601 timestamp
  * @returns Seconds remaining (0 if expired)
  */
