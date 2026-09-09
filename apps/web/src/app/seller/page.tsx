@@ -10,7 +10,6 @@ import {
   applySeller,
   fetchMyServices,
   createService,
-  createResource,
   setResourceStatus,
   fetchMyPurchases,
   fetchMyServiceOrders,
@@ -26,7 +25,9 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { Store, Package, Wrench, Gift } from "lucide-react";
+import { LoadingSpinner, EmptyState, ErrorState } from "@/components/ui/States";
+import { Store, Package, Wrench, Plus } from "lucide-react";
+import Link from "next/link";
 
 export default function SellerPage() {
   const router = useRouter();
@@ -43,7 +44,12 @@ export default function SellerPage() {
     };
   }, [router]);
 
-  const { data: profile, isLoading: profileLoading } = useQuery({
+  const {
+    data: profile,
+    isLoading: profileLoading,
+    error: profileError,
+    refetch: refetchProfile,
+  } = useQuery({
     queryKey: ["seller-profile"],
     queryFn: fetchSellerProfile,
     enabled: accessToken !== null,
@@ -55,7 +61,15 @@ export default function SellerPage() {
   if (profileLoading) {
     return (
       <div className="container mx-auto px-4 py-12">
-        <p className="text-sm text-slate-500">Загрузка...</p>
+        <LoadingSpinner label="Загрузка профиля продавца..." />
+      </div>
+    );
+  }
+
+  if (profileError) {
+    return (
+      <div className="container mx-auto px-4 py-12">
+        <ErrorState error={profileError} onRetry={() => refetchProfile()} />
       </div>
     );
   }
@@ -161,7 +175,7 @@ function Notice({ title, text, badge }: { title: string; text: string; badge?: s
             <span className="flex items-center gap-2">
               <Store className="h-6 w-6 text-blue-600" /> {title}
             </span>
-            {badge ? <StatusBadge status={badge}>{badge}</StatusBadge> : null}
+            {badge ? <StatusBadge status={badge} /> : null}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -240,19 +254,6 @@ function SellerDashboard() {
         </Card>
       </div>
 
-      {/* Discounts placeholder — API not yet implemented server-side */}
-      <Card className="mb-8 border-dashed">
-        <CardContent className="py-6 flex items-center gap-3">
-          <Gift className="h-5 w-5 text-slate-400" />
-          <div>
-            <p className="font-medium text-sm">Discount campaigns: API pending</p>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Управление скидочными кампаниями появится после реализации API на сервере.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
       <div className="space-y-8">
         <MyResourcesSection />
         <MyServicesSection />
@@ -265,14 +266,14 @@ function SellerDashboard() {
 // ---------- My resources ----------
 function MyResourcesSection() {
   const qc = useQueryClient();
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [type, setType] = useState("SCRIPT");
-  const [priceRub, setPriceRub] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
 
-  const { data: myResources } = useQuery({
+  const {
+    data: myResources,
+    isLoading,
+    error: loadError,
+    refetch,
+  } = useQuery({
     queryKey: ["seller-resources"],
     queryFn: async () => {
       const { data } = await api.get<{ data: Resource[] }>("/resources/my");
@@ -280,33 +281,11 @@ function MyResourcesSection() {
     },
   });
 
-  const createMutation = useMutation({
-    mutationFn: () =>
-      createResource({
-        title,
-        description,
-        type,
-        price: Math.round(parseFloat(priceRub.replace(",", ".") || "0") * 100),
-      }),
-    onSuccess: () => {
-      setMsg("Ресурс создан (черновик)");
-      setError(null);
-      setTitle("");
-      setDescription("");
-      setPriceRub("");
-      qc.invalidateQueries({ queryKey: ["seller-resources"] });
-    },
-    onError: (e) => {
-      setMsg(null);
-      setError(getErrorMessage(e, "Не удалось создать ресурс"));
-    },
-  });
-
   const statusMutation = useMutation({
     mutationFn: ({ slug, status }: { slug: string; status: string }) =>
       setResourceStatus(slug, status),
     onSuccess: () => {
-      setMsg("Статус обновлён");
+      setError(null);
       qc.invalidateQueries({ queryKey: ["seller-resources"] });
     },
     onError: (e) => setError(getErrorMessage(e, "Не удалось сменить статус")),
@@ -318,78 +297,66 @@ function MyResourcesSection() {
         <CardTitle className="flex items-center gap-2">
           <Package className="h-5 w-5 text-blue-600" /> Мои ресурсы
         </CardTitle>
-        <CardDescription>Создание ресурсов и отправка на модерацию</CardDescription>
+        <CardDescription>Черновики, отправка на модерацию и статусы публикации</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Create form */}
-        <div className="p-4 border border-slate-200 dark:border-slate-700 rounded-lg space-y-3">
-          <p className="text-sm font-medium">Новый ресурс</p>
-          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Название" />
-          <Input
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Описание"
-          />
-          <div className="grid grid-cols-2 gap-3">
-            <Input value={type} onChange={(e) => setType(e.target.value)} placeholder="Тип (SCRIPT)" />
-            <Input
-              value={priceRub}
-              onChange={(e) => setPriceRub(e.target.value)}
-              placeholder="Цена в рублях (0 = бесплатно)"
-            />
-          </div>
-          <Button
-            size="sm"
-            disabled={!title.trim() || !description.trim() || createMutation.isPending}
-            onClick={() => createMutation.mutate()}
-          >
-            Создать
+        <Link href="/seller/new">
+          <Button size="sm">
+            <Plus className="mr-1 h-4 w-4" /> Новый ресурс (мастер)
           </Button>
-        </div>
+        </Link>
 
-        {msg ? <p className="text-sm text-green-600 dark:text-green-400">{msg}</p> : null}
         {error ? <p className="text-sm text-red-600 dark:text-red-400">{error}</p> : null}
 
-        <div className="space-y-3">
-          {(myResources ?? []).map((r) => (
-            <div
-              key={r.id}
-              className="flex items-start justify-between gap-4 p-3 border border-slate-200 dark:border-slate-700 rounded-lg"
-            >
-              <div>
-                <p className="font-medium">{r.title}</p>
-                <p className="text-sm text-slate-500">
-                  {r.type} · {r.price === 0 ? "Бесплатно" : formatRub(r.price)} · /{r.slug}
-                </p>
+        {isLoading ? (
+          <LoadingSpinner label="Загрузка ресурсов..." />
+        ) : loadError ? (
+          <ErrorState error={loadError} onRetry={() => refetch()} />
+        ) : (
+          <div className="space-y-3">
+            {(myResources ?? []).map((r) => (
+              <div
+                key={r.id}
+                className="flex items-start justify-between gap-4 p-3 border border-slate-200 dark:border-slate-700 rounded-lg"
+              >
+                <div>
+                  <p className="font-medium">{r.title}</p>
+                  <p className="text-sm text-slate-500">
+                    {r.type} · {r.price === 0 ? "Бесплатно" : formatRub(r.price)} · /{r.slug}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap justify-end">
+                  <StatusBadge status={r.status} />
+                  {r.status === "DRAFT" ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => statusMutation.mutate({ slug: r.slug, status: "PENDING_REVIEW" })}
+                      disabled={statusMutation.isPending}
+                    >
+                      На модерацию
+                    </Button>
+                  ) : r.status === "PENDING_REVIEW" || r.status === "PUBLISHED" ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => statusMutation.mutate({ slug: r.slug, status: "DRAFT" })}
+                      disabled={statusMutation.isPending}
+                    >
+                      В черновик
+                    </Button>
+                  ) : null}
+                </div>
               </div>
-              <div className="flex items-center gap-2 flex-wrap justify-end">
-                <StatusBadge status={r.status}>{r.status}</StatusBadge>
-                {r.status === "DRAFT" ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => statusMutation.mutate({ slug: r.slug, status: "PENDING_REVIEW" })}
-                    disabled={statusMutation.isPending}
-                  >
-                    На модерацию
-                  </Button>
-                ) : r.status === "PENDING_REVIEW" || r.status === "PUBLISHED" ? (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => statusMutation.mutate({ slug: r.slug, status: "DRAFT" })}
-                    disabled={statusMutation.isPending}
-                  >
-                    В черновик
-                  </Button>
-                ) : null}
-              </div>
-            </div>
-          ))}
-          {myResources && myResources.length === 0 ? (
-            <p className="text-sm text-slate-500">У вас пока нет ресурсов.</p>
-          ) : null}
-        </div>
+            ))}
+            {myResources && myResources.length === 0 ? (
+              <EmptyState
+                title="У вас пока нет ресурсов"
+                description="Создайте первый ресурс через мастер"
+              />
+            ) : null}
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -406,7 +373,12 @@ function MyServicesSection() {
   const [requirements, setRequirements] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const { data: myServices } = useQuery({
+  const {
+    data: myServices,
+    isLoading: servicesLoading,
+    error: servicesError,
+    refetch: refetchServices,
+  } = useQuery({
     queryKey: ["seller-services"],
     queryFn: fetchMyServices,
   });
@@ -479,24 +451,30 @@ function MyServicesSection() {
           {error ? <p className="text-sm text-red-600 dark:text-red-400">{error}</p> : null}
         </div>
 
-        <div className="space-y-3">
-          {(myServices ?? []).map((s) => (
-            <div
-              key={s.id}
-              className="flex items-start justify-between gap-4 p-3 border border-slate-200 dark:border-slate-700 rounded-lg"
-            >
-              <div>
-                <p className="font-medium">{s.title}</p>
-                <p className="text-sm text-slate-500">
-                  {formatRub(s.price)} · {s.deliveryDays} дн. · /{s.slug}
-                </p>
+        {servicesLoading ? (
+          <LoadingSpinner label="Загрузка услуг..." />
+        ) : servicesError ? (
+          <ErrorState error={servicesError} onRetry={() => refetchServices()} />
+        ) : (
+          <div className="space-y-3">
+            {(myServices ?? []).map((s) => (
+              <div
+                key={s.id}
+                className="flex items-start justify-between gap-4 p-3 border border-slate-200 dark:border-slate-700 rounded-lg"
+              >
+                <div>
+                  <p className="font-medium">{s.title}</p>
+                  <p className="text-sm text-slate-500">
+                    {formatRub(s.price)} · {s.deliveryDays} дн. · /{s.slug}
+                  </p>
+                </div>
               </div>
-            </div>
-          ))}
-          {myServices && myServices.length === 0 ? (
-            <p className="text-sm text-slate-500">У вас пока нет услуг.</p>
-          ) : null}
-        </div>
+            ))}
+            {myServices && myServices.length === 0 ? (
+              <EmptyState title="У вас пока нет услуг" description="Добавьте первую услугу" />
+            ) : null}
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -509,7 +487,7 @@ function SellerOrdersSection() {
   const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
 
-  const { data } = useQuery({
+  const { data, isLoading, error: loadError, refetch } = useQuery({
     queryKey: ["seller-service-orders"],
     queryFn: fetchMyServiceOrders,
   });
@@ -534,8 +512,12 @@ function SellerOrdersSection() {
       </CardHeader>
       <CardContent className="space-y-4">
         {error ? <p className="text-sm text-red-600 dark:text-red-400">{error}</p> : null}
-        {orders.length === 0 ? (
-          <p className="text-sm text-slate-500">Заказов пока нет.</p>
+        {isLoading ? (
+          <LoadingSpinner label="Загрузка заказов..." />
+        ) : loadError ? (
+          <ErrorState error={loadError} onRetry={() => refetch()} />
+        ) : orders.length === 0 ? (
+          <EmptyState title="Заказов пока нет" description="Заказы на ваши услуги появятся здесь" />
         ) : (
           orders.map((o) => (
             <div
@@ -555,7 +537,7 @@ function SellerOrdersSection() {
                     </p>
                   ) : null}
                 </div>
-                <StatusBadge status={o.status}>{o.status}</StatusBadge>
+                <StatusBadge status={o.status} />
               </div>
 
               {/* Status timeline */}

@@ -7,6 +7,8 @@ import { useAuthStore } from "@/store/auth";
 import api, { bootstrapSession } from "@/lib/api";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { LoadingSpinner, EmptyState, ErrorState } from "@/components/ui/States";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import Link from "next/link";
 import { Package, ShoppingBag, Star, Plus } from "lucide-react";
 
@@ -41,7 +43,12 @@ export default function DashboardPage() {
     };
   }, [router]);
 
-  const { data: purchases } = useQuery({
+  const {
+    data: purchases,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: ["purchases"],
     queryFn: async () => {
       const { data } = await api.get<{ data: Purchase[] }>("/purchases/my");
@@ -100,7 +107,7 @@ export default function DashboardPage() {
             <CardTitle className="text-sm font-medium">Стать продавцом</CardTitle>
           </CardHeader>
           <CardContent>
-            <Link href="/dashboard/resources/new">
+            <Link href="/seller/new">
               <Button variant="secondary" size="sm" className="w-full">
                 <Plus className="mr-2 h-4 w-4" />
                 Добавить ресурс
@@ -117,16 +124,22 @@ export default function DashboardPage() {
           <CardDescription>Ваши последние приобретения</CardDescription>
         </CardHeader>
         <CardContent>
-          {!purchases || purchases.length === 0 ? (
-            <div className="text-center py-12">
-              <ShoppingBag className="h-12 w-12 text-slate-400 mx-auto mb-4" />
-              <p className="text-slate-600 dark:text-slate-400">У вас пока нет покупок</p>
-              <Link href="/resources">
-                <Button variant="primary" size="sm" className="mt-4">
-                  Просмотреть каталог
-                </Button>
-              </Link>
-            </div>
+          {isLoading ? (
+            <LoadingSpinner label="Загрузка покупок..." />
+          ) : error ? (
+            <ErrorState error={error} onRetry={() => refetch()} />
+          ) : !purchases || purchases.length === 0 ? (
+            <EmptyState
+              title="У вас пока нет покупок"
+              description="Выберите ресурс на Маркетплейсе"
+              action={
+                <Link href="/resources">
+                  <Button variant="primary" size="sm">
+                    На Маркетплейс
+                  </Button>
+                </Link>
+              }
+            />
           ) : (
             <div className="space-y-4">
               {purchases.map((purchase) => (
@@ -149,15 +162,7 @@ export default function DashboardPage() {
                     <div className="font-semibold">
                       {(purchase.priceSnapshot / 100).toFixed(2)} ₽
                     </div>
-                    <span
-                      className={`text-xs px-2 py-1 rounded ${
-                        purchase.status === "COMPLETED"
-                          ? "bg-green-100 text-green-600 dark:bg-green-900 dark:text-green-400"
-                          : "bg-yellow-100 text-yellow-600 dark:bg-yellow-900 dark:text-yellow-400"
-                      }`}
-                    >
-                      {purchase.status}
-                    </span>
+                    <StatusBadge status={purchase.status} />
                   </div>
                 </div>
               ))}

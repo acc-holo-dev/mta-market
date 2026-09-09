@@ -175,6 +175,10 @@
     "user": {
       "model": "User",
       "namespace": "public"
+    },
+    "userBalance": {
+      "model": "UserBalance",
+      "namespace": "public"
     }
   },
   "domain": {
@@ -7079,6 +7083,13 @@
                   "kind": "scalar"
                 }
               },
+              "passwordHash": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
               "role": {
                 "nullable": false,
                 "type": {
@@ -7133,6 +7144,21 @@
                 },
                 "to": {
                   "model": "Account",
+                  "namespace": "public"
+                }
+              },
+              "balance": {
+                "cardinality": "1:1",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "userId"
+                  ]
+                },
+                "to": {
+                  "model": "UserBalance",
                   "namespace": "public"
                 }
               },
@@ -7337,6 +7363,9 @@
                 "id": {
                   "column": "id"
                 },
+                "passwordHash": {
+                  "column": "passwordHash"
+                },
                 "role": {
                   "column": "role"
                 },
@@ -7352,6 +7381,83 @@
               },
               "namespaceId": "public",
               "table": "user"
+            }
+          },
+          "UserBalance": {
+            "fields": {
+              "available": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/int4@1",
+                  "kind": "scalar"
+                }
+              },
+              "createdAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "currency": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "updatedAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "userId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {
+              "user": {
+                "cardinality": "N:1",
+                "on": {
+                  "localFields": [
+                    "userId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "User",
+                  "namespace": "public"
+                }
+              }
+            },
+            "storage": {
+              "fields": {
+                "available": {
+                  "column": "available"
+                },
+                "createdAt": {
+                  "column": "createdAt"
+                },
+                "currency": {
+                  "column": "currency"
+                },
+                "updatedAt": {
+                  "column": "updatedAt"
+                },
+                "userId": {
+                  "column": "userId"
+                }
+              },
+              "namespaceId": "public",
+              "table": "userBalance"
             }
           }
         }
@@ -12606,6 +12712,11 @@
                   "nativeType": "text",
                   "nullable": false
                 },
+                "passwordHash": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
                 "role": {
                   "codecId": "pg/text@1",
                   "default": {
@@ -12683,6 +12794,73 @@
                   ]
                 }
               ]
+            },
+            "userBalance": {
+              "columns": {
+                "available": {
+                  "codecId": "pg/int4@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": 0
+                  },
+                  "nativeType": "int4",
+                  "nullable": false
+                },
+                "createdAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "default": {
+                    "expression": "now()",
+                    "kind": "function"
+                  },
+                  "nativeType": "timestamptz",
+                  "nullable": false
+                },
+                "currency": {
+                  "codecId": "pg/text@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": "RUB"
+                  },
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "updatedAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "nativeType": "timestamptz",
+                  "nullable": false
+                },
+                "userId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                }
+              },
+              "foreignKeys": [
+                {
+                  "onDelete": "cascade",
+                  "source": {
+                    "columns": [
+                      "userId"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "userBalance"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "user"
+                  }
+                }
+              ],
+              "indexes": [],
+              "primaryKey": {
+                "columns": [
+                  "userId"
+                ]
+              },
+              "uniques": []
             }
           },
           "valueSet": {
@@ -12978,10 +13156,10 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "08ae151c45c0962c0b195d482017ae47e2831b3b38b2b3891d67c88da132e8a8"
+    "storageHash": "aefd63a960222650779340cf9b29ee52e7b24ec73b59d10cb37f494167eb1a66"
   },
   "execution": {
-    "executionHash": "486407c1805c95ccc5e23d5f08f0cf81c0a490b871cc08af7a6a01e8cfe1f692",
+    "executionHash": "114b117d219138b53cf3babea0b643abc467e54efa3004f6f3990bb476bbcd9f",
     "mutations": {
       "defaults": [
         {
@@ -13579,6 +13757,21 @@
             "column": "updatedAt",
             "namespace": "public",
             "table": "user"
+          }
+        },
+        {
+          "onCreate": {
+            "id": "timestampNow",
+            "kind": "generator"
+          },
+          "onUpdate": {
+            "id": "timestampNow",
+            "kind": "generator"
+          },
+          "ref": {
+            "column": "updatedAt",
+            "namespace": "public",
+            "table": "userBalance"
           }
         }
       ]

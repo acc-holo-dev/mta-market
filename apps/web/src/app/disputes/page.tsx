@@ -6,10 +6,10 @@ import { fetchMyDisputes, type Dispute } from "@/lib/api-ext";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { Scale } from "lucide-react";
+import { LoadingSpinner, EmptyState, ErrorState } from "@/components/ui/States";
 
 export default function DisputesPage() {
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["my-disputes"],
     queryFn: fetchMyDisputes,
   });
@@ -26,23 +26,20 @@ export default function DisputesPage() {
       </div>
 
       {isLoading ? (
-        <p className="text-sm text-slate-500">Загрузка...</p>
+        <LoadingSpinner label="Загрузка споров..." />
       ) : error ? (
-        <Card className="bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800">
-          <CardHeader>
-            <CardTitle className="text-red-600 dark:text-red-400">Ошибка загрузки</CardTitle>
-          </CardHeader>
-        </Card>
+        <ErrorState error={error} onRetry={() => refetch()} />
       ) : list.length === 0 ? (
-        <div className="text-center py-16">
-          <Scale className="h-12 w-12 text-slate-400 mx-auto mb-4" />
-          <p className="text-slate-600 dark:text-slate-400">У вас нет открытых споров</p>
-          <Link href="/account">
-            <Button variant="outline" size="sm" className="mt-4">
-              К покупкам
-            </Button>
-          </Link>
-        </div>
+        <EmptyState
+          title="У вас нет открытых споров"
+          action={
+            <Link href="/account">
+              <Button variant="outline" size="sm">
+                К покупкам
+              </Button>
+            </Link>
+          }
+        />
       ) : (
         <div className="space-y-4">
           {list.map((d) => (
@@ -56,7 +53,7 @@ export default function DisputesPage() {
                         {d.targetType} · {new Date(d.createdAt).toLocaleDateString("ru-RU")}
                       </CardDescription>
                     </div>
-                    <StatusBadge status={d.status}>{d.status}</StatusBadge>
+                    <StatusBadge status={d.status} />
                   </div>
                 </CardHeader>
                 <CardContent>

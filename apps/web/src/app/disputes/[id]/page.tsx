@@ -50,7 +50,7 @@ export default function DisputeDetailPage() {
                 {new Date(data.dispute.createdAt).toLocaleString("ru-RU")}
               </CardDescription>
             </div>
-            <StatusBadge status={data.dispute.status}>{data.dispute.status}</StatusBadge>
+            <StatusBadge status={data.dispute.status} />
           </div>
         </CardHeader>
         <CardContent className="space-y-2">

@@ -170,7 +170,7 @@ function ModerationSection() {
                     {new Date(r.createdAt).toLocaleDateString("ru-RU")}
                   </p>
                 </div>
-                <StatusBadge status={r.status}>{r.status}</StatusBadge>
+                <StatusBadge status={r.status} />
               </div>
               <Input
                 value={reasons[r.id] ?? ""}
@@ -386,7 +386,7 @@ function DisputesSection() {
                   </p>
                   <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">{d.reason}</p>
                 </div>
-                <StatusBadge status={d.status}>{d.status}</StatusBadge>
+                <StatusBadge status={d.status} />
               </div>
               <div className="flex gap-2 flex-wrap">
                 {TRANSITIONS.filter((t) => t !== d.status).map((t) => (

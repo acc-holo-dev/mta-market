@@ -11,6 +11,8 @@ import { setRefreshCookie, clearRefreshCookie } from "../lib/cookies";
 import { db } from "../prisma/db";
 import { sendWelcomeEmail } from "../lib/email";
 import { userRateLimit } from "../lib/rateLimit";
+import bcrypt from "bcryptjs";
+import { z } from "zod";
 import { reqLog } from "../middleware/requestId";
 import { identityProviders } from "../lib/identityProvider";
 
@@ -58,6 +60,235 @@ async function buildUsername(base: string): Promise<string> {
 function isRealEmail(email: string): boolean {
   return !email.endsWith(".local");
 }
+
+
+// ---------------------------------------------------------------------------
+// PLAN-001 A-001/A-002: local registration + login (username/email + password).
+// Uses the existing session/token/cookie infrastructure — no parallel auth
+// system. OAuth-only accounts keep passwordHash = null.
+// ---------------------------------------------------------------------------
+
+const PASSWORD_MIN_LENGTH = 8;
+
+const registerSchema = z.object({
+  username: z
+    .string()
+    .min(3)
+    .max(30)
+    .regex(/^[a-zA-Z0-9_-]+$/, "Username may contain letters, digits, _ and -"),
+  email: z.string().email(),
+  password: z.string().min(PASSWORD_MIN_LENGTH).max(200),
+  confirmPassword: z.string().optional(),
+});
+
+const loginSchema = z.object({
+  login: z.string().min(1), // username or email
+  password: z.string().min(1),
+});
+
+/** PLAN-001 C-002: every account starts with balance 0 (persisted row). */
+async function ensureUserBalance(userId: string): Promise<void> {
+  const existing = await db.orm.public.UserBalance.where({ userId }).first();
+  if (!existing) {
+    await db.orm.public.UserBalance.create({
+      userId,
+      available: 0,
+      currency: "RUB",
+    });
+  }
+}
+
+/** Shared session issuance: tokens + refresh cookie (same as OAuth flow). */
+async function issueSession(
+  req: Request,
+  res: Response,
+  user: { id: string; email: string; role: string }
+): Promise<string> {
+  const accessToken = generateAccessToken({
+    userId: user.id,
+    email: user.email,
+    role: user.role as "USER" | "ADMIN" | "MODERATOR",
+  });
+  const refreshToken = generateRefreshToken({
+    userId: user.id,
+    email: user.email,
+    role: user.role as "USER" | "ADMIN" | "MODERATOR",
+  });
+  await db.orm.public.Session.create({
+    userId: user.id,
+    refreshTokenHash: hashRefreshToken(refreshToken),
+    tokenFamily: generateTokenId(),
+    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    ipAddress: req.ip || req.socket.remoteAddress,
+    userAgent: Array.isArray(req.headers["user-agent"])
+      ? req.headers["user-agent"][0]
+      : req.headers["user-agent"],
+  });
+  setRefreshCookie(res, refreshToken);
+  await ensureUserBalance(user.id);
+  return accessToken;
+}
+
+function publicUser(user: {
+  id: string;
+  email: string;
+  username: string | null;
+  displayName: string | null;
+  avatar: string | null;
+  role: string;
+  status: string;
+  createdAt: string;
+}): Record<string, unknown> {
+  return {
+    id: user.id,
+    email: user.email,
+    username: user.username,
+    displayName: user.displayName,
+    avatar: user.avatar,
+    role: user.role,
+    status: user.status,
+    createdAt: user.createdAt,
+  };
+}
+
+// POST /auth/register - PLAN-001 A-001
+router.post("/register", authRateLimit, async (req: Request, res: Response) => {
+  try {
+    const parsed = registerSchema.safeParse(req.body);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      res.status(400).json({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: issue
+            ? `${issue.path.join(".")}: ${issue.message}`
+            : "Invalid registration data",
+        },
+      });
+      return;
+    }
+    const { username, email, password, confirmPassword } = parsed.data;
+    if (confirmPassword !== undefined && confirmPassword !== password) {
+      res.status(400).json({
+        error: { code: "PASSWORD_MISMATCH", message: "Passwords do not match" },
+      });
+      return;
+    }
+
+    const usernameTaken = await db.orm.public.User
+      .where({ username })
+      .first();
+    if (usernameTaken) {
+      res.status(409).json({
+        error: { code: "USERNAME_TAKEN", message: "Username is already taken" },
+      });
+      return;
+    }
+    const emailTaken = await db.orm.public.User
+      .where({ email: email.toLowerCase() })
+      .first();
+    if (emailTaken) {
+      res.status(409).json({
+        error: { code: "EMAIL_TAKEN", message: "Email is already registered" },
+      });
+      return;
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    const user = await db.orm.public.User.create({
+      email: email.toLowerCase(),
+      username,
+      passwordHash,
+      role: "USER",
+      status: "ACTIVE",
+    });
+
+    const accessToken = await issueSession(req, res, user);
+    reqLog(req).info("user_registered", { user_id: user.id });
+
+    const balance = await db.orm.public.UserBalance
+      .where({ userId: user.id })
+      .first();
+    res.status(201).json({
+      accessToken,
+      user: {
+        ...publicUser(user),
+        balance: {
+          available: Number(balance?.available ?? 0),
+          currency: balance?.currency ?? "RUB",
+        },
+      },
+    });
+  } catch (error) {
+    reqLog(req).error("user_register_failed", { error });
+    res.status(500).json({
+      error: { code: "SERVER_ERROR", message: "Registration failed" },
+    });
+  }
+});
+
+// POST /auth/login - PLAN-001 A-002 (username OR email + password)
+router.post("/login", authRateLimit, userRateLimit({ windowMs: 60_000, max: 10, action: "login" }), async (req: Request, res: Response) => {
+  try {
+    const parsed = loginSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        error: { code: "VALIDATION_ERROR", message: "login and password are required" },
+      });
+      return;
+    }
+    const { login, password } = parsed.data;
+    const isEmail = login.includes("@");
+
+    const user = isEmail
+      ? await db.orm.public.User.where({ email: login.toLowerCase() }).first()
+      : await db.orm.public.User.where({ username: login }).first();
+
+    // Uniform error for both unknown identity and bad password.
+    if (!user || !user.passwordHash) {
+      reqLog(req).warn("login_failed_unknown_identity", { via: isEmail ? "email" : "username" });
+      res.status(401).json({
+        error: { code: "INVALID_CREDENTIALS", message: "Invalid login or password" },
+      });
+      return;
+    }
+    const passwordOk = await bcrypt.compare(password, user.passwordHash);
+    if (!passwordOk) {
+      reqLog(req).warn("login_failed_bad_password", { user_id: user.id });
+      res.status(401).json({
+        error: { code: "INVALID_CREDENTIALS", message: "Invalid login or password" },
+      });
+      return;
+    }
+    if (user.status !== "ACTIVE") {
+      res.status(403).json({
+        error: { code: "ACCOUNT_DISABLED", message: `Account is ${user.status}` },
+      });
+      return;
+    }
+
+    const accessToken = await issueSession(req, res, user);
+    reqLog(req).info("user_logged_in", { user_id: user.id, via: "password" });
+    const balance = await db.orm.public.UserBalance
+      .where({ userId: user.id })
+      .first();
+    res.json({
+      accessToken,
+      user: {
+        ...publicUser(user),
+        balance: {
+          available: Number(balance?.available ?? 0),
+          currency: balance?.currency ?? "RUB",
+        },
+      },
+    });
+  } catch (error) {
+    reqLog(req).error("login_failed", { error });
+    res.status(500).json({
+      error: { code: "SERVER_ERROR", message: "Login failed" },
+    });
+  }
+});
 
 // POST /auth/refresh - Refresh access token with rotation
 router.post("/refresh", authRateLimit, userRateLimit({ windowMs: 60_000, max: 30, action: "refresh" }), async (req: Request, res: Response) => {
@@ -192,6 +423,42 @@ router.post("/logout", authRateLimit, async (req: Request, res: Response) => {
   }
 });
 
+// PATCH /auth/me - edit allowed profile fields (PLAN-001 B-002).
+// role, status, email, username and any protected/identity fields are NOT
+// editable here — attempts are ignored/rejected.
+router.patch("/me", authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const allowed: Record<string, unknown> = {};
+    for (const key of ["displayName", "avatar"] as const) {
+      if (req.body?.[key] !== undefined) allowed[key] = req.body[key];
+    }
+    const rejected = Object.keys(req.body ?? {}).filter(
+      (k) => !["displayName", "avatar"].includes(k)
+    );
+    if (Object.keys(allowed).length === 0) {
+      res.status(400).json({
+        error: {
+          code: "NOTHING_TO_UPDATE",
+          message: "Only displayName and avatar are editable",
+          rejectedFields: rejected,
+        },
+      });
+      return;
+    }
+    const updated = await db.orm.public.User
+      .where({ id: req.user!.userId })
+      .update(allowed);
+    reqLog(req).info("profile_updated", {
+      user_id: req.user!.userId,
+      fields: Object.keys(allowed),
+    });
+    res.json(updated);
+  } catch (error) {
+    reqLog(req).error("profile_update_failed", { error });
+    res.status(500).json({ error: "Failed to update profile" });
+  }
+});
+
 // GET /auth/me - Get current user (authenticated)
 router.get("/me", authenticate, async (req: AuthRequest, res: Response) => {
   try {
@@ -202,6 +469,12 @@ router.get("/me", authenticate, async (req: AuthRequest, res: Response) => {
       return;
     }
 
+    // PLAN-001 C-003: the balance travels with the profile.
+    await ensureUserBalance(user.id);
+    const balance = await db.orm.public.UserBalance
+      .where({ userId: user.id })
+      .first();
+
     res.json({
       id: user.id,
       email: user.email,
@@ -211,6 +484,10 @@ router.get("/me", authenticate, async (req: AuthRequest, res: Response) => {
       role: user.role,
       status: user.status,
       createdAt: user.createdAt,
+      balance: {
+        available: Number(balance?.available ?? 0),
+        currency: balance?.currency ?? "RUB",
+      },
     });
   } catch (error) {
     reqLog(req).error("get_user_failed", { error });

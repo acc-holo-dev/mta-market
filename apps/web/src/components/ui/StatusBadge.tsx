@@ -29,6 +29,44 @@ const COLORS: Record<string, string> = {
   FREE: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
 };
 
+// PLAN-001 K-001: unified Russian terminology for every visible status.
+const LABELS: Record<string, string> = {
+  // resource moderation lifecycle
+  DRAFT: "Черновик",
+  PENDING_REVIEW: "На модерации",
+  UNDER_REVIEW: "На модерации",
+  PUBLISHED: "Опубликован",
+  SUSPENDED: "Приостановлен",
+  UNPUBLISHED: "Снят с публикации",
+  // seller profile
+  PENDING: "На рассмотрении",
+  APPROVED: "Одобрен",
+  REJECTED: "Отклонён",
+  // purchases / licenses
+  COMPLETED: "Завершена",
+  PENDING_PAYMENT: "Ожидает оплаты",
+  ACTIVE: "Активна",
+  REVOKED: "Отозвана",
+  CANCELLED: "Отменён",
+  DISPUTED: "Оспорен",
+  PARTIAL_REFUND: "Частичный возврат",
+  // service orders
+  IN_PROGRESS: "В работе",
+  DELIVERED: "Доставлен",
+  ACCEPTED: "Принят",
+  CLOSED: "Закрыт",
+  RESOLVED_BUYER: "Решён в пользу покупателя",
+  RESOLVED_SELLER: "Решён в пользу продавца",
+  // accounts
+  BANNED: "Заблокирован",
+  // misc
+  FREE: "Бесплатно",
+};
+
+export function statusLabel(status: string): string {
+  return LABELS[status] ?? status;
+}
+
 export function StatusBadge({
   status,
   className,
@@ -46,7 +84,7 @@ export function StatusBadge({
         className
       )}
     >
-      {children ?? status}
+      {children ?? statusLabel(status)}
     </span>
   );
 }

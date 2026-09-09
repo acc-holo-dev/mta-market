@@ -140,11 +140,19 @@ describe.skipIf(!dbAvailable)("C-010: service order data", () => {
       .first();
     expect(sp?.status).toBe("IN_PROGRESS");
 
-    // INV-015: no DRM license for service orders
+    // INV-015: no DRM license for service orders (scoped to this buyer —
+    // other suites own their own license rows)
     const item = await db.orm.public.OrderItem.where({ id: res.body.orderItemId }).first();
     expect(item?.itemType).toBe("SERVICE");
-    const licenses = await db.orm.public.License.where({}).all();
-    expect(licenses.length).toBe(0);
+    const buyerPurchases = await db.orm.public.Purchase
+      .where({ buyerId: BUYER_ID })
+      .all();
+    const purchaseIds = new Set(buyerPurchases.map((p: { id: string }) => p.id));
+    const allLicenses = await db.orm.public.License.where({}).all();
+    const buyerLicenses = allLicenses.filter((l: { purchaseId: string }) =>
+      purchaseIds.has(l.purchaseId)
+    );
+    expect(buyerLicenses.length).toBe(0);
   });
 
   it("paid service order stays pending until payment, then starts", async () => {

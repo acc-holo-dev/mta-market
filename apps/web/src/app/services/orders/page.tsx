@@ -15,6 +15,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { LoadingSpinner, EmptyState, ErrorState } from "@/components/ui/States";
 import { DisputeDialog } from "@/components/disputes/DisputeDialog";
 import { MessageThread } from "@/components/MessageThread";
 import { ChevronDown, ChevronUp } from "lucide-react";
@@ -23,7 +24,12 @@ const STEPS = ["PENDING", "IN_PROGRESS", "DELIVERED", "ACCEPTED", "CLOSED"];
 
 export default function ServiceOrdersPage() {
   const { accessToken } = useAuthStore();
-  const { data, isLoading } = useQuery({
+  const {
+    data,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: ["my-service-orders"],
     queryFn: fetchMyServiceOrders,
     enabled: accessToken !== null,
@@ -41,9 +47,11 @@ export default function ServiceOrdersPage() {
       </div>
 
       {isLoading ? (
-        <p className="text-sm text-slate-500">Загрузка...</p>
+        <LoadingSpinner label="Загрузка заказов..." />
+      ) : error ? (
+        <ErrorState error={error} onRetry={() => refetch()} />
       ) : orders.length === 0 ? (
-        <p className="text-sm text-slate-500">Заказов пока нет.</p>
+        <EmptyState title="Заказов пока нет" description="Закажите услугу на Маркетплейсе" />
       ) : (
         <div className="space-y-4">
           {orders.map((o) => (
@@ -89,7 +97,7 @@ function ServiceOrderCard({ order: o }: { order: ServiceOrder }) {
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
-            <StatusBadge status={o.status}>{o.status}</StatusBadge>
+            <StatusBadge status={o.status} />
             <button onClick={() => setExpanded((v) => !v)} aria-label="Подробнее">
               {expanded ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
             </button>
@@ -112,7 +120,7 @@ function ServiceOrderCard({ order: o }: { order: ServiceOrder }) {
             </span>
           ))}
           {o.status === "CANCELLED" || o.status === "DISPUTED" ? (
-            <StatusBadge status={o.status}>{o.status}</StatusBadge>
+            <StatusBadge status={o.status} />
           ) : null}
         </div>
 

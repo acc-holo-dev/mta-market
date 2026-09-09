@@ -18,6 +18,7 @@ enum UserStatus {
 model User {
   id            String       @id @default(uuid())
   email         String       @unique
+  passwordHash  String? // bcrypt; null = OAuth-only account (PLAN A-001)
   emailVerified TimestamptzString?
   username      String?      @unique
   displayName   String?
@@ -40,6 +41,7 @@ model User {
   orders        Order[]
   discountCampaigns DiscountCampaign[]
   sellerProfile SellerProfile?
+  balance       UserBalance?
 
   @@index([email])
   @@index([username])
@@ -1149,4 +1151,17 @@ model AuditLog {
   @@index([actorId])
   @@index([targetType, targetId])
   @@index([createdAt])
+}
+
+// PLAN-001 / C-001: persisted per-user balance. Independent from
+// SellerBalance (seller revenue): this is the user's spendable balance.
+// Top-up arrives in a later plan; every account starts at 0 (C-002).
+model UserBalance {
+  userId         String            @id
+  available      Int               @default(0) // kopecks
+  currency       String            @default("RUB")
+  updatedAt      temporal.updatedAtString()
+  createdAt      TimestamptzString @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

@@ -1,6 +1,7 @@
 // Typed API helpers + error extraction (M-001..M-003).
 // Kept out of lib/api.ts to avoid touching existing client code.
 import api from "./api";
+import type { User } from "@/store/auth";
 
 // ---------- Error helpers ----------
 // Server error envelopes: either {"error": string} or {"error": {code, message}}.
@@ -107,6 +108,117 @@ export interface SellerProfile {
   supportInfo?: string | null;
 }
 
+// ---------- Auth / profile (PLAN-001 A-003, B-002, C-003, D-002) ----------
+export interface AuthResponse {
+  accessToken: string;
+  user: User;
+}
+
+export interface Balance {
+  available: number; // kopecks
+  currency: string;
+}
+
+/** GET /auth/me response shape: the profile plus the balance (C-003). */
+export type MeUser = User & { createdAt?: string; balance: Balance };
+
+export async function fetchMe(): Promise<MeUser> {
+  const { data } = await api.get<MeUser>("/auth/me");
+  return data;
+}
+
+/** Login with username OR email + password (A-002/A-003). */
+export async function loginRequest(login: string, password: string): Promise<AuthResponse> {
+  const { data } = await api.post<AuthResponse>("/auth/login", { login, password });
+  return data;
+}
+
+/** Register; the server returns 201 with a session (A-001). */
+export async function registerRequest(body: {
+  username: string;
+  email: string;
+  password: string;
+  confirmPassword: string;
+}): Promise<AuthResponse> {
+  const { data } = await api.post<AuthResponse>("/auth/register", body);
+  return data;
+}
+
+/** PATCH /auth/me — only displayName and avatar are editable (B-002). */
+export async function patchProfile(body: { displayName?: string; avatar?: string }): Promise<MeUser> {
+  const { data } = await api.patch<MeUser>("/auth/me", body);
+  return data;
+}
+
+export interface Identity {
+  id: string;
+  provider: string;
+  providerAccountId: string;
+}
+
+export async function fetchIdentities(): Promise<Identity[]> {
+  const { data } = await api.get<Identity[]>("/auth/identities");
+  return data;
+}
+
+// ---------- File upload (E-003) ----------
+export interface UploadResult {
+  fileUrl: string;
+  fileKey: string | null;
+  fileName: string;
+  fileSize: number;
+  fileChecksum: string;
+  mimeType: string;
+  storage: "s3" | "local";
+}
+
+/**
+ * POST /upload/resource — multipart, field name "file".
+ * The server computes the checksum and returns everything the versions
+ * route needs; nothing is computed client-side.
+ */
+export async function uploadResourceFile(file: File): Promise<UploadResult> {
+  const form = new FormData();
+  form.append("file", file);
+  const { data } = await api.post<UploadResult>("/upload/resource", form, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return data;
+}
+
+export interface CreateVersionBody {
+  version: string; // "x.y.z"
+  changelog?: string;
+  fileUrl: string;
+  fileSize: number;
+  fileChecksum: string;
+}
+
+export interface ResourceVersionCreated extends ResourceVersion {
+  signed?: boolean;
+  artifactHash?: string;
+  manifestHash?: string;
+}
+
+export interface VersionValidationIssue {
+  path?: string;
+  message?: string;
+}
+
+/** 422 payload returned when sandbox/static validation rejects the artifact. */
+export interface VersionValidationError {
+  error: string;
+  validation?: { passed?: boolean; issues?: VersionValidationIssue[]; summary?: string } & Record<string, unknown>;
+}
+
+export async function createResourceVersion(
+  slug: string,
+  body: CreateVersionBody
+): Promise<ResourceVersionCreated> {
+  const { data } = await api.post<ResourceVersionCreated>(`/resources/${slug}/versions`, body);
+  return data;
+}
+
 // ---------- Money formatting (kopecks -> RUB) ----------
 export function formatRub(kopecks: number): string {
   return `${(kopecks / 100).toFixed(2)} ₽`;
@@ -203,8 +315,13 @@ export async function createResource(body: {
   return data;
 }
 
+/**
+ * Submit / withdraw a listing. The server contract is PATCH /resources/:slug
+ * with { status } (seller transitions: DRAFT <-> PENDING_REVIEW only) —
+ * there is no /resources/:slug/status route.
+ */
 export async function setResourceStatus(slug: string, status: string) {
-  const { data } = await api.patch(`/resources/${slug}/status`, { status });
+  const { data } = await api.patch(`/resources/${slug}`, { status });
   return data;
 }
 

@@ -1,77 +1,125 @@
+// Catalog / marketplace (D-002 filters + J-003 states).
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { fetchResources, formatRub, type Resource, type Pagination } from "@/lib/api-ext";
+import { fetchResources, formatRub, type Resource } from "@/lib/api-ext";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { Package } from "lucide-react";
+import { LoadingSpinner, EmptyState, ErrorState } from "@/components/ui/States";
 
 const PAGE_SIZE = 12;
 
+// Server has no filter params for PLAN-001 — filtering is client-side on the
+// fetched page of data.
+type PriceFilter = "all" | "free" | "paid";
+type TypeFilter = "ALL" | "SCRIPT" | "MAP" | "MODEL" | "TEXTURE" | "SOUND" | "GAMEMODE";
+
+const TYPES: TypeFilter[] = ["SCRIPT", "MAP", "MODEL", "TEXTURE", "SOUND", "GAMEMODE"];
+
 export default function ResourcesPage() {
   const [page, setPage] = useState(1);
+  const [priceFilter, setPriceFilter] = useState<PriceFilter>("all");
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("ALL" as TypeFilter | "ALL");
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ["resources", page],
     queryFn: () => fetchResources(page, PAGE_SIZE),
   });
 
   const resources: Resource[] = data?.data ?? [];
-  const pagination: Pagination | undefined = data?.pagination;
+  const pagination = data?.pagination;
 
-  if (isLoading) {
-    return (
-      <div className="container mx-auto px-4 py-12">
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[...Array(6)].map((_, i) => (
-            <Card key={i} className="animate-pulse">
-              <CardHeader>
-                <div className="h-6 bg-slate-200 dark:bg-slate-700 rounded w-3/4"></div>
-                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-full mt-2"></div>
-              </CardHeader>
-              <CardContent>
-                <div className="h-20 bg-slate-200 dark:bg-slate-700 rounded"></div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
-    );
-  }
+  const filtered = useMemo(() => {
+    return resources.filter((r) => {
+      if (priceFilter === "free" && r.price !== 0) return false;
+      if (priceFilter === "paid" && r.price === 0) return false;
+      if (typeFilter !== "ALL" && r.type !== typeFilter) return false;
+      return true;
+    });
+  }, [resources, priceFilter, typeFilter]);
 
-  if (error) {
-    return (
-      <div className="container mx-auto px-4 py-12">
-        <Card className="bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800">
-          <CardHeader>
-            <CardTitle className="text-red-600 dark:text-red-400">Ошибка загрузки</CardTitle>
-            <CardDescription>Не удалось загрузить ресурсы. Попробуйте позже.</CardDescription>
-          </CardHeader>
-        </Card>
-      </div>
-    );
-  }
+  const filtersActive = priceFilter !== "all" || typeFilter !== "ALL";
 
   return (
     <div className="container mx-auto px-4 py-12">
       <div className="mb-8">
-        <h1 className="text-4xl font-bold mb-2">Каталог ресурсов</h1>
+        <h1 className="text-4xl font-bold mb-2">Маркетплейс ресурсов</h1>
         <p className="text-lg text-slate-600 dark:text-slate-400">
-          Серверные ресурсы для MTA:SA с DRM-защитой
+          Ресурсы для MTA:SA с DRM-защитой
         </p>
       </div>
 
-      {resources.length === 0 ? (
-        <div className="text-center py-16">
-          <Package className="h-12 w-12 text-slate-400 mx-auto mb-4" />
-          <p className="text-slate-600 dark:text-slate-400">Пока нет опубликованных ресурсов</p>
+      {/* Filters (D-002) */}
+      <div className="flex flex-wrap items-center gap-3 mb-8">
+        <div className="flex rounded-md border border-slate-300 dark:border-slate-700 overflow-hidden">
+          {(
+            [
+              ["all", "Все"],
+              ["free", "Бесплатные"],
+              ["paid", "Платные"],
+            ] as [PriceFilter, string][]
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              onClick={() => setPriceFilter(value)}
+              className={`px-3 py-1.5 text-sm font-medium ${
+                priceFilter === value
+                  ? "bg-blue-600 text-white"
+                  : "bg-transparent text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
+
+        <select
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value as TypeFilter | "ALL")}
+          aria-label="Тип ресурса"
+          className="h-9 rounded-md border border-slate-300 bg-white px-2 text-sm dark:border-slate-700 dark:bg-slate-950"
+        >
+          <option value="ALL">Все типы</option>
+          {TYPES.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
+
+        {filtersActive ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setPriceFilter("all");
+              setTypeFilter("ALL");
+            }}
+          >
+            Сбросить фильтры
+          </Button>
+        ) : null}
+      </div>
+
+      {isLoading ? (
+        <LoadingSpinner label="Загрузка ресурсов..." />
+      ) : error ? (
+        <ErrorState error={error} onRetry={() => refetch()} />
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          title={filtersActive ? "Ничего не найдено" : "Пока нет опубликованных ресурсов"}
+          description={
+            filtersActive
+              ? "Попробуйте изменить или сбросить фильтры"
+              : "Загляните позже — ресурсы появятся после модерации"
+          }
+        />
       ) : (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {resources.map((resource) => (
+        <div className={`grid md:grid-cols-2 lg:grid-cols-3 gap-6 ${isFetching ? "opacity-60" : ""}`}>
+          {filtered.map((resource) => (
             <Link key={resource.id} href={`/resources/${resource.slug}`} className="group">
               <Card className="h-full transition-shadow group-hover:shadow-md">
                 <CardHeader>
@@ -87,7 +135,7 @@ export default function ResourcesPage() {
                 </CardHeader>
                 <CardContent className="flex items-center justify-between">
                   {resource.price === 0 ? (
-                    <StatusBadge status="FREE">БЕСПЛАТНО</StatusBadge>
+                    <StatusBadge status="FREE" />
                   ) : (
                     <span className="text-lg font-bold">{formatRub(resource.price)}</span>
                   )}
@@ -101,7 +149,7 @@ export default function ResourcesPage() {
         </div>
       )}
 
-      {pagination && pagination.pages > 1 ? (
+      {pagination && pagination.pages > 1 && !isLoading && !error ? (
         <div className="flex items-center justify-center gap-4 mt-10">
           <Button
             variant="outline"
