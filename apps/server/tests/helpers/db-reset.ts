@@ -83,7 +83,70 @@ export async function resetTestEntities(): Promise<void> {
     console.warn("[reset] provider events:", e instanceof Error ? e.message : e);
   }
 
-  // 6. Users last (sessions/accounts/reviews cascade)
+  // 6. PLAN Block 4 commerce tables (FK-safe order before user deletion):
+  //    usages/campaigns (Restrict to user), service orders, orders+items.
+  try {
+    const allCampaigns = await db.orm.public.DiscountCampaign.where({}).all();
+    for (const c of allCampaigns) {
+      if (testUserIds.has(c.sellerId)) {
+        const usages = await db.orm.public.DiscountUsage.where({ campaignId: c.id }).all();
+        for (const u of usages) {
+          await db.orm.public.DiscountUsage.where({ id: u.id }).delete().catch(() => undefined);
+        }
+        await db.orm.public.DiscountCampaign.where({ id: c.id }).delete().catch(() => undefined);
+      }
+    }
+  } catch (e) {
+    console.warn("[reset] discount campaigns:", e instanceof Error ? e.message : e);
+  }
+  try {
+    const usageRows = await db.orm.public.DiscountUsage.where({}).all();
+    for (const u of usageRows) {
+      if (testUserIds.has(u.userId)) {
+        await db.orm.public.DiscountUsage.where({ id: u.id }).delete().catch(() => undefined);
+      }
+    }
+  } catch (e) {
+    console.warn("[reset] discount usages:", e instanceof Error ? e.message : e);
+  }
+  try {
+    const sps = await db.orm.public.ServicePurchase.where({}).all();
+    for (const sp of sps) {
+      if (testUserIds.has(sp.buyerId)) {
+        // messages/deliveries/revisions cascade with the purchase
+        await db.orm.public.ServicePurchase.where({ id: sp.id }).delete().catch(() => undefined);
+      }
+    }
+  } catch (e) {
+    console.warn("[reset] service purchases:", e instanceof Error ? e.message : e);
+  }
+  try {
+    const services = await db.orm.public.Service.where({}).all();
+    for (const s of services) {
+      if (testUserIds.has(s.sellerId)) {
+        const items = await db.orm.public.ServiceOrderItem.where({ serviceId: s.id }).all();
+        for (const it of items) {
+          await db.orm.public.ServiceOrderItem.where({ id: it.id }).delete().catch(() => undefined);
+        }
+        await db.orm.public.Service.where({ id: s.id }).delete().catch(() => undefined);
+      }
+    }
+  } catch (e) {
+    console.warn("[reset] services:", e instanceof Error ? e.message : e);
+  }
+  try {
+    const orders = await db.orm.public.Order.where({}).all();
+    for (const o of orders) {
+      if (testUserIds.has(o.buyerId)) {
+        // OrderItems cascade with the order; Purchase.orderItemId is SetNull
+        await db.orm.public.Order.where({ id: o.id }).delete().catch(() => undefined);
+      }
+    }
+  } catch (e) {
+    console.warn("[reset] orders:", e instanceof Error ? e.message : e);
+  }
+
+  // 7. Users last (sessions/accounts/reviews cascade)
   for (const uid of testUserIds) {
     await db.orm.public.User.where({ id: uid }).delete().catch(() => undefined);
   }

@@ -97,11 +97,39 @@ beforeAll(async () => {
 
   // Discounted purchase: snapshot 100.00 RUB, final 50.00 RUB — the provider
   // amount must be verified against the FINAL total (A-011).
+  // PLAN C-012: purchases are created through the checkout aggregate, so the
+  // seeded rows carry an Order + OrderItem linked via Purchase.orderItemId.
+  const mkOrderItem = async (title: string, basePrice: number, discountAmount: number, finalPrice: number) => {
+    const order = await db.orm.public.Order.create({
+      buyerId: BUYER_ID,
+      status: "PENDING",
+      currency: "RUB",
+      subtotal: basePrice,
+      discountTotal: discountAmount,
+      finalTotal: finalPrice,
+    });
+    const item = await db.orm.public.OrderItem.create({
+      orderId: order.id,
+      itemType: "RESOURCE",
+      resourceId: resource.id,
+      sellerId: SELLER_ID,
+      titleSnapshot: title,
+      currency: "RUB",
+      basePrice,
+      discountAmount,
+      finalPrice,
+      platformFee: Math.round(finalPrice * 0.1),
+      sellerNet: finalPrice - Math.round(finalPrice * 0.1),
+    });
+    return item.id;
+  };
+
   const purchase = await db.orm.public.Purchase.create({
     buyerId: BUYER_ID,
     resourceId: resource.id,
     versionId: version.id,
     status: "PENDING",
+    orderItemId: await mkOrderItem("Webhook Test", 10000, 5000, 5000),
     priceSnapshot: 10000,
     discountSnapshot: 5000,
     finalPrice: 5000,
@@ -115,6 +143,7 @@ beforeAll(async () => {
     resourceId: resource.id,
     versionId: version.id,
     status: "PENDING",
+    orderItemId: await mkOrderItem("Webhook Test", 10000, 0, 10000),
     priceSnapshot: 10000,
     finalPrice: 10000,
     platformFee: 1000,

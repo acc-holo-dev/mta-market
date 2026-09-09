@@ -37,6 +37,8 @@ model User {
   sellerBalance SellerBalance?
   transactions  FinancialTransaction[]
   publisherKeys PublisherKey[]
+  orders        Order[]
+  discountCampaigns DiscountCampaign[]
 
   @@index([email])
   @@index([username])
@@ -157,6 +159,7 @@ model Service {
 model ServiceOrderItem {
   id                String  @id @default(uuid())
   orderId           String
+  orderItemId       String? @unique // Phase C bridge: link to the OrderItem aggregate (C-010/C-012)
   serviceId         String
   quantity          Int     @default(1)
   priceSnapshot     Int     // Service price at time of order
@@ -168,6 +171,7 @@ model ServiceOrderItem {
 
   service   Service  @relation(fields: [serviceId], references: [id], onDelete: Restrict)
   servicePurchase ServicePurchase?
+  orderItem OrderItem? @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
 
   @@index([orderId])
   @@index([serviceId])
@@ -176,9 +180,11 @@ model ServiceOrderItem {
 enum ServicePurchaseStatus {
   PENDING      // Payment not yet completed
   IN_PROGRESS  // Seller working on it
-  COMPLETED    // Service delivered
+  DELIVERED    // Seller submitted the delivery (C-009/C-011)
+  ACCEPTED     // Buyer accepted the delivery; revenue is settled
+  CLOSED       // Final terminal state
   CANCELLED    // Cancelled by buyer/seller
-  DISPUTED     // Dispute opened
+  DISPUTED     // Dispute opened (freezes the order)
 }
 
 model ServicePurchase {
@@ -200,6 +206,8 @@ model ServicePurchase {
   serviceOrderItem ServiceOrderItem @relation(fields: [serviceOrderItemId], references: [id], onDelete: Restrict)
   buyer            User             @relation(fields: [buyerId], references: [id], onDelete: Restrict)
   service          Service          @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  messages         ServiceOrderMessage[]
+  deliveries       ServiceDelivery[]
 
   @@index([buyerId])
   @@index([serviceId])
@@ -253,6 +261,7 @@ model Purchase {
 
   buyer     User            @relation(fields: [buyerId], references: [id], onDelete: Restrict)
   version   ResourceVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  orderItem OrderItem?      @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
   license   License?
 
   @@index([buyerId])
@@ -332,7 +341,8 @@ enum PaymentStatus {
 
 model Payment {
   id                String          @id @default(uuid())
-  purchaseId        String          @unique // Phase C bridge: one payment per purchase until Order aggregate lands (E-007)
+  purchaseId        String?         @unique // Resource payments (Phase C bridge); null for service payments
+  orderItemId       String?         @unique // C-012: service/other payments attach to their OrderItem
   provider          PaymentProvider
   providerPaymentId String          @unique
   status            PaymentStatus   @default(PENDING)
@@ -638,4 +648,182 @@ model ReconciliationMismatch {
   @@index([reportId])
   @@index([type])
   @@index([resolved])
+}
+
+// ---------------------------------------------------------------------------
+// PLAN Block 4 / C-012: Order is the checkout aggregate.
+// Order     = commercial checkout intent (one or more immutable priced lines)
+// OrderItem = immutable priced line (snapshot of base price, discount, fees)
+// Purchase  = completed RESOURCE purchase (existing model, stays compatible)
+// Migration path: resources keep Purchase as the completion record (Payment
+// webhooks are bound to purchaseId); new checkouts create Order+OrderItem and
+// link the Purchase via Purchase.orderItemId. Services use ServiceOrderItem
+// linked via ServiceOrderItem.orderItemId.
+// ---------------------------------------------------------------------------
+
+enum OrderStatus {
+  PENDING    // Checkout created, awaiting payment/free completion
+  COMPLETED  // All items fulfilled
+  CANCELLED  // Cancelled before completion
+}
+
+enum OrderItemType {
+  RESOURCE
+  SERVICE
+}
+
+enum DiscountType {
+  PERCENT // value = whole percent (1..100)
+  FIXED   // value = kopecks
+}
+
+enum DiscountScope {
+  ALL
+  RESOURCE
+  SERVICE
+}
+
+// C-004: seller-owned discount campaign.
+model DiscountCampaign {
+  id             String        @id @default(uuid())
+  sellerId       String
+  name           String
+  code           String? // optional promo code; unique per seller when set
+  type           DiscountType
+  value          Int // PERCENT: 1..100; FIXED: kopecks
+  currency       String        @default("RUB")
+  scope          DiscountScope @default(ALL)
+  scopeId        String? // resourceId or serviceId when scope != ALL
+  startsAt       TimestamptzString?
+  endsAt         TimestamptzString?
+  isActive       Boolean       @default(true)
+  usageLimit     Int? // max total uses; null = unlimited
+  perUserLimit   Int? // MVP: null (unlimited) or 1
+  minOrderAmount Int? // kopecks; item base price must be >= this
+  exclusive      Boolean       @default(true) // MVP: a campaign is exclusive (one per item)
+  usedCount      Int           @default(0) // atomic CAS counter for usageLimit (C-007)
+  createdAt      TimestamptzString @default(now())
+  updatedAt      temporal.updatedAtString()
+
+  seller User             @relation(fields: [sellerId], references: [id], onDelete: Restrict)
+  usages DiscountUsage[]
+  items  OrderItem[]
+
+  @@unique([sellerId, code])
+  @@index([sellerId])
+  @@index([isActive])
+}
+
+// C-007: usage records are created atomically at order completion —
+// failed orders never increment usage (INV-014).
+model DiscountUsage {
+  id          String @id @default(uuid())
+  campaignId  String
+  userId      String
+  orderId     String
+  orderItemId String
+  amount      Int // kopecks actually discounted for this line
+  createdAt   TimestamptzString @default(now())
+
+  campaign DiscountCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, orderItemId]) // idempotent completion
+  @@index([campaignId, userId])
+  @@index([orderId])
+}
+
+// C-012: checkout aggregate.
+model Order {
+  id            String      @id @default(uuid())
+  buyerId       String
+  status        OrderStatus @default(PENDING)
+  currency      String      @default("RUB")
+  subtotal      Int         @default(0) // sum of item base prices (kopecks)
+  discountTotal Int         @default(0)
+  finalTotal    Int         @default(0)
+  completedAt   TimestamptzString?
+  cancelledAt   TimestamptzString?
+  createdAt     TimestamptzString @default(now())
+  updatedAt     temporal.updatedAtString()
+
+  buyer User        @relation(fields: [buyerId], references: [id], onDelete: Restrict)
+  items OrderItem[]
+
+  @@index([buyerId])
+  @@index([status])
+}
+
+// C-006: immutable price/discount snapshot on the priced line.
+model OrderItem {
+  id                 String        @id @default(uuid())
+  orderId            String
+  itemType           OrderItemType
+  resourceId         String? // audit snapshot; not an FK (historical orders survive product edits/removal)
+  serviceId          String?
+  sellerId           String
+  titleSnapshot      String
+  currency           String        @default("RUB")
+  basePrice          Int // kopecks at checkout time
+  discountCampaignId String?
+  discountCode       String?
+  discountAmount     Int           @default(0)
+  finalPrice         Int
+  platformFee        Int
+  sellerNet          Int
+  createdAt          TimestamptzString @default(now())
+
+  order            Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  discountCampaign DiscountCampaign? @relation(fields: [discountCampaignId], references: [id], onDelete: SetNull)
+  purchase         Purchase?
+  serviceOrderItem ServiceOrderItem?
+
+  @@index([orderId])
+  @@index([discountCampaignId])
+  @@index([sellerId])
+}
+
+// C-011: buyer/seller communication inside a service order.
+model ServiceOrderMessage {
+  id                 String @id @default(uuid())
+  servicePurchaseId  String
+  senderId           String
+  senderRole         String // BUYER | SELLER | ADMIN
+  body               String
+  createdAt          TimestamptzString @default(now())
+
+  servicePurchase ServicePurchase @relation(fields: [servicePurchaseId], references: [id], onDelete: Cascade)
+
+  @@index([servicePurchaseId])
+}
+
+// C-011: seller's delivery submission for a service order.
+model ServiceDelivery {
+  id                String @id @default(uuid())
+  servicePurchaseId String
+  sellerId          String
+  notes             String
+  deliverableRef    String? // reference to uploaded deliverable (storage key / URL)
+  createdAt         TimestamptzString @default(now())
+
+  servicePurchase ServicePurchase    @relation(fields: [servicePurchaseId], references: [id], onDelete: Cascade)
+  revisions       ServiceRevision[]
+
+  @@index([servicePurchaseId])
+}
+
+// C-011: buyer's revision request against a delivery.
+model ServiceRevision {
+  id                String @id @default(uuid())
+  servicePurchaseId String
+  deliveryId        String
+  requestedBy       String
+  reason            String
+  status            String @default("OPEN") // OPEN | ADDRESSED
+  createdAt         TimestamptzString @default(now())
+  resolvedAt        TimestamptzString?
+
+  delivery ServiceDelivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+
+  @@index([servicePurchaseId])
+  @@index([deliveryId])
 }

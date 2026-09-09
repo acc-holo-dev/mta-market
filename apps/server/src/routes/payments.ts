@@ -14,21 +14,81 @@ import { standardRateLimit } from "../lib/rateLimit";
 import { validateCuid } from "../middleware/validateCuid";
 import { isYooKassaIP, verifyYooKassaAuth, getClientIP } from "../lib/yookassaWebhook";
 import { sendPurchaseEmail } from "../lib/email";
-import { settlePurchaseRevenue } from "../lib/ledger";
+import { completeResourceOrderItem, markServicePurchasePaid, CommerceError } from "../lib/commerce";
 import { reqLog } from "../middleware/requestId";
 
 const router: Router = Router();
 
 // POST /payments/create - Create payment (authenticated)
+// Accepts { purchaseId } for resource lines (legacy) or { servicePurchaseId }
+// for service lines (C-010). The provider amount is always the FINAL total.
 router.post("/create", authenticate, standardRateLimit, async (req: AuthRequest, res: Response) => {
   try {
-    const { purchaseId } = req.body;
+    const { purchaseId, servicePurchaseId } = req.body;
 
-    if (!purchaseId) {
-      res.status(400).json({ error: "Missing purchaseId" });
+    if (!purchaseId && !servicePurchaseId) {
+      res.status(400).json({ error: "Missing purchaseId or servicePurchaseId" });
       return;
     }
 
+    // ---- Service payment (C-010) ----
+    if (servicePurchaseId) {
+      const servicePurchase = await db.orm.public.ServicePurchase
+        .where({ id: servicePurchaseId })
+        .first();
+      if (!servicePurchase) {
+        res.status(404).json({ error: "Service purchase not found" });
+        return;
+      }
+      if (servicePurchase.buyerId !== req.user!.userId) {
+        res.status(403).json({ error: "Not authorized" });
+        return;
+      }
+      if (servicePurchase.status !== "PENDING") {
+        res.status(400).json({ error: "Service purchase is not pending" });
+        return;
+      }
+      const serviceOrderItem = await db.orm.public.ServiceOrderItem
+        .where({ id: servicePurchase.serviceOrderItemId })
+        .first();
+      if (!serviceOrderItem?.orderItemId) {
+        res.status(409).json({ error: "Service purchase has no checkout order item" });
+        return;
+      }
+
+      if (!YOOKASSA_ENABLED) {
+        res.json({
+          message: "YooKassa disabled - service order awaits manual payment setup",
+          servicePurchaseId: servicePurchase.id,
+        });
+        return;
+      }
+
+      const payment = await createYooKassaPayment({
+        amount: servicePurchase.finalPrice,
+        description: `Заказ услуги`,
+        orderId: servicePurchase.id,
+        returnUrl: `${process.env.FRONTEND_URL}/services/orders/${servicePurchase.id}`,
+      });
+
+      await db.orm.public.Payment.create({
+        purchaseId: null,
+        orderItemId: serviceOrderItem.orderItemId,
+        provider: "YUKASSA",
+        providerPaymentId: payment.id,
+        amount: servicePurchase.finalPrice,
+        currency: "RUB",
+        status: "PENDING",
+      });
+
+      res.json({
+        paymentUrl: payment.confirmation.confirmation_url,
+        paymentId: payment.id,
+      });
+      return;
+    }
+
+    // ---- Resource payment (legacy contract, kept compatible) ----
     const purchase = await db.orm.public.Purchase.where({ id: purchaseId }).first();
 
     if (!purchase) {
@@ -187,30 +247,29 @@ router.post("/webhook", async (req: Request, res: Response) => {
       return;
     }
 
-    const purchaseId = orderId;
-    if (!purchaseId) {
-      await db.orm.public.PaymentProviderEvent.where({ id: eventRecord.id }).update({
-        status: "FAILED",
-        lastError: `Invalid order_id: ${orderId}`,
-      });
-      res.status(400).json({ error: "Invalid order_id" });
-      return;
-    }
+    const orderRef = orderId;
 
-    const purchase = await db.orm.public.Purchase.where({ id: purchaseId }).first();
-    if (!purchase) {
+    // The reference is either a resource Purchase id (legacy + current
+    // resource checkouts) or a ServicePurchase id (C-010 service orders).
+    const purchase = await db.orm.public.Purchase.where({ id: orderRef }).first();
+    const servicePurchase = purchase
+      ? null
+      : await db.orm.public.ServicePurchase.where({ id: orderRef }).first();
+
+    if (!purchase && !servicePurchase) {
       await db.orm.public.PaymentProviderEvent.where({ id: eventRecord.id }).update({
         status: "FAILED",
-        lastError: `Purchase not found: ${purchaseId}`,
+        lastError: `Order not found: ${orderRef}`,
       });
-      res.status(404).json({ error: "Purchase not found" });
+      res.status(404).json({ error: "Order not found" });
       return;
     }
 
     // Do not trust webhook body alone. Confirm current provider state and amount.
     // TASK A-010/A-011: provider re-fetch + amount/currency/reference invariants.
     const providerPayment = await getYooKassaPayment(object.id);
-    const expectedAmount = (purchase.finalPrice / 100).toFixed(2);
+    const expectedEntity = purchase ?? servicePurchase!;
+    const expectedAmount = (expectedEntity.finalPrice / 100).toFixed(2);
     if (providerPayment.status !== "succeeded" || providerPayment.paid !== true) {
       await db.orm.public.PaymentProviderEvent.where({ id: eventRecord.id }).update({
         status: "FAILED",
@@ -233,93 +292,105 @@ router.post("/webhook", async (req: Request, res: Response) => {
         provider_amount: providerPayment.amount.value,
         provider_currency: providerPayment.amount.currency,
         expected_amount: expectedAmount,
-        purchase_id: purchase.id,
+        order_ref: orderRef,
       });
       res.status(409).json({ error: "Provider payment amount mismatch" });
       return;
     }
 
-    // TASK A-011: the provider payment reference must belong to THIS purchase.
+    // TASK A-011: the provider payment reference must belong to THIS order.
     const existingPayment = await db.orm.public.Payment.where({
       providerPaymentId: object.id,
     }).first();
-    if (existingPayment && existingPayment.purchaseId !== purchase.id) {
-      await db.orm.public.PaymentProviderEvent.where({ id: eventRecord.id }).update({
-        status: "FAILED",
-        lastError: `Payment ${object.id} is bound to purchase ${existingPayment.purchaseId}, webhook claims ${purchase.id}`,
-      });
-      reqLog(req).error("payment_quarantined_reference_mismatch", {
-        provider_payment_id: object.id,
-        bound_purchase_id: existingPayment.purchaseId,
-        claimed_purchase_id: purchase.id,
-      });
-      res.status(409).json({ error: "Payment reference mismatch" });
-      return;
+    if (existingPayment) {
+      const boundRef = existingPayment.purchaseId ?? existingPayment.orderItemId;
+      const belongsHere =
+        (purchase && existingPayment.purchaseId === purchase.id) ||
+        (servicePurchase &&
+          existingPayment.orderItemId != null &&
+          (await db.orm.public.ServiceOrderItem.where({
+            id: servicePurchase.serviceOrderItemId,
+          }).first())?.orderItemId === existingPayment.orderItemId);
+      if (!belongsHere) {
+        await db.orm.public.PaymentProviderEvent.where({ id: eventRecord.id }).update({
+          status: "FAILED",
+          lastError: `Payment ${object.id} is bound to order ${String(boundRef)}, webhook claims ${orderRef}`,
+        });
+        reqLog(req).error("payment_quarantined_reference_mismatch", {
+          provider_payment_id: object.id,
+          bound_order_ref: String(boundRef),
+          claimed_order_ref: orderRef,
+        });
+        res.status(409).json({ error: "Payment reference mismatch" });
+        return;
+      }
     }
 
-    if (purchase.status === "COMPLETED") {
-      // Idempotent reprocessing: make sure the entitlement exists (a previous
-      // attempt may have failed between the purchase update and license
-      // creation), then acknowledge.
-      const existingLicense = await db.orm.public.License.where({ purchaseId: purchase.id }).first();
-      if (!existingLicense) {
-        await db.orm.public.License.create({
+    if (purchase) {
+      // ---- Resource completion (atomic; INV-001/INV-006) ----
+      if (!purchase.orderItemId) {
+        await db.orm.public.PaymentProviderEvent.where({ id: eventRecord.id }).update({
+          status: "FAILED",
+          lastError: `Purchase ${purchase.id} has no checkout order item`,
+        });
+        res.status(409).json({ error: "Purchase has no checkout order item" });
+        return;
+      }
+
+      const completion = await completeResourceOrderItem(purchase.orderItemId);
+
+      if (existingPayment) {
+        await db.orm.public.Payment.where({ providerPaymentId: object.id }).update({
+          status: "SUCCEEDED",
+        });
+      } else {
+        // Provider-confirmed payment without a local record (e.g. created via
+        // the provider dashboard): persist it bound to this purchase.
+        await db.orm.public.Payment.create({
           purchaseId: purchase.id,
-          versionId: purchase.versionId,
-          status: "ACTIVE",
+          provider: "YUKASSA",
+          providerPaymentId: object.id,
+          amount: purchase.finalPrice,
+          currency: "RUB",
+          status: "SUCCEEDED",
         });
       }
-      await db.orm.public.PaymentProviderEvent.where({ id: eventRecord.id }).update({
-        status: "PROCESSED",
-        processedAt: new Date().toISOString(),
-      });
-      res.status(200).json({ message: "Purchase already completed" });
-      return;
-    }
 
-    const completedAt = new Date().toISOString();
-    await db.orm.public.Purchase.where({ id: purchaseId }).update({
-      status: "COMPLETED",
-      completedAt,
-    });
+      const user = await db.orm.public.User.where({ id: purchase.buyerId }).first();
+      const resource = await db.orm.public.Resource.where({ id: purchase.resourceId }).first();
+      if (
+        !completion.alreadyCompleted &&
+        user &&
+        resource &&
+        user.email &&
+        completion.licenseId
+      ) {
+        sendPurchaseEmail(user.email, resource.title, completion.licenseId).catch((err) =>
+          reqLog(req).error("purchase_email_send_failed", { purchase_id: purchase.id, error: err })
+        );
+      }
+    } else if (servicePurchase) {
+      // ---- Service completion: PENDING -> IN_PROGRESS (C-009/C-010) ----
+      await markServicePurchasePaid(servicePurchase.id);
 
-    if (existingPayment) {
-      await db.orm.public.Payment.where({ providerPaymentId: object.id }).update({
-        status: "SUCCEEDED",
-      });
-    } else {
-      // Provider-confirmed payment without a local record (e.g. created via
-      // the provider dashboard): persist it bound to this purchase.
-      await db.orm.public.Payment.create({
-        purchaseId: purchase.id,
-        provider: "YUKASSA",
-        providerPaymentId: object.id,
-        amount: purchase.finalPrice,
-        currency: "RUB",
-        status: "SUCCEEDED",
-      });
-    }
-
-    // Create license only if it does not exist yet (purchaseId is unique).
-    const licenseExisting = await db.orm.public.License.where({ purchaseId: purchase.id }).first();
-    const license = licenseExisting
-      ? licenseExisting
-      : await db.orm.public.License.create({
-          purchaseId: purchase.id,
-          versionId: purchase.versionId,
-          status: "ACTIVE",
+      if (existingPayment) {
+        await db.orm.public.Payment.where({ providerPaymentId: object.id }).update({
+          status: "SUCCEEDED",
         });
-
-    // Settle revenue: seller gets sellerRevenue, platform keeps platformFee.
-    // Uses immutable purchase snapshot; validates fee invariants.
-    await settlePurchaseRevenue(purchase);
-
-    const user = await db.orm.public.User.where({ id: purchase.buyerId }).first();
-    const resource = await db.orm.public.Resource.where({ id: purchase.resourceId }).first();
-    if (user && resource && user.email) {
-      sendPurchaseEmail(user.email, resource.title, license.id).catch((err) =>
-        reqLog(req).error("purchase_email_send_failed", { purchase_id: purchase.id, error: err })
-      );
+      } else {
+        const serviceOrderItem = await db.orm.public.ServiceOrderItem
+          .where({ id: servicePurchase.serviceOrderItemId })
+          .first();
+        await db.orm.public.Payment.create({
+          purchaseId: null,
+          orderItemId: serviceOrderItem?.orderItemId ?? null,
+          provider: "YUKASSA",
+          providerPaymentId: object.id,
+          amount: servicePurchase.finalPrice,
+          currency: "RUB",
+          status: "SUCCEEDED",
+        });
+      }
     }
 
     await db.orm.public.PaymentProviderEvent.where({ id: eventRecord.id }).update({
@@ -329,6 +400,11 @@ router.post("/webhook", async (req: Request, res: Response) => {
 
     res.status(200).json({ message: "Webhook processed successfully" });
   } catch (error) {
+    if (error instanceof CommerceError) {
+      reqLog(req).warn("webhook_completion_rejected", { code: error.code, status: error.status });
+      res.status(error.status).json({ error: error.message });
+      return;
+    }
     reqLog(req).error("webhook_processing_failed", { error });
     res.status(500).json({ error: "Failed to process webhook" });
   }
@@ -368,29 +444,25 @@ if (process.env.NODE_ENV !== 'production') {
           return;
         }
 
-        // Complete purchase
-        const completedAt = new Date().toISOString();
-        await db.orm.public.Purchase.where({ id: purchaseId }).update({
-          status: "COMPLETED",
-          completedAt,
-        });
+        if (!purchase.orderItemId) {
+          res.status(409).json({ error: "Purchase has no checkout order item" });
+          return;
+        }
 
-        // Create license
-        const license = await db.orm.public.License.create({
-          purchaseId: purchase.id,
-          versionId: purchase.versionId,
-          status: "ACTIVE",
-        });
-
-        // Settle revenue (same flow as real payment)
-        await settlePurchaseRevenue(purchase);
+        // Atomic completion through the shared commerce path (C-003/C-012).
+        const completion = await completeResourceOrderItem(purchase.orderItemId);
 
         res.json({
           message: "Payment simulated successfully",
           purchaseId: purchase.id,
-          licenseId: license.id,
+          licenseId: completion.licenseId,
         });
       } catch (error) {
+        if (error instanceof CommerceError) {
+          reqLog(req).warn("payment_simulation_rejected", { code: error.code, status: error.status });
+          res.status(error.status).json({ error: error.message, code: error.code });
+          return;
+        }
         reqLog(req).error("payment_simulation_failed", { error });
         res.status(500).json({ error: "Failed to simulate payment" });
       }

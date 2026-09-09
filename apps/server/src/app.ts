@@ -16,6 +16,7 @@ import purchasesRoutes from "./routes/purchases";
 import uploadRoutes from "./routes/upload";
 import paymentsRoutes from "./routes/payments";
 import adminRoutes from "./routes/admin";
+import servicesRoutes from "./routes/services";
 import { standardRateLimit } from "./lib/rateLimit";
 
 /**
@@ -97,6 +98,7 @@ export function createApp(): Express {
   app.use("/purchases", purchasesRoutes);
   app.use("/upload", uploadRoutes);
   app.use("/payments", paymentsRoutes);
+  app.use("/services", servicesRoutes);
   app.use("/admin", adminRoutes);
 
   // Explicit JSON 404 for unknown routes (TASK A-005 relies on this for

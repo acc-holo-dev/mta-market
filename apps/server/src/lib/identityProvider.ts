@@ -66,6 +66,12 @@ export interface IIdentityProvider {
   isEnabled(): boolean;
 
   /**
+   * OAuth redirect URI configured for this provider (env-driven).
+   * Used both when building the authorize URL and when exchanging the code.
+   */
+  getRedirectUri(): string;
+
+  /**
    * Get authorization URL to redirect user to
    * 
    * @param request - Authorization parameters

@@ -1,212 +1,62 @@
-// Authentication routes (OAuth2 Discord + JWT)
+// Authentication routes (OAuth2 identity providers + JWT)
+// PLAN D-002/D-003/D-004: registry-driven OAuth (Discord, Yandex, Google),
+// identity linking/unlinking, oauth_state CSRF cookie.
 import { Router, Request, Response } from "express";
+import crypto from "crypto";
 import { authRateLimit } from "../lib/rateLimit";
 import { authenticate, AuthRequest } from "../lib/auth";
-import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from "../lib/jwt";
+import { generateAccessToken, generateRefreshToken, verifyRefreshToken, verifyAccessToken } from "../lib/jwt";
 import { hashRefreshToken, generateTokenId, verifyRefreshTokenHash } from "../lib/tokenSecurity";
 import { setRefreshCookie, clearRefreshCookie } from "../lib/cookies";
 import { db } from "../prisma/db";
 import { sendWelcomeEmail } from "../lib/email";
 import { reqLog } from "../middleware/requestId";
+import { identityProviders } from "../lib/identityProvider";
+
+// Side-effect imports: each provider self-registers into the global registry.
+import "../lib/providers/discord";
+import "../lib/providers/yandex";
+import "../lib/providers/google";
 
 const router: Router = Router();
 
-interface DiscordTokenResponse {
-  access_token: string;
-  token_type: string;
-  expires_in: number;
-  refresh_token: string;
-  scope: string;
+// Short-lived CSRF/linking cookies for the OAuth round-trip.
+const OAUTH_STATE_COOKIE = "oauth_state";
+const LINK_USER_COOKIE = "link_user";
+const OAUTH_COOKIE_MAX_AGE_MS = 10 * 60 * 1000; // 10 minutes
+
+const OAUTH_COOKIE_ATTRS = {
+  httpOnly: true,
+  sameSite: "lax" as const,
+  path: "/",
+  maxAge: OAUTH_COOKIE_MAX_AGE_MS,
+};
+
+function setOAuthCookies(res: Response, state: string): void {
+  res.cookie(OAUTH_STATE_COOKIE, state, OAUTH_COOKIE_ATTRS);
 }
 
-interface DiscordUser {
-  id: string;
-  username: string;
-  discriminator: string;
-  avatar: string | null;
-  email?: string;
-  verified?: boolean;
-  global_name?: string;
+function clearOAuthCookies(res: Response): void {
+  res.clearCookie(OAUTH_STATE_COOKIE, { httpOnly: true, sameSite: "lax", path: "/" });
+  res.clearCookie(LINK_USER_COOKIE, { httpOnly: true, sameSite: "lax", path: "/" });
 }
 
-// GET /auth/discord - Redirect to Discord OAuth2
-router.get("/discord", authRateLimit, (req: Request, res: Response) => {
-  const clientId = process.env.DISCORD_CLIENT_ID;
-  const redirectUri = process.env.DISCORD_REDIRECT_URI;
+function frontendUrl(): string {
+  return process.env.FRONTEND_URL || "http://localhost:3000";
+}
 
-  if (!clientId || !redirectUri) {
-    res.status(500).json({ error: "Discord OAuth not configured" });
-    return;
-  }
+/** Build a conflict-free username from a provider username. */
+async function buildUsername(base: string): Promise<string> {
+  const sanitized = base.toLowerCase().replace(/[^a-z0-9_]/g, "") || "user";
+  const existing = await db.orm.public.User.where({ username: sanitized }).first();
+  if (!existing) return sanitized;
+  return `${sanitized}_${crypto.randomBytes(3).toString("hex")}`;
+}
 
-  const discordAuthUrl = `https://discord.com/api/oauth2/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(
-    redirectUri
-  )}&response_type=code&scope=identify%20email`;
-
-  res.redirect(discordAuthUrl);
-});
-
-// GET /auth/discord/callback - OAuth2 callback
-router.get("/discord/callback", authRateLimit, async (req: Request, res: Response) => {
-  try {
-    const { code } = req.query;
-
-    if (!code || typeof code !== "string") {
-      res.status(400).json({ error: "Missing code parameter" });
-      return;
-    }
-
-    const clientId = process.env.DISCORD_CLIENT_ID;
-    const clientSecret = process.env.DISCORD_CLIENT_SECRET;
-    const redirectUri = process.env.DISCORD_REDIRECT_URI;
-
-    if (!clientId || !clientSecret || !redirectUri) {
-      res.status(500).json({ error: "Discord OAuth not configured" });
-      return;
-    }
-
-    // Exchange code for access token
-    const tokenResponse = await fetch("https://discord.com/api/oauth2/token", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: new URLSearchParams({
-        client_id: clientId,
-        client_secret: clientSecret,
-        grant_type: "authorization_code",
-        code,
-        redirect_uri: redirectUri,
-      }),
-    });
-
-    if (!tokenResponse.ok) {
-      const error = await tokenResponse.text();
-      reqLog(req).error("discord_token_exchange_failed", { status: tokenResponse.status, error });
-      res.status(500).json({ error: "Failed to exchange code for token" });
-      return;
-    }
-
-    const tokenData = (await tokenResponse.json()) as DiscordTokenResponse;
-
-    // Fetch user data from Discord
-    const userResponse = await fetch("https://discord.com/api/users/@me", {
-      headers: {
-        Authorization: `Bearer ${tokenData.access_token}`,
-      },
-    });
-
-    if (!userResponse.ok) {
-      const error = await userResponse.text();
-      reqLog(req).error("discord_user_fetch_failed", { status: userResponse.status, error });
-      res.status(500).json({ error: "Failed to fetch user data" });
-      return;
-    }
-
-    const discordUser = (await userResponse.json()) as DiscordUser;
-
-    // Check if user exists
-    let user = await db.orm.public.User.where({
-      email: discordUser.email || `${discordUser.id}@discord.local`,
-    }).first();
-
-    if (!user) {
-      // Create new user
-      const username = discordUser.username || `discord_${discordUser.id}`;
-      const displayName = discordUser.global_name || discordUser.username;
-      const avatar = discordUser.avatar
-        ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png`
-        : null;
-
-      user = await db.orm.public.User.create({
-        email: discordUser.email || `${discordUser.id}@discord.local`,
-        username,
-        displayName,
-        avatar,
-        role: "USER",
-        status: "ACTIVE",
-      });
-
-      // Send welcome email
-      if (discordUser.email) {
-        sendWelcomeEmail(discordUser.email, username).catch((err) =>
-          reqLog(req).error("welcome_email_send_failed", { recipient: discordUser.email, username, error: err })
-        );
-      }
-
-      // Create Account link
-      await db.orm.public.Account.create({
-        userId: user.id,
-        provider: "DISCORD",
-        providerAccountId: discordUser.id,
-        accessToken: tokenData.access_token,
-        refreshToken: tokenData.refresh_token || null,
-        expiresAt: Math.floor(Date.now() / 1000) + tokenData.expires_in,
-      });
-    } else {
-      // Update existing account
-      const account = await db.orm.public.Account.where({
-        userId: user.id,
-        provider: "DISCORD",
-      }).first();
-
-      if (account) {
-        await db.orm.public.Account.where({ id: account.id }).update({
-          accessToken: tokenData.access_token,
-          refreshToken: tokenData.refresh_token || null,
-          expiresAt: Math.floor(Date.now() / 1000) + tokenData.expires_in,
-        });
-      } else {
-        // Create Account if doesn't exist
-        await db.orm.public.Account.create({
-          userId: user.id,
-          provider: "DISCORD",
-          providerAccountId: discordUser.id,
-          accessToken: tokenData.access_token,
-          refreshToken: tokenData.refresh_token || null,
-          expiresAt: Math.floor(Date.now() / 1000) + tokenData.expires_in,
-        });
-      }
-    }
-
-    // Generate JWT tokens
-    const accessToken = generateAccessToken({
-      userId: user.id,
-      email: user.email,
-      role: user.role,
-    });
-
-    const refreshToken = generateRefreshToken({
-      userId: user.id,
-      email: user.email,
-      role: user.role,
-    });
-
-    const tokenFamily = generateTokenId(); // For rotation tracking
-
-    // Create session with hashed refresh token
-    await db.orm.public.Session.create({
-      userId: user.id,
-      refreshTokenHash: hashRefreshToken(refreshToken),
-      tokenFamily,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days
-      ipAddress: req.ip || req.socket.remoteAddress,
-      userAgent: req.headers["user-agent"],
-    });
-
-    // Store refresh token in HttpOnly cookie (TASK A-001/D-006).
-    // The access token is NOT stored in any cookie: the frontend callback
-    // page exchanges the refresh cookie for an access token via
-    // POST /auth/refresh and keeps it in memory only.
-    setRefreshCookie(res, refreshToken);
-
-    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
-    res.redirect(`${frontendUrl}/auth/callback`);
-  } catch (error) {
-    reqLog(req).error("discord_oauth_failed", { error });
-    res.status(500).json({ error: "Authentication failed" });
-  }
-});
+/** True when the email looks like a real address, not a synthetic `.local` fallback. */
+function isRealEmail(email: string): boolean {
+  return !email.endsWith(".local");
+}
 
 // POST /auth/refresh - Refresh access token with rotation
 router.post("/refresh", authRateLimit, async (req: Request, res: Response) => {
@@ -297,7 +147,7 @@ router.post("/refresh", authRateLimit, async (req: Request, res: Response) => {
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       lastRotatedAt: new Date().toISOString(),
       ipAddress: req.ip || req.socket.remoteAddress,
-      userAgent: req.headers["user-agent"],
+      userAgent: typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"] : undefined,
     });
 
     // Set new refresh token cookie (rotation)
@@ -366,5 +216,351 @@ router.get("/me", authenticate, async (req: AuthRequest, res: Response) => {
     res.status(500).json({ error: "Failed to get user" });
   }
 });
+
+// GET /auth/identities - List current user's linked identities (D-002)
+router.get("/identities", authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const accounts = await db.orm.public.Account.where({ userId: req.user!.userId }).all();
+
+    // No token fields are ever exposed here.
+    res.json(
+      accounts.map((account) => ({
+        id: account.id,
+        provider: account.provider,
+        providerAccountId: account.providerAccountId,
+      }))
+    );
+  } catch (error) {
+    reqLog(req).error("list_identities_failed", { error });
+    res.status(500).json({ error: "Failed to list identities" });
+  }
+});
+
+// DELETE /auth/identities/:id - Unlink an identity (D-002)
+router.delete("/identities/:id", authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const account = await db.orm.public.Account.where({ id: String(req.params.id) }).first();
+
+    if (!account || account.userId !== req.user!.userId) {
+      res.status(404).json({ error: "Identity not found" });
+      return;
+    }
+
+    // A user must always keep at least one login method.
+    const allAccounts = await db.orm.public.Account.where({ userId: req.user!.userId }).all();
+    if (allAccounts.length <= 1) {
+      res.status(409).json({ error: "Cannot unlink the only login method" });
+      return;
+    }
+
+    await db.orm.public.Account.where({ id: account.id }).delete();
+
+    reqLog(req).info("identity_unlinked", {
+      user_id: req.user!.userId,
+      provider: account.provider.toLowerCase(),
+    });
+
+    res.json({ message: "Identity unlinked" });
+  } catch (error) {
+    reqLog(req).error("unlink_identity_failed", { error });
+    res.status(500).json({ error: "Failed to unlink identity" });
+  }
+});
+
+// GET /auth/:provider/link - Start the identity LINKING flow (authenticated).
+// Sets the link_user cookie then redirects into the normal authorize route.
+router.get("/:provider/link", authenticate, authRateLimit, async (req: AuthRequest, res: Response) => {
+  const providerName = String(req.params.provider).toLowerCase();
+  const provider = identityProviders.get(providerName);
+
+  if (!provider || !provider.isEnabled()) {
+    res.status(404).json({ error: "Provider not available" });
+    return;
+  }
+
+  try {
+    const user = await db.orm.public.User.where({ id: req.user!.userId }).first();
+    if (!user) {
+      res.status(401).json({ error: "User not found" });
+      return;
+    }
+
+    const { authorizationUrl, state } = provider.getAuthorizationUrl({
+      redirectUri: provider.getRedirectUri(),
+    });
+
+    if (!authorizationUrl || !state) {
+      res.status(500).json({ error: "Provider not configured" });
+      return;
+    }
+
+    setOAuthCookies(res, state);
+    res.cookie(LINK_USER_COOKIE, generateAccessToken({ userId: user.id, email: user.email, role: user.role }), OAUTH_COOKIE_ATTRS);
+
+    res.redirect(authorizationUrl);
+  } catch (error) {
+    reqLog(req).error("oauth_authorize_failed", { provider: providerName, error });
+    res.status(500).json({ error: "Failed to start linking" });
+  }
+});
+
+// GET /auth/:provider - Redirect to the provider's authorize URL.
+// Authenticated requests (linking mode) also receive a link_user cookie.
+router.get("/:provider", authRateLimit, async (req: Request, res: Response) => {
+  const providerName = String(req.params.provider).toLowerCase();
+  const provider = identityProviders.get(providerName);
+
+  if (!provider || !provider.isEnabled()) {
+    res.status(404).json({ error: "Provider not available" });
+    return;
+  }
+
+  try {
+    const { authorizationUrl, state } = provider.getAuthorizationUrl({
+      redirectUri: provider.getRedirectUri(),
+    });
+
+    if (!authorizationUrl || !state) {
+      res.status(500).json({ error: "Provider not configured" });
+      return;
+    }
+
+    setOAuthCookies(res, state);
+
+    // Linking mode: an authenticated request links instead of logging in.
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      const payload = verifyAccessToken(authHeader.substring(7));
+      if (payload) {
+        res.cookie(LINK_USER_COOKIE, generateAccessToken(payload), OAUTH_COOKIE_ATTRS);
+      }
+    }
+
+    res.redirect(authorizationUrl);
+  } catch (error) {
+    reqLog(req).error("oauth_authorize_failed", { provider: providerName, error });
+    res.status(500).json({ error: "Failed to start authentication" });
+  }
+});
+
+// GET /auth/:provider/callback - OAuth2 callback (login or link mode)
+router.get("/:provider/callback", authRateLimit, async (req: Request, res: Response) => {
+  const providerName = String(req.params.provider).toLowerCase();
+  const provider = identityProviders.get(providerName);
+
+  if (!provider || !provider.isEnabled()) {
+    res.status(404).json({ error: "Provider not available" });
+    return;
+  }
+
+  // CSRF: verify the state query parameter against the short-lived cookie.
+  const queryState = typeof req.query.state === "string" ? req.query.state : undefined;
+  const cookieState = req.cookies?.[OAUTH_STATE_COOKIE];
+
+  if (!queryState || !cookieState || queryState !== cookieState) {
+    reqLog(req).warn("oauth_state_mismatch", { provider: providerName });
+    clearOAuthCookies(res);
+    res.status(400).json({ error: "Invalid state" });
+    return;
+  }
+
+  const code = typeof req.query.code === "string" ? req.query.code : undefined;
+  if (!code) {
+    clearOAuthCookies(res);
+    res.status(400).json({ error: "Missing code parameter" });
+    return;
+  }
+
+  try {
+    const { tokens, user } = await provider.handleCallback({
+      code,
+      state: queryState,
+      redirectUri: provider.getRedirectUri(),
+    });
+
+    const linkToken = req.cookies?.[LINK_USER_COOKIE];
+    if (linkToken) {
+      await handleLinkingCallback(req, res, providerName, linkToken, user);
+      return;
+    }
+
+    await handleLoginCallback(req, res, providerName, tokens, user);
+  } catch (error) {
+    clearOAuthCookies(res);
+    reqLog(req).error("oauth_callback_failed", { provider: providerName, error });
+    res.status(500).json({ error: "Authentication failed" });
+  }
+});
+
+/** LINKING MODE: attach the provider identity to an already authenticated user. */
+async function handleLinkingCallback(
+  req: Request,
+  res: Response,
+  providerName: string,
+  linkToken: string,
+  user: { providerId: string }
+): Promise<void> {
+  clearOAuthCookies(res);
+
+  const payload = verifyAccessToken(linkToken);
+  if (!payload) {
+    res.status(401).json({ error: "Link session expired" });
+    return;
+  }
+
+  const linkingUser = await db.orm.public.User.where({ id: payload.userId }).first();
+  if (!linkingUser) {
+    res.status(401).json({ error: "Link session expired" });
+    return;
+  }
+
+  const providerUpper = providerName.toUpperCase();
+  const existingAccount = await db.orm.public.Account.where({
+    provider: providerUpper,
+    providerAccountId: user.providerId,
+  }).first();
+
+  if (existingAccount && existingAccount.userId !== linkingUser.id) {
+    reqLog(req).warn("identity_link_conflict", {
+      user_id: linkingUser.id,
+      provider: providerName,
+      owner_user_id: existingAccount.userId,
+    });
+    res.status(409).json({ error: "Identity already linked to another account" });
+    return;
+  }
+
+  if (existingAccount) {
+    // Idempotent re-link.
+    res.redirect(`${frontendUrl()}/account/identities?linked=1`);
+    return;
+  }
+
+  await db.orm.public.Account.create({
+    userId: linkingUser.id,
+    provider: providerUpper,
+    providerAccountId: user.providerId,
+  });
+
+  reqLog(req).info("identity_linked", { user_id: linkingUser.id, provider: providerName });
+
+  res.redirect(`${frontendUrl()}/account/identities?linked=1`);
+}
+
+/** LOGIN MODE: sign the user in (creating the account/user when needed). */
+async function handleLoginCallback(
+  req: Request,
+  res: Response,
+  providerName: string,
+  tokens: { accessToken: string; refreshToken?: string; expiresIn: number; tokenType?: string; scope?: string },
+  user: {
+    providerId: string;
+    email?: string;
+    username?: string;
+    displayName?: string;
+    avatar?: string;
+    verified?: boolean;
+  }
+): Promise<void> {
+  clearOAuthCookies(res);
+
+  const providerUpper = providerName.toUpperCase();
+  const epochExpiresAt = Math.floor(Date.now() / 1000) + tokens.expiresIn;
+
+  const accountTokenFields = {
+    accessToken: tokens.accessToken,
+    refreshToken: tokens.refreshToken || null,
+    expiresAt: epochExpiresAt,
+    tokenType: tokens.tokenType || null,
+    scope: tokens.scope || null,
+  };
+
+  let account = await db.orm.public.Account.where({
+    provider: providerUpper,
+    providerAccountId: user.providerId,
+  }).first();
+
+  let targetUser;
+
+  if (account) {
+    // Returning user: the identity already maps to an account.
+    targetUser = await db.orm.public.User.where({ id: account.userId }).first();
+    if (!targetUser) {
+      reqLog(req).error("identity_orphaned_account", { provider: providerName, account_id: account.id });
+      res.status(500).json({ error: "Authentication failed" });
+      return;
+    }
+    await db.orm.public.Account.where({ id: account.id }).update(accountTokenFields);
+  } else {
+    // SECURITY: never silently log in via an email match from an UNVERIFIED
+    // provider email. Only verified emails may claim an existing user.
+    let matchedByEmail = null;
+    if (user.email && user.verified) {
+      matchedByEmail = await db.orm.public.User.where({ email: user.email }).first();
+    }
+
+    if (matchedByEmail) {
+      targetUser = matchedByEmail;
+    } else {
+      // Create a brand-new user. Unverified or missing emails get a
+      // synthetic fallback address scoped to the provider id.
+      const email = user.email && user.verified ? user.email : `${user.providerId}@${providerName}.local`;
+      const username = await buildUsername(user.username || `${providerName}_${user.providerId}`);
+
+      targetUser = await db.orm.public.User.create({
+        email,
+        username,
+        displayName: user.displayName || username,
+        avatar: user.avatar || null,
+        role: "USER",
+        status: "ACTIVE",
+        ...(user.email && user.verified ? { emailVerified: new Date().toISOString() } : {}),
+      });
+
+      reqLog(req).info("user_created", { user_id: targetUser.id, provider: providerName });
+
+      if (isRealEmail(email)) {
+        sendWelcomeEmail(email, username).catch((err) =>
+          reqLog(req).error("welcome_email_send_failed", { recipient: email, username, error: err })
+        );
+      }
+    }
+
+    account = await db.orm.public.Account.create({
+      userId: targetUser.id,
+      provider: providerUpper,
+      providerAccountId: user.providerId,
+      ...accountTokenFields,
+    });
+  }
+
+  // Issue the session (refresh cookie holds the raw token; DB holds the hash).
+  const refreshToken = generateRefreshToken({
+    userId: targetUser.id,
+    email: targetUser.email,
+    role: targetUser.role,
+  });
+
+  const tokenFamily = generateTokenId(); // For rotation tracking
+
+  await db.orm.public.Session.create({
+    userId: targetUser.id,
+    refreshTokenHash: hashRefreshToken(refreshToken),
+    tokenFamily,
+    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days
+    ipAddress: req.ip || req.socket.remoteAddress,
+    userAgent: req.headers["user-agent"],
+  });
+
+  // Store refresh token in HttpOnly cookie (TASK A-001/D-006).
+  // The access token is NOT stored in any cookie: the frontend callback
+  // page exchanges the refresh cookie for an access token via
+  // POST /auth/refresh and keeps it in memory only.
+  setRefreshCookie(res, refreshToken);
+
+  reqLog(req).info("oauth_login_succeeded", { user_id: targetUser.id, provider: providerName });
+
+  res.redirect(`${frontendUrl()}/auth/callback`);
+}
 
 export default router;

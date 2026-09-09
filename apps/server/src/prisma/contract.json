@@ -12,6 +12,14 @@
       "model": "ArtifactSignature",
       "namespace": "public"
     },
+    "discountCampaign": {
+      "model": "DiscountCampaign",
+      "namespace": "public"
+    },
+    "discountUsage": {
+      "model": "DiscountUsage",
+      "namespace": "public"
+    },
     "financialTransaction": {
       "model": "FinancialTransaction",
       "namespace": "public"
@@ -26,6 +34,14 @@
     },
     "license": {
       "model": "License",
+      "namespace": "public"
+    },
+    "order": {
+      "model": "Order",
+      "namespace": "public"
+    },
+    "orderItem": {
+      "model": "OrderItem",
       "namespace": "public"
     },
     "payment": {
@@ -80,12 +96,24 @@
       "model": "Service",
       "namespace": "public"
     },
+    "serviceDelivery": {
+      "model": "ServiceDelivery",
+      "namespace": "public"
+    },
     "serviceOrderItem": {
       "model": "ServiceOrderItem",
       "namespace": "public"
     },
+    "serviceOrderMessage": {
+      "model": "ServiceOrderMessage",
+      "namespace": "public"
+    },
     "servicePurchase": {
       "model": "ServicePurchase",
+      "namespace": "public"
+    },
+    "serviceRevision": {
+      "model": "ServiceRevision",
       "namespace": "public"
     },
     "session": {
@@ -101,6 +129,36 @@
     "namespaces": {
       "public": {
         "enum": {
+          "DiscountScope": {
+            "codecId": "pg/text@1",
+            "members": [
+              {
+                "name": "ALL",
+                "value": "ALL"
+              },
+              {
+                "name": "RESOURCE",
+                "value": "RESOURCE"
+              },
+              {
+                "name": "SERVICE",
+                "value": "SERVICE"
+              }
+            ]
+          },
+          "DiscountType": {
+            "codecId": "pg/text@1",
+            "members": [
+              {
+                "name": "PERCENT",
+                "value": "PERCENT"
+              },
+              {
+                "name": "FIXED",
+                "value": "FIXED"
+              }
+            ]
+          },
           "InstallationStatus": {
             "codecId": "pg/text@1",
             "members": [
@@ -170,6 +228,36 @@
               {
                 "name": "STATUS_MISMATCH",
                 "value": "STATUS_MISMATCH"
+              }
+            ]
+          },
+          "OrderItemType": {
+            "codecId": "pg/text@1",
+            "members": [
+              {
+                "name": "RESOURCE",
+                "value": "RESOURCE"
+              },
+              {
+                "name": "SERVICE",
+                "value": "SERVICE"
+              }
+            ]
+          },
+          "OrderStatus": {
+            "codecId": "pg/text@1",
+            "members": [
+              {
+                "name": "PENDING",
+                "value": "PENDING"
+              },
+              {
+                "name": "COMPLETED",
+                "value": "COMPLETED"
+              },
+              {
+                "name": "CANCELLED",
+                "value": "CANCELLED"
               }
             ]
           },
@@ -386,8 +474,16 @@
                 "value": "IN_PROGRESS"
               },
               {
-                "name": "COMPLETED",
-                "value": "COMPLETED"
+                "name": "DELIVERED",
+                "value": "DELIVERED"
+              },
+              {
+                "name": "ACCEPTED",
+                "value": "ACCEPTED"
+              },
+              {
+                "name": "CLOSED",
+                "value": "CLOSED"
               },
               {
                 "name": "CANCELLED",
@@ -781,6 +877,362 @@
               },
               "namespaceId": "public",
               "table": "artifactSignature"
+            }
+          },
+          "DiscountCampaign": {
+            "fields": {
+              "code": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "createdAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "currency": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "endsAt": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "exclusive": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/bool@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "isActive": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/bool@1",
+                  "kind": "scalar"
+                }
+              },
+              "minOrderAmount": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/int4@1",
+                  "kind": "scalar"
+                }
+              },
+              "name": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "perUserLimit": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/int4@1",
+                  "kind": "scalar"
+                }
+              },
+              "scope": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                },
+                "valueSet": {
+                  "entityKind": "enum",
+                  "entityName": "DiscountScope",
+                  "namespaceId": "public",
+                  "plane": "domain"
+                }
+              },
+              "scopeId": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "sellerId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "startsAt": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "type": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                },
+                "valueSet": {
+                  "entityKind": "enum",
+                  "entityName": "DiscountType",
+                  "namespaceId": "public",
+                  "plane": "domain"
+                }
+              },
+              "updatedAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "usageLimit": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/int4@1",
+                  "kind": "scalar"
+                }
+              },
+              "usedCount": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/int4@1",
+                  "kind": "scalar"
+                }
+              },
+              "value": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/int4@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {
+              "items": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "discountCampaignId"
+                  ]
+                },
+                "to": {
+                  "model": "OrderItem",
+                  "namespace": "public"
+                }
+              },
+              "seller": {
+                "cardinality": "N:1",
+                "on": {
+                  "localFields": [
+                    "sellerId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "User",
+                  "namespace": "public"
+                }
+              },
+              "usages": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "campaignId"
+                  ]
+                },
+                "to": {
+                  "model": "DiscountUsage",
+                  "namespace": "public"
+                }
+              }
+            },
+            "storage": {
+              "fields": {
+                "code": {
+                  "column": "code"
+                },
+                "createdAt": {
+                  "column": "createdAt"
+                },
+                "currency": {
+                  "column": "currency"
+                },
+                "endsAt": {
+                  "column": "endsAt"
+                },
+                "exclusive": {
+                  "column": "exclusive"
+                },
+                "id": {
+                  "column": "id"
+                },
+                "isActive": {
+                  "column": "isActive"
+                },
+                "minOrderAmount": {
+                  "column": "minOrderAmount"
+                },
+                "name": {
+                  "column": "name"
+                },
+                "perUserLimit": {
+                  "column": "perUserLimit"
+                },
+                "scope": {
+                  "column": "scope"
+                },
+                "scopeId": {
+                  "column": "scopeId"
+                },
+                "sellerId": {
+                  "column": "sellerId"
+                },
+                "startsAt": {
+                  "column": "startsAt"
+                },
+                "type": {
+                  "column": "type"
+                },
+                "updatedAt": {
+                  "column": "updatedAt"
+                },
+                "usageLimit": {
+                  "column": "usageLimit"
+                },
+                "usedCount": {
+                  "column": "usedCount"
+                },
+                "value": {
+                  "column": "value"
+                }
+              },
+              "namespaceId": "public",
+              "table": "discountCampaign"
+            }
+          },
+          "DiscountUsage": {
+            "fields": {
+              "amount": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/int4@1",
+                  "kind": "scalar"
+                }
+              },
+              "campaignId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "createdAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "orderId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "orderItemId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "userId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {
+              "campaign": {
+                "cardinality": "N:1",
+                "on": {
+                  "localFields": [
+                    "campaignId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "DiscountCampaign",
+                  "namespace": "public"
+                }
+              }
+            },
+            "storage": {
+              "fields": {
+                "amount": {
+                  "column": "amount"
+                },
+                "campaignId": {
+                  "column": "campaignId"
+                },
+                "createdAt": {
+                  "column": "createdAt"
+                },
+                "id": {
+                  "column": "id"
+                },
+                "orderId": {
+                  "column": "orderId"
+                },
+                "orderItemId": {
+                  "column": "orderItemId"
+                },
+                "userId": {
+                  "column": "userId"
+                }
+              },
+              "namespaceId": "public",
+              "table": "discountUsage"
             }
           },
           "FinancialTransaction": {
@@ -1439,6 +1891,402 @@
               "table": "license"
             }
           },
+          "Order": {
+            "fields": {
+              "buyerId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "cancelledAt": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "completedAt": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "createdAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "currency": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "discountTotal": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/int4@1",
+                  "kind": "scalar"
+                }
+              },
+              "finalTotal": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/int4@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "status": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                },
+                "valueSet": {
+                  "entityKind": "enum",
+                  "entityName": "OrderStatus",
+                  "namespaceId": "public",
+                  "plane": "domain"
+                }
+              },
+              "subtotal": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/int4@1",
+                  "kind": "scalar"
+                }
+              },
+              "updatedAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {
+              "buyer": {
+                "cardinality": "N:1",
+                "on": {
+                  "localFields": [
+                    "buyerId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "User",
+                  "namespace": "public"
+                }
+              },
+              "items": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "orderId"
+                  ]
+                },
+                "to": {
+                  "model": "OrderItem",
+                  "namespace": "public"
+                }
+              }
+            },
+            "storage": {
+              "fields": {
+                "buyerId": {
+                  "column": "buyerId"
+                },
+                "cancelledAt": {
+                  "column": "cancelledAt"
+                },
+                "completedAt": {
+                  "column": "completedAt"
+                },
+                "createdAt": {
+                  "column": "createdAt"
+                },
+                "currency": {
+                  "column": "currency"
+                },
+                "discountTotal": {
+                  "column": "discountTotal"
+                },
+                "finalTotal": {
+                  "column": "finalTotal"
+                },
+                "id": {
+                  "column": "id"
+                },
+                "status": {
+                  "column": "status"
+                },
+                "subtotal": {
+                  "column": "subtotal"
+                },
+                "updatedAt": {
+                  "column": "updatedAt"
+                }
+              },
+              "namespaceId": "public",
+              "table": "order"
+            }
+          },
+          "OrderItem": {
+            "fields": {
+              "basePrice": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/int4@1",
+                  "kind": "scalar"
+                }
+              },
+              "createdAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "currency": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "discountAmount": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/int4@1",
+                  "kind": "scalar"
+                }
+              },
+              "discountCampaignId": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "discountCode": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "finalPrice": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/int4@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "itemType": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                },
+                "valueSet": {
+                  "entityKind": "enum",
+                  "entityName": "OrderItemType",
+                  "namespaceId": "public",
+                  "plane": "domain"
+                }
+              },
+              "orderId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "platformFee": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/int4@1",
+                  "kind": "scalar"
+                }
+              },
+              "resourceId": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "sellerId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "sellerNet": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/int4@1",
+                  "kind": "scalar"
+                }
+              },
+              "serviceId": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "titleSnapshot": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {
+              "discountCampaign": {
+                "cardinality": "N:1",
+                "on": {
+                  "localFields": [
+                    "discountCampaignId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "DiscountCampaign",
+                  "namespace": "public"
+                }
+              },
+              "order": {
+                "cardinality": "N:1",
+                "on": {
+                  "localFields": [
+                    "orderId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "Order",
+                  "namespace": "public"
+                }
+              },
+              "purchase": {
+                "cardinality": "1:1",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "orderItemId"
+                  ]
+                },
+                "to": {
+                  "model": "Purchase",
+                  "namespace": "public"
+                }
+              },
+              "serviceOrderItem": {
+                "cardinality": "1:1",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "orderItemId"
+                  ]
+                },
+                "to": {
+                  "model": "ServiceOrderItem",
+                  "namespace": "public"
+                }
+              }
+            },
+            "storage": {
+              "fields": {
+                "basePrice": {
+                  "column": "basePrice"
+                },
+                "createdAt": {
+                  "column": "createdAt"
+                },
+                "currency": {
+                  "column": "currency"
+                },
+                "discountAmount": {
+                  "column": "discountAmount"
+                },
+                "discountCampaignId": {
+                  "column": "discountCampaignId"
+                },
+                "discountCode": {
+                  "column": "discountCode"
+                },
+                "finalPrice": {
+                  "column": "finalPrice"
+                },
+                "id": {
+                  "column": "id"
+                },
+                "itemType": {
+                  "column": "itemType"
+                },
+                "orderId": {
+                  "column": "orderId"
+                },
+                "platformFee": {
+                  "column": "platformFee"
+                },
+                "resourceId": {
+                  "column": "resourceId"
+                },
+                "sellerId": {
+                  "column": "sellerId"
+                },
+                "sellerNet": {
+                  "column": "sellerNet"
+                },
+                "serviceId": {
+                  "column": "serviceId"
+                },
+                "titleSnapshot": {
+                  "column": "titleSnapshot"
+                }
+              },
+              "namespaceId": "public",
+              "table": "orderItem"
+            }
+          },
           "Payment": {
             "fields": {
               "amount": {
@@ -1483,6 +2331,13 @@
                   "kind": "scalar"
                 }
               },
+              "orderItemId": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
               "provider": {
                 "nullable": false,
                 "type": {
@@ -1504,7 +2359,7 @@
                 }
               },
               "purchaseId": {
-                "nullable": false,
+                "nullable": true,
                 "type": {
                   "codecId": "pg/text@1",
                   "kind": "scalar"
@@ -1551,6 +2406,9 @@
                 },
                 "metadata": {
                   "column": "metadata"
+                },
+                "orderItemId": {
+                  "column": "orderItemId"
                 },
                 "provider": {
                   "column": "provider"
@@ -2008,6 +2866,21 @@
                 },
                 "to": {
                   "model": "License",
+                  "namespace": "public"
+                }
+              },
+              "orderItem": {
+                "cardinality": "N:1",
+                "on": {
+                  "localFields": [
+                    "orderItemId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "OrderItem",
                   "namespace": "public"
                 }
               },
@@ -3423,6 +4296,108 @@
               "table": "service"
             }
           },
+          "ServiceDelivery": {
+            "fields": {
+              "createdAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "deliverableRef": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "notes": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "sellerId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "servicePurchaseId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {
+              "revisions": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "deliveryId"
+                  ]
+                },
+                "to": {
+                  "model": "ServiceRevision",
+                  "namespace": "public"
+                }
+              },
+              "servicePurchase": {
+                "cardinality": "N:1",
+                "on": {
+                  "localFields": [
+                    "servicePurchaseId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "ServicePurchase",
+                  "namespace": "public"
+                }
+              }
+            },
+            "storage": {
+              "fields": {
+                "createdAt": {
+                  "column": "createdAt"
+                },
+                "deliverableRef": {
+                  "column": "deliverableRef"
+                },
+                "id": {
+                  "column": "id"
+                },
+                "notes": {
+                  "column": "notes"
+                },
+                "sellerId": {
+                  "column": "sellerId"
+                },
+                "servicePurchaseId": {
+                  "column": "servicePurchaseId"
+                }
+              },
+              "namespaceId": "public",
+              "table": "serviceDelivery"
+            }
+          },
           "ServiceOrderItem": {
             "fields": {
               "buyerNotes": {
@@ -3474,6 +4449,13 @@
                   "kind": "scalar"
                 }
               },
+              "orderItemId": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
               "priceSnapshot": {
                 "nullable": false,
                 "type": {
@@ -3497,6 +4479,21 @@
               }
             },
             "relations": {
+              "orderItem": {
+                "cardinality": "N:1",
+                "on": {
+                  "localFields": [
+                    "orderItemId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "OrderItem",
+                  "namespace": "public"
+                }
+              },
               "service": {
                 "cardinality": "N:1",
                 "on": {
@@ -3551,6 +4548,9 @@
                 "orderId": {
                   "column": "orderId"
                 },
+                "orderItemId": {
+                  "column": "orderItemId"
+                },
                 "priceSnapshot": {
                   "column": "priceSnapshot"
                 },
@@ -3563,6 +4563,93 @@
               },
               "namespaceId": "public",
               "table": "serviceOrderItem"
+            }
+          },
+          "ServiceOrderMessage": {
+            "fields": {
+              "body": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "createdAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "senderId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "senderRole": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "servicePurchaseId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {
+              "servicePurchase": {
+                "cardinality": "N:1",
+                "on": {
+                  "localFields": [
+                    "servicePurchaseId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "ServicePurchase",
+                  "namespace": "public"
+                }
+              }
+            },
+            "storage": {
+              "fields": {
+                "body": {
+                  "column": "body"
+                },
+                "createdAt": {
+                  "column": "createdAt"
+                },
+                "id": {
+                  "column": "id"
+                },
+                "senderId": {
+                  "column": "senderId"
+                },
+                "senderRole": {
+                  "column": "senderRole"
+                },
+                "servicePurchaseId": {
+                  "column": "servicePurchaseId"
+                }
+              },
+              "namespaceId": "public",
+              "table": "serviceOrderMessage"
             }
           },
           "ServicePurchase": {
@@ -3688,6 +4775,36 @@
                   "namespace": "public"
                 }
               },
+              "deliveries": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "servicePurchaseId"
+                  ]
+                },
+                "to": {
+                  "model": "ServiceDelivery",
+                  "namespace": "public"
+                }
+              },
+              "messages": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "servicePurchaseId"
+                  ]
+                },
+                "to": {
+                  "model": "ServiceOrderMessage",
+                  "namespace": "public"
+                }
+              },
               "service": {
                 "cardinality": "N:1",
                 "on": {
@@ -3766,6 +4883,113 @@
               },
               "namespaceId": "public",
               "table": "servicePurchase"
+            }
+          },
+          "ServiceRevision": {
+            "fields": {
+              "createdAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "deliveryId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "reason": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "requestedBy": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "resolvedAt": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "servicePurchaseId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "status": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {
+              "delivery": {
+                "cardinality": "N:1",
+                "on": {
+                  "localFields": [
+                    "deliveryId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "ServiceDelivery",
+                  "namespace": "public"
+                }
+              }
+            },
+            "storage": {
+              "fields": {
+                "createdAt": {
+                  "column": "createdAt"
+                },
+                "deliveryId": {
+                  "column": "deliveryId"
+                },
+                "id": {
+                  "column": "id"
+                },
+                "reason": {
+                  "column": "reason"
+                },
+                "requestedBy": {
+                  "column": "requestedBy"
+                },
+                "resolvedAt": {
+                  "column": "resolvedAt"
+                },
+                "servicePurchaseId": {
+                  "column": "servicePurchaseId"
+                },
+                "status": {
+                  "column": "status"
+                }
+              },
+              "namespaceId": "public",
+              "table": "serviceRevision"
             }
           },
           "Session": {
@@ -3993,6 +5217,36 @@
                 },
                 "to": {
                   "model": "Account",
+                  "namespace": "public"
+                }
+              },
+              "discountCampaigns": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "sellerId"
+                  ]
+                },
+                "to": {
+                  "model": "DiscountCampaign",
+                  "namespace": "public"
+                }
+              },
+              "orders": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "buyerId"
+                  ]
+                },
+                "to": {
+                  "model": "Order",
                   "namespace": "public"
                 }
               },
@@ -4402,6 +5656,305 @@
                 {
                   "columns": [
                     "versionId"
+                  ]
+                }
+              ]
+            },
+            "discountCampaign": {
+              "checks": [
+                {
+                  "expression": "\"scope\" IN ('ALL', 'RESOURCE', 'SERVICE')",
+                  "name": "discountCampaign_scope_check_4db24e9b",
+                  "prefix": "discountCampaign_scope_check"
+                },
+                {
+                  "expression": "\"type\" IN ('PERCENT', 'FIXED')",
+                  "name": "discountCampaign_type_check_ac23c085",
+                  "prefix": "discountCampaign_type_check"
+                }
+              ],
+              "columns": {
+                "code": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "createdAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "default": {
+                    "expression": "now()",
+                    "kind": "function"
+                  },
+                  "nativeType": "timestamptz",
+                  "nullable": false
+                },
+                "currency": {
+                  "codecId": "pg/text@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": "RUB"
+                  },
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "endsAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "nativeType": "timestamptz",
+                  "nullable": true
+                },
+                "exclusive": {
+                  "codecId": "pg/bool@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": true
+                  },
+                  "nativeType": "bool",
+                  "nullable": false
+                },
+                "id": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "isActive": {
+                  "codecId": "pg/bool@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": true
+                  },
+                  "nativeType": "bool",
+                  "nullable": false
+                },
+                "minOrderAmount": {
+                  "codecId": "pg/int4@1",
+                  "nativeType": "int4",
+                  "nullable": true
+                },
+                "name": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "perUserLimit": {
+                  "codecId": "pg/int4@1",
+                  "nativeType": "int4",
+                  "nullable": true
+                },
+                "scope": {
+                  "codecId": "pg/text@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": "ALL"
+                  },
+                  "nativeType": "text",
+                  "nullable": false,
+                  "valueSet": {
+                    "entityKind": "valueSet",
+                    "entityName": "DiscountScope",
+                    "namespaceId": "public",
+                    "plane": "storage"
+                  }
+                },
+                "scopeId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "sellerId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "startsAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "nativeType": "timestamptz",
+                  "nullable": true
+                },
+                "type": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false,
+                  "valueSet": {
+                    "entityKind": "valueSet",
+                    "entityName": "DiscountType",
+                    "namespaceId": "public",
+                    "plane": "storage"
+                  }
+                },
+                "updatedAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "nativeType": "timestamptz",
+                  "nullable": false
+                },
+                "usageLimit": {
+                  "codecId": "pg/int4@1",
+                  "nativeType": "int4",
+                  "nullable": true
+                },
+                "usedCount": {
+                  "codecId": "pg/int4@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": 0
+                  },
+                  "nativeType": "int4",
+                  "nullable": false
+                },
+                "value": {
+                  "codecId": "pg/int4@1",
+                  "nativeType": "int4",
+                  "nullable": false
+                }
+              },
+              "foreignKeys": [
+                {
+                  "onDelete": "restrict",
+                  "source": {
+                    "columns": [
+                      "sellerId"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "discountCampaign"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "user"
+                  }
+                }
+              ],
+              "indexes": [
+                {
+                  "columns": [
+                    "isActive"
+                  ],
+                  "name": "discountCampaign_isActive_idx_77fe3ba1",
+                  "prefix": "discountCampaign_isActive_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "sellerId"
+                  ],
+                  "name": "discountCampaign_sellerId_idx_d71255f2",
+                  "prefix": "discountCampaign_sellerId_idx",
+                  "unique": false
+                }
+              ],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
+              "uniques": [
+                {
+                  "columns": [
+                    "sellerId",
+                    "code"
+                  ]
+                }
+              ]
+            },
+            "discountUsage": {
+              "columns": {
+                "amount": {
+                  "codecId": "pg/int4@1",
+                  "nativeType": "int4",
+                  "nullable": false
+                },
+                "campaignId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "createdAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "default": {
+                    "expression": "now()",
+                    "kind": "function"
+                  },
+                  "nativeType": "timestamptz",
+                  "nullable": false
+                },
+                "id": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "orderId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "orderItemId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "userId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                }
+              },
+              "foreignKeys": [
+                {
+                  "onDelete": "cascade",
+                  "source": {
+                    "columns": [
+                      "campaignId"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "discountUsage"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "discountCampaign"
+                  }
+                }
+              ],
+              "indexes": [
+                {
+                  "columns": [
+                    "campaignId"
+                  ],
+                  "name": "discountUsage_campaignId_idx_3aacd648",
+                  "prefix": "discountUsage_campaignId_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "campaignId",
+                    "userId"
+                  ],
+                  "name": "discountUsage_campaignId_userId_idx_fee48996",
+                  "prefix": "discountUsage_campaignId_userId_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "orderId"
+                  ],
+                  "name": "discountUsage_orderId_idx_d284871b",
+                  "prefix": "discountUsage_orderId_idx",
+                  "unique": false
+                }
+              ],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
+              "uniques": [
+                {
+                  "columns": [
+                    "campaignId",
+                    "orderItemId"
                   ]
                 }
               ]
@@ -5012,6 +6565,322 @@
                 }
               ]
             },
+            "order": {
+              "checks": [
+                {
+                  "expression": "\"status\" IN ('PENDING', 'COMPLETED', 'CANCELLED')",
+                  "name": "order_status_check_aa2991a9",
+                  "prefix": "order_status_check"
+                }
+              ],
+              "columns": {
+                "buyerId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "cancelledAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "nativeType": "timestamptz",
+                  "nullable": true
+                },
+                "completedAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "nativeType": "timestamptz",
+                  "nullable": true
+                },
+                "createdAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "default": {
+                    "expression": "now()",
+                    "kind": "function"
+                  },
+                  "nativeType": "timestamptz",
+                  "nullable": false
+                },
+                "currency": {
+                  "codecId": "pg/text@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": "RUB"
+                  },
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "discountTotal": {
+                  "codecId": "pg/int4@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": 0
+                  },
+                  "nativeType": "int4",
+                  "nullable": false
+                },
+                "finalTotal": {
+                  "codecId": "pg/int4@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": 0
+                  },
+                  "nativeType": "int4",
+                  "nullable": false
+                },
+                "id": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "status": {
+                  "codecId": "pg/text@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": "PENDING"
+                  },
+                  "nativeType": "text",
+                  "nullable": false,
+                  "valueSet": {
+                    "entityKind": "valueSet",
+                    "entityName": "OrderStatus",
+                    "namespaceId": "public",
+                    "plane": "storage"
+                  }
+                },
+                "subtotal": {
+                  "codecId": "pg/int4@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": 0
+                  },
+                  "nativeType": "int4",
+                  "nullable": false
+                },
+                "updatedAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "nativeType": "timestamptz",
+                  "nullable": false
+                }
+              },
+              "foreignKeys": [
+                {
+                  "onDelete": "restrict",
+                  "source": {
+                    "columns": [
+                      "buyerId"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "order"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "user"
+                  }
+                }
+              ],
+              "indexes": [
+                {
+                  "columns": [
+                    "buyerId"
+                  ],
+                  "name": "order_buyerId_idx_80be0de9",
+                  "prefix": "order_buyerId_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "status"
+                  ],
+                  "name": "order_status_idx_e98638ab",
+                  "prefix": "order_status_idx",
+                  "unique": false
+                }
+              ],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
+              "uniques": []
+            },
+            "orderItem": {
+              "checks": [
+                {
+                  "expression": "\"itemType\" IN ('RESOURCE', 'SERVICE')",
+                  "name": "orderItem_itemType_check_1b88d338",
+                  "prefix": "orderItem_itemType_check"
+                }
+              ],
+              "columns": {
+                "basePrice": {
+                  "codecId": "pg/int4@1",
+                  "nativeType": "int4",
+                  "nullable": false
+                },
+                "createdAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "default": {
+                    "expression": "now()",
+                    "kind": "function"
+                  },
+                  "nativeType": "timestamptz",
+                  "nullable": false
+                },
+                "currency": {
+                  "codecId": "pg/text@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": "RUB"
+                  },
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "discountAmount": {
+                  "codecId": "pg/int4@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": 0
+                  },
+                  "nativeType": "int4",
+                  "nullable": false
+                },
+                "discountCampaignId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "discountCode": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "finalPrice": {
+                  "codecId": "pg/int4@1",
+                  "nativeType": "int4",
+                  "nullable": false
+                },
+                "id": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "itemType": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false,
+                  "valueSet": {
+                    "entityKind": "valueSet",
+                    "entityName": "OrderItemType",
+                    "namespaceId": "public",
+                    "plane": "storage"
+                  }
+                },
+                "orderId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "platformFee": {
+                  "codecId": "pg/int4@1",
+                  "nativeType": "int4",
+                  "nullable": false
+                },
+                "resourceId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "sellerId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "sellerNet": {
+                  "codecId": "pg/int4@1",
+                  "nativeType": "int4",
+                  "nullable": false
+                },
+                "serviceId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "titleSnapshot": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                }
+              },
+              "foreignKeys": [
+                {
+                  "onDelete": "cascade",
+                  "source": {
+                    "columns": [
+                      "orderId"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "orderItem"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "order"
+                  }
+                },
+                {
+                  "onDelete": "setNull",
+                  "source": {
+                    "columns": [
+                      "discountCampaignId"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "orderItem"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "discountCampaign"
+                  }
+                }
+              ],
+              "indexes": [
+                {
+                  "columns": [
+                    "discountCampaignId"
+                  ],
+                  "name": "orderItem_discountCampaignId_idx_e4e0d149",
+                  "prefix": "orderItem_discountCampaignId_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "orderId"
+                  ],
+                  "name": "orderItem_orderId_idx_d284871b",
+                  "prefix": "orderItem_orderId_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "sellerId"
+                  ],
+                  "name": "orderItem_sellerId_idx_d71255f2",
+                  "prefix": "orderItem_sellerId_idx",
+                  "unique": false
+                }
+              ],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
+              "uniques": []
+            },
             "payment": {
               "checks": [
                 {
@@ -5064,6 +6933,11 @@
                   "nativeType": "json",
                   "nullable": true
                 },
+                "orderItemId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
                 "provider": {
                   "codecId": "pg/text@1",
                   "nativeType": "text",
@@ -5083,7 +6957,7 @@
                 "purchaseId": {
                   "codecId": "pg/text@1",
                   "nativeType": "text",
-                  "nullable": false
+                  "nullable": true
                 },
                 "status": {
                   "codecId": "pg/text@1",
@@ -5134,6 +7008,11 @@
                 {
                   "columns": [
                     "purchaseId"
+                  ]
+                },
+                {
+                  "columns": [
+                    "orderItemId"
                   ]
                 },
                 {
@@ -5546,6 +7425,23 @@
                     ],
                     "namespaceId": "public",
                     "tableName": "resourceVersion"
+                  }
+                },
+                {
+                  "onDelete": "setNull",
+                  "source": {
+                    "columns": [
+                      "orderItemId"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "purchase"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "orderItem"
                   }
                 }
               ],
@@ -6705,6 +8601,79 @@
                 }
               ]
             },
+            "serviceDelivery": {
+              "columns": {
+                "createdAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "default": {
+                    "expression": "now()",
+                    "kind": "function"
+                  },
+                  "nativeType": "timestamptz",
+                  "nullable": false
+                },
+                "deliverableRef": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "id": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "notes": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "sellerId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "servicePurchaseId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                }
+              },
+              "foreignKeys": [
+                {
+                  "onDelete": "cascade",
+                  "source": {
+                    "columns": [
+                      "servicePurchaseId"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "serviceDelivery"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "servicePurchase"
+                  }
+                }
+              ],
+              "indexes": [
+                {
+                  "columns": [
+                    "servicePurchaseId"
+                  ],
+                  "name": "serviceDelivery_servicePurchaseId_idx_d3ffae5a",
+                  "prefix": "serviceDelivery_servicePurchaseId_idx",
+                  "unique": false
+                }
+              ],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
+              "uniques": []
+            },
             "serviceOrderItem": {
               "columns": {
                 "buyerNotes": {
@@ -6750,6 +8719,11 @@
                   "nativeType": "text",
                   "nullable": false
                 },
+                "orderItemId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
                 "priceSnapshot": {
                   "codecId": "pg/int4@1",
                   "nativeType": "int4",
@@ -6787,6 +8761,23 @@
                     "namespaceId": "public",
                     "tableName": "service"
                   }
+                },
+                {
+                  "onDelete": "setNull",
+                  "source": {
+                    "columns": [
+                      "orderItemId"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "serviceOrderItem"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "orderItem"
+                  }
                 }
               ],
               "indexes": [
@@ -6812,13 +8803,92 @@
                   "id"
                 ]
               },
+              "uniques": [
+                {
+                  "columns": [
+                    "orderItemId"
+                  ]
+                }
+              ]
+            },
+            "serviceOrderMessage": {
+              "columns": {
+                "body": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "createdAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "default": {
+                    "expression": "now()",
+                    "kind": "function"
+                  },
+                  "nativeType": "timestamptz",
+                  "nullable": false
+                },
+                "id": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "senderId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "senderRole": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "servicePurchaseId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                }
+              },
+              "foreignKeys": [
+                {
+                  "onDelete": "cascade",
+                  "source": {
+                    "columns": [
+                      "servicePurchaseId"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "serviceOrderMessage"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "servicePurchase"
+                  }
+                }
+              ],
+              "indexes": [
+                {
+                  "columns": [
+                    "servicePurchaseId"
+                  ],
+                  "name": "serviceOrderMessage_servicePurchaseId_idx_d3ffae5a",
+                  "prefix": "serviceOrderMessage_servicePurchaseId_idx",
+                  "unique": false
+                }
+              ],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
               "uniques": []
             },
             "servicePurchase": {
               "checks": [
                 {
-                  "expression": "\"status\" IN ('PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'DISPUTED')",
-                  "name": "servicePurchase_status_check_b42f7746",
+                  "expression": "\"status\" IN ('PENDING', 'IN_PROGRESS', 'DELIVERED', 'ACCEPTED', 'CLOSED', 'CANCELLED', 'DISPUTED')",
+                  "name": "servicePurchase_status_check_c14a7045",
                   "prefix": "servicePurchase_status_check"
                 }
               ],
@@ -7003,6 +9073,101 @@
                   ]
                 }
               ]
+            },
+            "serviceRevision": {
+              "columns": {
+                "createdAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "default": {
+                    "expression": "now()",
+                    "kind": "function"
+                  },
+                  "nativeType": "timestamptz",
+                  "nullable": false
+                },
+                "deliveryId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "id": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "reason": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "requestedBy": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "resolvedAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "nativeType": "timestamptz",
+                  "nullable": true
+                },
+                "servicePurchaseId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "status": {
+                  "codecId": "pg/text@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": "OPEN"
+                  },
+                  "nativeType": "text",
+                  "nullable": false
+                }
+              },
+              "foreignKeys": [
+                {
+                  "onDelete": "cascade",
+                  "source": {
+                    "columns": [
+                      "deliveryId"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "serviceRevision"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "serviceDelivery"
+                  }
+                }
+              ],
+              "indexes": [
+                {
+                  "columns": [
+                    "deliveryId"
+                  ],
+                  "name": "serviceRevision_deliveryId_idx_ebc950f6",
+                  "prefix": "serviceRevision_deliveryId_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "servicePurchaseId"
+                  ],
+                  "name": "serviceRevision_servicePurchaseId_idx_d3ffae5a",
+                  "prefix": "serviceRevision_servicePurchaseId_idx",
+                  "unique": false
+                }
+              ],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
+              "uniques": []
             },
             "session": {
               "columns": {
@@ -7259,6 +9424,21 @@
             }
           },
           "valueSet": {
+            "DiscountScope": {
+              "kind": "valueSet",
+              "values": [
+                "ALL",
+                "RESOURCE",
+                "SERVICE"
+              ]
+            },
+            "DiscountType": {
+              "kind": "valueSet",
+              "values": [
+                "PERCENT",
+                "FIXED"
+              ]
+            },
             "InstallationStatus": {
               "kind": "valueSet",
               "values": [
@@ -7290,6 +9470,21 @@
                 "MISSING_PROVIDER",
                 "AMOUNT_MISMATCH",
                 "STATUS_MISMATCH"
+              ]
+            },
+            "OrderItemType": {
+              "kind": "valueSet",
+              "values": [
+                "RESOURCE",
+                "SERVICE"
+              ]
+            },
+            "OrderStatus": {
+              "kind": "valueSet",
+              "values": [
+                "PENDING",
+                "COMPLETED",
+                "CANCELLED"
               ]
             },
             "PaymentProvider": {
@@ -7381,7 +9576,9 @@
               "values": [
                 "PENDING",
                 "IN_PROGRESS",
-                "COMPLETED",
+                "DELIVERED",
+                "ACCEPTED",
+                "CLOSED",
                 "CANCELLED",
                 "DISPUTED"
               ]
@@ -7439,10 +9636,10 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "24cdb9664b0cf1043a780f76ea59fc4d9e0500399101582ea28c7eb34f17a1ff"
+    "storageHash": "b0c132873362a03a3eb4c97b75af5740755d5ff69f7d808c874db35caa62318f"
   },
   "execution": {
-    "executionHash": "cfcb05c003fc0f0b0795d4294fdb5b0687de528f9726eb821c871fa6a43c4ecb",
+    "executionHash": "1a15995ebb9ce6018eba9d8eea093642c76e70df8a4ec2adb2191e51be71f566",
     "mutations": {
       "defaults": [
         {
@@ -7465,6 +9662,43 @@
             "column": "id",
             "namespace": "public",
             "table": "artifactSignature"
+          }
+        },
+        {
+          "onCreate": {
+            "id": "uuidv4",
+            "kind": "generator"
+          },
+          "ref": {
+            "column": "id",
+            "namespace": "public",
+            "table": "discountCampaign"
+          }
+        },
+        {
+          "onCreate": {
+            "id": "timestampNow",
+            "kind": "generator"
+          },
+          "onUpdate": {
+            "id": "timestampNow",
+            "kind": "generator"
+          },
+          "ref": {
+            "column": "updatedAt",
+            "namespace": "public",
+            "table": "discountCampaign"
+          }
+        },
+        {
+          "onCreate": {
+            "id": "uuidv4",
+            "kind": "generator"
+          },
+          "ref": {
+            "column": "id",
+            "namespace": "public",
+            "table": "discountUsage"
           }
         },
         {
@@ -7509,6 +9743,43 @@
             "column": "id",
             "namespace": "public",
             "table": "license"
+          }
+        },
+        {
+          "onCreate": {
+            "id": "uuidv4",
+            "kind": "generator"
+          },
+          "ref": {
+            "column": "id",
+            "namespace": "public",
+            "table": "order"
+          }
+        },
+        {
+          "onCreate": {
+            "id": "timestampNow",
+            "kind": "generator"
+          },
+          "onUpdate": {
+            "id": "timestampNow",
+            "kind": "generator"
+          },
+          "ref": {
+            "column": "updatedAt",
+            "namespace": "public",
+            "table": "order"
+          }
+        },
+        {
+          "onCreate": {
+            "id": "uuidv4",
+            "kind": "generator"
+          },
+          "ref": {
+            "column": "id",
+            "namespace": "public",
+            "table": "orderItem"
           }
         },
         {
@@ -7711,6 +9982,17 @@
           "ref": {
             "column": "id",
             "namespace": "public",
+            "table": "serviceDelivery"
+          }
+        },
+        {
+          "onCreate": {
+            "id": "uuidv4",
+            "kind": "generator"
+          },
+          "ref": {
+            "column": "id",
+            "namespace": "public",
             "table": "serviceOrderItem"
           }
         },
@@ -7722,7 +10004,29 @@
           "ref": {
             "column": "id",
             "namespace": "public",
+            "table": "serviceOrderMessage"
+          }
+        },
+        {
+          "onCreate": {
+            "id": "uuidv4",
+            "kind": "generator"
+          },
+          "ref": {
+            "column": "id",
+            "namespace": "public",
             "table": "servicePurchase"
+          }
+        },
+        {
+          "onCreate": {
+            "id": "uuidv4",
+            "kind": "generator"
+          },
+          "ref": {
+            "column": "id",
+            "namespace": "public",
+            "table": "serviceRevision"
           }
         },
         {

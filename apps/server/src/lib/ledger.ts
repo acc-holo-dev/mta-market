@@ -97,3 +97,39 @@ export async function settlePurchaseRevenue(purchase: {
     });
   }
 }
+
+/**
+ * C-009/C-011: records the revenue split for an ACCEPTED service order.
+ * Mirrors settlePurchaseRevenue: seller gets sellerRevenue, platform keeps
+ * platformFee; the split is validated against the FINAL price.
+ */
+export async function settleServiceRevenue(servicePurchase: {
+  id: string;
+  serviceId: string;
+  finalPrice: number;
+  platformFee: number;
+  sellerRevenue: number;
+}): Promise<void> {
+  const service = await db.orm.public.Service.where({ id: servicePurchase.serviceId }).first();
+
+  if (!service) {
+    throw new Error(`Cannot settle service purchase ${servicePurchase.id}: service not found`);
+  }
+
+  if (servicePurchase.platformFee + servicePurchase.sellerRevenue !== servicePurchase.finalPrice) {
+    throw new Error(
+      `Ledger invariant violated for service purchase ${servicePurchase.id}: ` +
+        `platformFee(${servicePurchase.platformFee}) + sellerRevenue(${servicePurchase.sellerRevenue}) ` +
+        `!= finalPrice(${servicePurchase.finalPrice})`
+    );
+  }
+
+  if (servicePurchase.sellerRevenue > 0) {
+    await recordSellerRevenue({
+      sellerId: service.sellerId,
+      purchaseId: servicePurchase.id,
+      amount: servicePurchase.sellerRevenue,
+      type: "SELLER_REVENUE",
+    });
+  }
+}

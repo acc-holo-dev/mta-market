@@ -3,16 +3,19 @@ import { Router, Response } from "express";
 import { authenticate, AuthRequest } from "../lib/auth";
 import { standardRateLimit } from "../lib/rateLimit";
 import { db } from "../prisma/db";
-import { validateDiscount, applyDiscount, calculateFinalPrice } from "../lib/discount";
 import { validate } from "../middleware/validate";
+import { createResourceCheckout, CommerceError } from "../lib/commerce";
 import { validateCuid } from "../middleware/validateCuid";
 import { createPurchaseSchema } from "../lib/validation";
-import { settlePurchaseRevenue } from "../lib/ledger";
 import { reqLog } from "../middleware/requestId";
 
 const router: Router = Router();
 
 // POST /purchases - Create purchase (authenticated)
+// PLAN C-003/C-012: the checkout creates the Order + OrderItem aggregate and
+// a Purchase line. Free/fully-discounted resources complete immediately via
+// the same atomic path as paid completions (no payment provider call).
+// Discount usage is consumed at completion (C-007), not at checkout.
 router.post(
   "/",
   authenticate,
@@ -20,133 +23,59 @@ router.post(
   validate(createPurchaseSchema),
   async (req: AuthRequest, res: Response) => {
     try {
-      const { resourceSlug } = req.body;
+      const { resourceSlug, discountCode } = req.body;
 
-      // Get resource
-      const resource = await db.orm.public.Resource.where({ slug: resourceSlug }).first();
-
-      if (!resource) {
-        res.status(404).json({ error: "Resource not found" });
-        return;
-      }
-
-      if (resource.status !== "PUBLISHED") {
-        res.status(400).json({ error: "Resource is not available for purchase" });
-        return;
-      }
-
-      // Check if user already purchased this resource
-      const existingPurchase = await db.orm.public.Purchase.where({
-        buyerId: req.user!.userId,
-        resourceId: resource.id,
-      }).first();
-
-      if (existingPurchase && existingPurchase.status === "COMPLETED") {
-        res.status(409).json({ error: "You already own this resource" });
-        return;
-      }
-
-      // Get latest version (versionId selection removed for now — always use latest)
-      const versions = await db.orm.public.ResourceVersion.where({ resourceId: resource.id })
-        .orderBy((m) => m.publishedAt.desc())
-        .limit(1)
-        .all();
-      const version = versions[0];
-
-      if (!version) {
-        res.status(404).json({ error: "No versions available for this resource" });
-        return;
-      }
-
-      // Snapshot current price (immutable)
-      const priceSnapshot = resource.price;
-
-      // Apply discount if provided
-      const { discountCode } = req.body;
-      let discountId: string | null = null;
-      let discountAmount = 0;
-
-      if (discountCode && priceSnapshot > 0) {
-        const validation = await validateDiscount({
-          code: discountCode,
-          resourceId: resource.id,
-          originalPrice: priceSnapshot,
-        });
-
-        if (!validation.valid) {
-          res.status(400).json({ error: validation.error });
-          return;
-        }
-
-        if (validation.discount) {
-          discountId = validation.discount.id;
-          discountAmount = validation.discount.discountAmount;
-          
-          // Increment discount usage count
-          await applyDiscount(discountId);
-        }
-      }
-
-      // Calculate final price after discount
-      const finalPrice = calculateFinalPrice(priceSnapshot, discountAmount);
-      const platformFee = Math.round(finalPrice * 0.1); // 10% of final price
-      const sellerRevenue = finalPrice - platformFee;
-
-      // Create purchase
-      const purchase = await db.orm.public.Purchase.create({
-        buyerId: req.user!.userId,
-        resourceId: resource.id,
-        versionId: version.id,
-        status: finalPrice === 0 ? "COMPLETED" : "PENDING", // Free/fully discounted = completed immediately
-        priceSnapshot,
-        discountSnapshot: discountAmount,
-        finalPrice,
-        platformFee,
-        sellerRevenue,
-        completedAt: finalPrice === 0 ? new Date().toISOString() : null,
+      const checkout = await createResourceCheckout({
+        userId: req.user!.userId,
+        resourceSlug,
+        discountCode,
       });
 
-      // Free or fully discounted resource: grant license immediately
-      if (finalPrice === 0) {
-        const license = await db.orm.public.License.create({
-          purchaseId: purchase.id,
-          status: "ACTIVE",
-        });
-
-        // Settle revenue (even for free: track metrics)
-        await settlePurchaseRevenue(purchase);
-
+      if (checkout.status === "completed") {
         res.status(201).json({
-          purchaseId: purchase.id,
-          licenseId: license.id,
+          orderId: checkout.orderId,
+          orderItemId: checkout.orderItemId,
+          purchaseId: checkout.purchaseId,
+          licenseId: checkout.licenseId,
           status: "completed",
-          message: discountAmount > 0 ? "100% discount applied - free acquisition" : "Free resource acquired",
-          discount: discountAmount > 0 ? {
-            applied: true,
-            amount: discountAmount,
-            originalPrice: priceSnapshot,
-            finalPrice: 0,
-          } : undefined,
+          message: checkout.discountAmount > 0 ? "100% discount applied - free acquisition" : "Free resource acquired",
+          discount:
+            checkout.discountAmount > 0
+              ? {
+                  applied: true,
+                  amount: checkout.discountAmount,
+                  originalPrice: checkout.basePrice,
+                  finalPrice: 0,
+                }
+              : undefined,
         });
         return;
       }
 
-      // Paid resource: redirect to payment
       res.status(201).json({
-        purchaseId: purchase.id,
-        amount: finalPrice,
-        originalAmount: priceSnapshot,
+        orderId: checkout.orderId,
+        orderItemId: checkout.orderItemId,
+        purchaseId: checkout.purchaseId,
+        amount: checkout.finalPrice,
+        originalAmount: checkout.basePrice,
         currency: "RUB",
         status: "pending",
-        discount: discountAmount > 0 ? {
-          applied: true,
-          amount: discountAmount,
-          percentage: Math.round((discountAmount / priceSnapshot) * 100),
-        } : undefined,
-        // In production: paymentUrl for redirect to YooKassa
-        message: "Payment integration pending - purchase created",
+        discount:
+          checkout.discountAmount > 0
+            ? {
+                applied: true,
+                amount: checkout.discountAmount,
+                percentage: Math.round((checkout.discountAmount / checkout.basePrice) * 100),
+              }
+            : undefined,
+        message: "Checkout created - create the payment via /payments/create",
       });
     } catch (error) {
+      if (error instanceof CommerceError) {
+        reqLog(req).warn("purchase_checkout_rejected", { code: error.code, status: error.status });
+        res.status(error.status).json({ error: error.message, code: error.code });
+        return;
+      }
       reqLog(req).error("purchase_create_failed", { error });
       res.status(500).json({ error: "Failed to create purchase" });
     }
