@@ -6,6 +6,7 @@ import { upload, getFileUrl, deleteFile } from "../lib/upload";
 import { uploadToS3, S3_ENABLED, getS3PublicUrl } from "../lib/s3";
 import crypto from "crypto";
 import fs from "fs";
+import { reqLog } from "../middleware/requestId";
 
 const router: Router = Router();
 
@@ -60,7 +61,7 @@ router.post(
         storage: S3_ENABLED ? "s3" : "local",
       });
     } catch (error) {
-      console.error("Error uploading file:", error);
+      reqLog(req).error("file_upload_failed", { error });
 
       // Cleanup on error
       if (req.file) {
@@ -118,7 +119,7 @@ router.post(
         storage: S3_ENABLED ? "s3" : "local",
       });
     } catch (error) {
-      console.error("Error uploading avatar:", error);
+      reqLog(req).error("avatar_upload_failed", { error });
 
       if (req.file) {
         deleteFile(req.file.filename);
@@ -170,7 +171,7 @@ router.post(
         storage: S3_ENABLED ? "s3" : "local",
       });
     } catch (error) {
-      console.error("Error uploading screenshot:", error);
+      reqLog(req).error("screenshot_upload_failed", { error });
 
       if (req.file) {
         deleteFile(req.file.filename);

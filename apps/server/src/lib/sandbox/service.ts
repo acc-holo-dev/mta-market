@@ -15,6 +15,7 @@ import type {
   SandboxConfig
 } from './types';
 import { DEFAULT_SANDBOX_CONFIG } from './types';
+import { logger } from '../../lib/logger';
 
 /**
  * Validate and execute artifact in sandbox
@@ -38,11 +39,11 @@ export async function validateArtifact(
   passed: boolean;
 }> {
   // Phase 1: Static validation
-  console.log(`[Sandbox] Starting static validation for version ${versionId}`);
+  logger.info("sandbox_static_validation_started", { version_id: versionId });
   const staticValidation = await validateArchive(artifactBuffer, config);
 
   if (!staticValidation.valid) {
-    console.log(`[Sandbox] Static validation failed:`, staticValidation.errors);
+    logger.warn("sandbox_static_validation_failed", { version_id: versionId, errors: staticValidation.errors });
 
     // Store failed validation
     await db.orm.public.SandboxRun.create({
@@ -62,13 +63,13 @@ export async function validateArtifact(
     };
   }
 
-  console.log(`[Sandbox] Static validation passed`);
+  logger.info("sandbox_static_validation_passed", { version_id: versionId });
 
   // Phase 2: Sandbox execution (if Docker available)
   const dockerAvailable = await isDockerAvailable();
 
   if (!dockerAvailable) {
-    console.warn('[Sandbox] Docker not available, skipping sandbox execution');
+    logger.warn("sandbox_docker_unavailable", { version_id: versionId });
 
     // Store pending sandbox run
     await db.orm.public.SandboxRun.create({
@@ -97,7 +98,7 @@ export async function validateArtifact(
     memoryLimitMb: config.memoryLimitMb
   });
 
-  console.log(`[Sandbox] Starting sandbox execution for version ${versionId}`);
+  logger.info("sandbox_execution_started", { version_id: versionId });
 
   try {
     // Execute in sandbox
@@ -109,7 +110,11 @@ export async function validateArtifact(
       networkAllowed: false
     });
 
-    console.log(`[Sandbox] Execution completed with status: ${sandboxRun.status}`);
+    logger.info("sandbox_execution_completed", {
+      version_id: versionId,
+      status: sandboxRun.status,
+      exit_code: sandboxRun.exitCode,
+    });
 
     // Update sandbox run record
     await db.orm.public.SandboxRun.where({ id: sandboxRecord.id }).update({
@@ -133,7 +138,7 @@ export async function validateArtifact(
     };
 
   } catch (error) {
-    console.error('[Sandbox] Execution error:', error);
+    logger.error("sandbox_execution_error", { version_id: versionId, error });
 
     // Update sandbox run as failed
     await db.orm.public.SandboxRun.where({ id: sandboxRecord.id }).update({
@@ -199,7 +204,7 @@ export async function retrySandbox(versionId: string): Promise<void> {
 
   // Re-download artifact and validate
   // In production: fetch from S3
-  console.log(`[Sandbox] Retry requested for version ${versionId}`);
+  logger.info("sandbox_retry_requested", { version_id: versionId });
   throw new Error('Retry not yet implemented - artifact must be re-uploaded');
 }
 
@@ -223,6 +228,6 @@ export async function cleanupOldSandboxRuns(daysOld: number = 30): Promise<numbe
     await db.orm.public.SandboxRun.where({ id: run.id }).delete();
   }
 
-  console.log(`[Sandbox] Cleaned up ${stale.length} old sandbox runs`);
+  logger.info("sandbox_old_runs_cleaned", { count: stale.length, days_old: daysOld });
   return stale.length;
 }

@@ -1,6 +1,7 @@
 // Email notification system (nodemailer)
 import nodemailer from "nodemailer";
 import type { Transporter } from "nodemailer";
+import { logger } from "./logger";
 
 const EMAIL_ENABLED = process.env.EMAIL_ENABLED === "true";
 const SMTP_HOST = process.env.SMTP_HOST || "smtp.gmail.com";
@@ -32,7 +33,7 @@ export interface SendEmailOptions {
 
 export async function sendEmail(options: SendEmailOptions): Promise<void> {
   if (!EMAIL_ENABLED || !transporter) {
-    console.log("[EMAIL] Disabled - would send:", options.subject, "to", options.to);
+    logger.info("email_send_skipped_disabled", { subject: options.subject, recipient: options.to });
     return;
   }
 
@@ -45,9 +46,9 @@ export async function sendEmail(options: SendEmailOptions): Promise<void> {
       text: options.text || "",
     });
 
-    console.log("[EMAIL] Sent:", options.subject, "to", options.to);
+    logger.info("email_sent", { subject: options.subject, recipient: options.to });
   } catch (error) {
-    console.error("[EMAIL] Failed to send:", error);
+    logger.error("email_send_failed", { recipient: options.to, error });
     throw error;
   }
 }

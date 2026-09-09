@@ -9,6 +9,7 @@ import { resolveLocalUploadPath } from "../lib/upload";
 import { loadArtifactBuffer } from "../lib/storage";
 import { validateArtifact } from "../lib/sandbox/service";
 import { signVersionArtifact } from "../lib/artifact/signing";
+import { reqLog } from "../middleware/requestId";
 
 const router: Router = Router();
 
@@ -35,7 +36,7 @@ router.get("/:slug/versions", standardRateLimit, async (req, res: Response) => {
 
     res.json(versions);
   } catch (error) {
-    console.error("Error fetching versions:", error);
+    reqLog(req).error("versions_fetch_failed", { error });
     res.status(500).json({ error: "Failed to fetch versions" });
   }
 });
@@ -129,7 +130,7 @@ router.post(
         throw pipelineError;
       }
     } catch (error) {
-      console.error("Error creating version:", error);
+      reqLog(req).error("version_create_failed", { error });
       res.status(500).json({ error: "Failed to create version" });
     }
   }
@@ -171,7 +172,11 @@ router.get(
       }).first();
 
       if (!purchase) {
-        console.warn(`Download denied: User ${req.user!.userId} has no purchase for resource ${resource.id} (${slug})`);
+        reqLog(req).warn("download_denied_no_purchase", {
+          user_id: req.user!.userId,
+          resource_id: resource.id,
+          slug,
+        });
         res.status(403).json({ error: "Purchase required to download" });
         return;
       }
@@ -191,7 +196,13 @@ router.get(
       // For now: strict version matching (user can only download what they bought)
       // TODO: Implement update entitlement based on resource update policy
       if (purchase.versionId !== resourceVersion.id) {
-        console.warn(`Download denied: User ${req.user!.userId} purchased version ${purchasedVersion.version} but requested ${resourceVersion.version} of resource ${resource.id}`);
+        reqLog(req).warn("download_denied_version_mismatch", {
+          user_id: req.user!.userId,
+          resource_id: resource.id,
+          slug,
+          purchased_version: purchasedVersion.version,
+          requested_version: resourceVersion.version,
+        });
         res.status(403).json({ 
           error: "Version not entitled", 
           message: `You purchased version ${purchasedVersion.version}, but requested version ${resourceVersion.version}. Upgrade separately or check update policy.`,
@@ -201,7 +212,7 @@ router.get(
         return;
       }
 
-      console.info(`Download authorized: User ${req.user!.userId} downloading ${slug} v${version}`);
+      reqLog(req).info("download_authorized", { user_id: req.user!.userId, slug, version });
 
       // TASK A-009: paid artifacts are never exposed via permanent public URLs.
       // - S3/R2: short-lived signed GetObject URL (TTL-capped in lib/s3).
@@ -235,7 +246,7 @@ router.get(
 
       res.download(localPath, `${slug}-${resourceVersion.version}${path.extname(localPath)}`);
     } catch (error) {
-      console.error("Error getting download URL:", error);
+      reqLog(req).error("download_url_failed", { error });
       res.status(500).json({ error: "Failed to get download URL" });
     }
   }

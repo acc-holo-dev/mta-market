@@ -25,6 +25,7 @@ import {
 import { DRM_ERROR_CODES } from '../../lib/drm/types';
 import { authenticate, AuthRequest } from '../../lib/auth';
 import { strictRateLimit, standardRateLimit } from '../../lib/rateLimit';
+import { reqLog } from '../../middleware/requestId';
 
 const router: Router = Router();
 
@@ -88,7 +89,7 @@ router.get('/v2/public-key', async (req: Request, res: Response) => {
       keyType: 'ED25519'
     });
   } catch (error) {
-    console.error('Get public key error:', error);
+    reqLog(req).error("drm_public_key_fetch_failed", { error });
     res.status(500).json({
       error: {
         code: 'SERVER_ERROR',
@@ -141,7 +142,7 @@ router.post('/v2/installations', authenticate, strictRateLimit, async (req: Auth
 
     res.status(201).json(result);
   } catch (error) {
-    console.error('Installation registration error:', error);
+    reqLog(req).error("drm_installation_registration_failed", { error });
 
     if (error instanceof Error && error.message.includes('already exists')) {
       return res.status(409).json({
@@ -191,7 +192,7 @@ router.post('/v2/installations/:id/verify', strictRateLimit, async (req: Request
 
     res.json(result);
   } catch (error) {
-    console.error('Installation verification error:', error);
+    reqLog(req).error("drm_installation_verification_failed", { error });
 
     if (error instanceof Error) {
       if (error.message === 'Installation already verified' || error.message.includes('No challenge')) {
@@ -236,7 +237,7 @@ router.post('/v2/activate', strictRateLimit, async (req: Request, res: Response)
     // Get server private key from environment
     const privateKey = process.env.DRM_SERVER_PRIVATE_KEY;
     if (!privateKey) {
-      console.error('DRM_SERVER_PRIVATE_KEY not configured');
+      reqLog(req).error("drm_server_private_key_missing");
       return res.status(500).json({
         error: {
           code: 'SERVER_MISCONFIGURED',
@@ -252,7 +253,7 @@ router.post('/v2/activate', strictRateLimit, async (req: Request, res: Response)
 
     res.json(lease);
   } catch (error) {
-    console.error('License activation error:', error);
+    reqLog(req).error("drm_license_activation_failed", { error });
 
     if (error instanceof Error) {
       if (error.message === 'Invalid nonce format') {
@@ -310,7 +311,7 @@ router.post('/v2/heartbeat', standardRateLimit, async (req: Request, res: Respon
 
     res.json(result);
   } catch (error) {
-    console.error('Heartbeat error:', error);
+    reqLog(req).error("drm_heartbeat_failed", { error });
 
     if (error instanceof Error) {
       return sendDrmError(res, error, 'Failed to record heartbeat');
@@ -347,7 +348,7 @@ router.get('/v2/leases/:installationId/:resourceId', standardRateLimit, async (r
 
     res.json(lease);
   } catch (error) {
-    console.error('Get lease error:', error);
+    reqLog(req).error("drm_lease_fetch_failed", { error });
     res.status(500).json({
       error: {
         code: 'SERVER_ERROR',

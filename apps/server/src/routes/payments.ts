@@ -15,6 +15,7 @@ import { validateCuid } from "../middleware/validateCuid";
 import { isYooKassaIP, verifyYooKassaAuth, getClientIP } from "../lib/yookassaWebhook";
 import { sendPurchaseEmail } from "../lib/email";
 import { settlePurchaseRevenue } from "../lib/ledger";
+import { reqLog } from "../middleware/requestId";
 
 const router: Router = Router();
 
@@ -86,7 +87,7 @@ router.post("/create", authenticate, standardRateLimit, async (req: AuthRequest,
       });
     }
   } catch (error) {
-    console.error("Error creating payment:", error);
+    reqLog(req).error("payment_create_failed", { error });
     res.status(500).json({ error: "Failed to create payment" });
   }
 });
@@ -110,7 +111,7 @@ router.post("/webhook", async (req: Request, res: Response) => {
     // Security Layer 1: IP Whitelist
     const clientIP = getClientIP(req);
     if (!isYooKassaIP(clientIP)) {
-      console.warn(`Webhook rejected: IP ${clientIP} not in YooKassa whitelist`);
+      reqLog(req).warn("webhook_rejected_ip_not_whitelisted", { client_ip: clientIP });
       res.status(403).json({ error: "Forbidden: Invalid source IP" });
       return;
     }
@@ -118,7 +119,7 @@ router.post("/webhook", async (req: Request, res: Response) => {
     // Security Layer 2: Basic Auth
     const notificationPassword = process.env.YOOKASSA_NOTIFICATION_PASSWORD || "";
     if (!verifyYooKassaAuth(req.headers.authorization, YOOKASSA_SHOP_ID, notificationPassword)) {
-      console.warn(`Webhook rejected: Invalid Basic Auth from ${clientIP}`);
+      reqLog(req).warn("webhook_rejected_invalid_auth", { client_ip: clientIP });
       res.status(401).json({ error: "Unauthorized: Invalid credentials" });
       return;
     }
@@ -227,9 +228,13 @@ router.post("/webhook", async (req: Request, res: Response) => {
         status: "FAILED",
         lastError: `Amount mismatch: provider ${providerPayment.amount.value} ${providerPayment.amount.currency}, expected ${expectedAmount} RUB`,
       });
-      console.error(
-        `PAYMENT QUARANTINED: provider payment ${object.id} amount ${providerPayment.amount.value} ${providerPayment.amount.currency} != order final total ${expectedAmount} RUB (purchase ${purchase.id})`
-      );
+      reqLog(req).error("payment_quarantined_amount_mismatch", {
+        provider_payment_id: object.id,
+        provider_amount: providerPayment.amount.value,
+        provider_currency: providerPayment.amount.currency,
+        expected_amount: expectedAmount,
+        purchase_id: purchase.id,
+      });
       res.status(409).json({ error: "Provider payment amount mismatch" });
       return;
     }
@@ -243,9 +248,11 @@ router.post("/webhook", async (req: Request, res: Response) => {
         status: "FAILED",
         lastError: `Payment ${object.id} is bound to purchase ${existingPayment.purchaseId}, webhook claims ${purchase.id}`,
       });
-      console.error(
-        `PAYMENT QUARANTINED: provider payment ${object.id} bound to purchase ${existingPayment.purchaseId} but webhook claims purchase ${purchase.id}`
-      );
+      reqLog(req).error("payment_quarantined_reference_mismatch", {
+        provider_payment_id: object.id,
+        bound_purchase_id: existingPayment.purchaseId,
+        claimed_purchase_id: purchase.id,
+      });
       res.status(409).json({ error: "Payment reference mismatch" });
       return;
     }
@@ -311,7 +318,7 @@ router.post("/webhook", async (req: Request, res: Response) => {
     const resource = await db.orm.public.Resource.where({ id: purchase.resourceId }).first();
     if (user && resource && user.email) {
       sendPurchaseEmail(user.email, resource.title, license.id).catch((err) =>
-        console.error("Failed to send purchase email:", err)
+        reqLog(req).error("purchase_email_send_failed", { purchase_id: purchase.id, error: err })
       );
     }
 
@@ -322,7 +329,7 @@ router.post("/webhook", async (req: Request, res: Response) => {
 
     res.status(200).json({ message: "Webhook processed successfully" });
   } catch (error) {
-    console.error("Error processing webhook:", error);
+    reqLog(req).error("webhook_processing_failed", { error });
     res.status(500).json({ error: "Failed to process webhook" });
   }
 });
@@ -384,7 +391,7 @@ if (process.env.NODE_ENV !== 'production') {
           licenseId: license.id,
         });
       } catch (error) {
-        console.error("Error simulating payment:", error);
+        reqLog(req).error("payment_simulation_failed", { error });
         res.status(500).json({ error: "Failed to simulate payment" });
       }
     }

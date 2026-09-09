@@ -13,6 +13,7 @@ import type {
   ContainerConfig
 } from './types';
 import { SANDBOX_ERROR_CODES } from './types';
+import { logger } from '../../lib/logger';
 
 /**
  * Run artifact in Docker sandbox
@@ -85,7 +86,7 @@ export async function runSandbox(options: SandboxRunOptions): Promise<SandboxRun
         await stopContainer(containerId);
         await removeContainer(containerId);
       } catch (cleanupError) {
-        console.error('Cleanup error:', cleanupError);
+        logger.error("sandbox_cleanup_failed", { container_id: containerId, error: cleanupError });
       }
     }
     
@@ -125,7 +126,7 @@ async function createContainer(name: string, config: ContainerConfig): Promise<s
   // const container = await docker.createContainer({...});
   // return container.id;
   
-  console.log(`[MOCK] Creating container ${name} with config:`, config);
+  logger.info("sandbox_mock_create_container", { container_name: name, config });
   return `container-${randomBytes(8).toString('hex')}`;
 }
 
@@ -133,7 +134,7 @@ async function createContainer(name: string, config: ContainerConfig): Promise<s
  * Start Docker container
  */
 async function startContainer(containerId: string): Promise<void> {
-  console.log(`[MOCK] Starting container ${containerId}`);
+  logger.info("sandbox_mock_start_container", { container_id: containerId });
   // In production: await container.start();
 }
 
@@ -145,7 +146,7 @@ async function copyToContainer(
   content: Buffer,
   destination: string
 ): Promise<void> {
-  console.log(`[MOCK] Copying ${content.length} bytes to ${containerId}:${destination}`);
+  logger.info("sandbox_mock_copy_to_container", { container_id: containerId, destination, bytes: content.length });
   // In production: Use docker.putArchive() or docker cp
 }
 
@@ -157,7 +158,7 @@ async function executeInContainer(
   command: string[],
   timeoutMs: number
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  console.log(`[MOCK] Executing in ${containerId}:`, command.join(' '));
+  logger.info("sandbox_mock_exec_in_container", { container_id: containerId, command: command.join(' ') });
   
   // Mock successful execution
   return new Promise((resolve) => {
@@ -185,7 +186,7 @@ async function executeInContainer(
 async function extractCompatibilityReport(
   containerId: string
 ): Promise<CompatibilityReport | undefined> {
-  console.log(`[MOCK] Extracting compatibility report from ${containerId}`);
+  logger.info("sandbox_mock_extract_compatibility_report", { container_id: containerId });
   
   // Mock compatibility report
   return {
@@ -212,7 +213,7 @@ async function extractCompatibilityReport(
  * Extract security issues from container
  */
 async function extractSecurityIssues(containerId: string): Promise<SecurityIssue[]> {
-  console.log(`[MOCK] Extracting security issues from ${containerId}`);
+  logger.info("sandbox_mock_extract_security_issues", { container_id: containerId });
   
   // Mock: no security issues
   return [];
@@ -226,7 +227,7 @@ async function extractSecurityIssues(containerId: string): Promise<SecurityIssue
  * Stop Docker container
  */
 async function stopContainer(containerId: string): Promise<void> {
-  console.log(`[MOCK] Stopping container ${containerId}`);
+  logger.info("sandbox_mock_stop_container", { container_id: containerId });
   // In production: await container.stop();
 }
 
@@ -234,7 +235,7 @@ async function stopContainer(containerId: string): Promise<void> {
  * Remove Docker container
  */
 async function removeContainer(containerId: string): Promise<void> {
-  console.log(`[MOCK] Removing container ${containerId}`);
+  logger.info("sandbox_mock_remove_container", { container_id: containerId });
   // In production: await container.remove({ force: true });
 }
 
@@ -256,7 +257,7 @@ function promiseWithTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<
 export async function isDockerAvailable(): Promise<boolean> {
   try {
     // In production: check docker.ping()
-    console.log('[MOCK] Docker availability check: true');
+    logger.info("sandbox_mock_docker_available", { available: true });
     return true;
   } catch {
     return false;
@@ -267,7 +268,7 @@ export async function isDockerAvailable(): Promise<boolean> {
  * Build sandbox Docker image
  */
 export async function buildSandboxImage(): Promise<void> {
-  console.log('[MOCK] Building sandbox Docker image');
+  logger.info("sandbox_mock_build_image");
   
   // In production:
   // const docker = new Docker();

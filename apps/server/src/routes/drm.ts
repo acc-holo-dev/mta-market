@@ -13,6 +13,7 @@ import { authenticate, AuthRequest } from "../lib/auth";
 import { standardRateLimit } from "../lib/rateLimit";
 import { validateCuid } from "../middleware/validateCuid";
 import { db } from "../prisma/db";
+import { reqLog } from "../middleware/requestId";
 
 const router: Router = Router();
 
@@ -81,7 +82,7 @@ router.get(
 
       res.json(licenses);
     } catch (error) {
-      console.error("Error fetching licenses:", error);
+      reqLog(req).error("licenses_fetch_failed", { user_id: req.user!.userId, error });
       res.status(500).json({ error: "Failed to fetch licenses" });
     }
   }
@@ -129,7 +130,7 @@ router.delete(
 
       res.json({ message: "License revoked successfully" });
     } catch (error) {
-      console.error("Error revoking license:", error);
+      reqLog(req).error("license_revoke_failed", { license_id: req.params.licenseId, error });
       res.status(500).json({ error: "Failed to revoke license" });
     }
   }

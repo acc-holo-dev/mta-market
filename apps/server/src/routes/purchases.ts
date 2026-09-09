@@ -8,6 +8,7 @@ import { validate } from "../middleware/validate";
 import { validateCuid } from "../middleware/validateCuid";
 import { createPurchaseSchema } from "../lib/validation";
 import { settlePurchaseRevenue } from "../lib/ledger";
+import { reqLog } from "../middleware/requestId";
 
 const router: Router = Router();
 
@@ -146,7 +147,7 @@ router.post(
         message: "Payment integration pending - purchase created",
       });
     } catch (error) {
-      console.error("Error creating purchase:", error);
+      reqLog(req).error("purchase_create_failed", { error });
       res.status(500).json({ error: "Failed to create purchase" });
     }
   }
@@ -189,7 +190,7 @@ router.get("/my", authenticate, standardRateLimit, async (req: AuthRequest, res:
 
     res.json(enriched);
   } catch (error) {
-    console.error("Error fetching purchases:", error);
+    reqLog(req).error("purchases_fetch_failed", { error });
     res.status(500).json({ error: "Failed to fetch purchases" });
   }
 });
@@ -241,7 +242,7 @@ router.get(
           : null,
       });
     } catch (error) {
-      console.error("Error fetching purchase:", error);
+      reqLog(req).error("purchase_fetch_failed", { error });
       res.status(500).json({ error: "Failed to fetch purchase" });
     }
   }

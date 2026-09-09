@@ -3,6 +3,7 @@ import { Router, Response } from "express";
 import { authenticate, AuthRequest } from "../lib/auth";
 import { standardRateLimit } from "../lib/rateLimit";
 import { db } from "../prisma/db";
+import { reqLog } from "../middleware/requestId";
 
 const router: Router = Router();
 
@@ -57,7 +58,7 @@ router.get("/:slug/reviews", standardRateLimit, async (req, res: Response) => {
       },
     });
   } catch (error) {
-    console.error("Error fetching reviews:", error);
+    reqLog(req).error("reviews_fetch_failed", { error });
     res.status(500).json({ error: "Failed to fetch reviews" });
   }
 });
@@ -121,7 +122,7 @@ router.post(
 
       res.status(201).json(review);
     } catch (error) {
-      console.error("Error creating review:", error);
+      reqLog(req).error("review_create_failed", { error });
       res.status(500).json({ error: "Failed to create review" });
     }
   }
@@ -166,7 +167,7 @@ router.patch(
 
       res.json(updated);
     } catch (error) {
-      console.error("Error updating review:", error);
+      reqLog(req).error("review_update_failed", { error });
       res.status(500).json({ error: "Failed to update review" });
     }
   }
@@ -202,7 +203,7 @@ router.delete(
 
       res.json({ message: "Review deleted successfully" });
     } catch (error) {
-      console.error("Error deleting review:", error);
+      reqLog(req).error("review_delete_failed", { error });
       res.status(500).json({ error: "Failed to delete review" });
     }
   }

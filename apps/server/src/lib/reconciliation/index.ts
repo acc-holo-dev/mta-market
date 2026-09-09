@@ -10,6 +10,7 @@ export * from './types';
 // Export service (main API)
 export {
   reconcile,
+  checkProviderEventMismatches,
   getReconciliationSummary,
   resolveMismatch,
   getReport,
@@ -24,9 +25,10 @@ export {
   getReconciliationStatus
 } from './internal';
 
-// Export job scheduler
+// Export job scheduler (PLAN B-003)
 export {
+  runReconciliationCycle,
   runDailyReconciliation,
-  setupReconciliationSchedule,
-  runReconciliationForDateRange
+  runReconciliationForDateRange,
+  startReconciliationScheduler
 } from '../../jobs/reconciliation';

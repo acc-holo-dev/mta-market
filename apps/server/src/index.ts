@@ -1,7 +1,8 @@
-import express from "express";
 import dotenv from "dotenv";
 import { enforceEnvironmentValidation } from "./lib/startupValidation";
 import { createApp } from "./app";
+import { logger } from "./lib/logger";
+import { startReconciliationScheduler } from "./jobs/reconciliation";
 
 dotenv.config();
 
@@ -11,14 +12,24 @@ enforceEnvironmentValidation();
 const app = createApp();
 const PORT = process.env.PORT || 3001;
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
-  console.log(`📝 Resources API: /resources`);
-  console.log(`📦 Versions API: /resources/:slug/versions`);
-  console.log(`⭐ Reviews API: /resources/:slug/reviews`);
-  console.log(`🔐 DRM API: /drm (v2 protocol)`);
-  console.log(`💰 Purchases API: /purchases`);
-  console.log(`📤 Upload API: /upload`);
-  console.log(`💳 Payments API: /payments`);
-  console.log(`👑 Admin API: /admin`);
+const server = app.listen(PORT, () => {
+  logger.info("server_started", {
+    port: PORT,
+    node_env: process.env.NODE_ENV ?? "development",
+  });
+
+  // PLAN B-003: periodic financial reconciliation (payments/refunds/payouts/
+  // provider events/internal ledger). No-op in test env; stop() handle kept
+  // for graceful shutdown.
+  const stopReconciliation = startReconciliationScheduler();
+
+  const shutdown = (signal: string): void => {
+    logger.info("server_shutdown", { signal });
+    stopReconciliation.stop();
+    server.close(() => process.exit(0));
+    // Fallback exit if connections keep the process alive.
+    setTimeout(() => process.exit(0), 5000).unref();
+  };
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
 });

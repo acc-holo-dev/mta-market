@@ -1,6 +1,7 @@
 // Rate limiting middleware using Redis
 import { Request, Response, NextFunction } from "express";
 import { redis } from "../lib/redis";
+import { logger } from "./logger";
 
 interface RateLimitOptions {
   windowMs: number; // время окна в миллисекундах
@@ -36,7 +37,7 @@ export function rateLimit(options: RateLimitOptions) {
       next();
     } catch (error) {
       // Если Redis недоступен, пропускаем rate limiting
-      console.error("Rate limit error:", error);
+      logger.error("rate_limit_error", { key_prefix: keyPrefix, error });
       next();
     }
   };

@@ -16,6 +16,7 @@ import {
   RESOURCE_STATUSES,
   type ResourceStatus,
 } from "../lib/moderation";
+import { reqLog } from "../middleware/requestId";
 
 const router: Router = Router();
 
@@ -55,7 +56,7 @@ router.get(
         },
       });
     } catch (error) {
-      console.error("Error fetching resources:", error);
+      reqLog(req).error("resources_fetch_failed", { error });
       res.status(500).json({ error: "Failed to fetch resources" });
     }
   }
@@ -81,7 +82,7 @@ router.get("/:slug", standardRateLimit, async (req, res: Response) => {
 
     res.json(resource);
   } catch (error) {
-    console.error("Error fetching resource:", error);
+    reqLog(req).error("resource_fetch_failed", { error });
     res.status(500).json({ error: "Failed to fetch resource" });
   }
 });
@@ -116,7 +117,7 @@ router.post(
 
       res.status(201).json(resource);
     } catch (error) {
-      console.error("Error creating resource:", error);
+      reqLog(req).error("resource_create_failed", { error });
       res.status(500).json({ error: "Failed to create resource" });
     }
   }
@@ -157,9 +158,12 @@ router.patch("/:slug", authenticate, standardRateLimit, async (req: AuthRequest,
 
       const from = resource.status as ResourceStatus;
       if (!isTransitionAllowed(from, status, "seller")) {
-        console.warn(
-          `Resource status transition denied: User ${req.user!.userId} tried ${from} -> ${status} on resource ${resource.id}`
-        );
+        reqLog(req).warn("resource_status_transition_denied", {
+          user_id: req.user!.userId,
+          from,
+          to: status,
+          resource_id: resource.id,
+        });
         res.status(403).json({
           error: "Forbidden status transition",
           message: `Sellers may only submit (DRAFT -> PENDING_REVIEW) or withdraw (PENDING_REVIEW -> DRAFT). Current status: ${from}.`,
@@ -174,7 +178,7 @@ router.patch("/:slug", authenticate, standardRateLimit, async (req: AuthRequest,
 
     res.json(updated);
   } catch (error) {
-    console.error("Error updating resource:", error);
+    reqLog(req).error("resource_update_failed", { error });
     res.status(500).json({ error: "Failed to update resource" });
   }
 });
@@ -204,7 +208,7 @@ router.delete(
 
       res.json({ message: "Resource deleted successfully" });
     } catch (error) {
-      console.error("Error deleting resource:", error);
+      reqLog(req).error("resource_delete_failed", { error });
       res.status(500).json({ error: "Failed to delete resource" });
     }
   }

@@ -8,6 +8,7 @@ import { sendResourcePublishedEmail } from "../lib/email";
 import { isResourceStatus, isTransitionAllowed, type ResourceStatus } from "../lib/moderation";
 import { hasValidSignature } from "../lib/artifact/signing";
 import { getSandboxRun } from "../lib/sandbox/service";
+import { reqLog } from "../middleware/requestId";
 
 const router: Router = Router();
 
@@ -56,7 +57,7 @@ router.get(
         },
       });
     } catch (error) {
-      console.error("Error fetching resources:", error);
+      reqLog(req).error("admin_resources_fetch_failed", { error });
       res.status(500).json({ error: "Failed to fetch resources" });
     }
   }
@@ -139,7 +140,11 @@ router.patch(
 
         if (seller && seller.email) {
           sendResourcePublishedEmail(seller.email, resource.title, resource.slug).catch((err) =>
-            console.error("Failed to send published email:", err)
+            reqLog(req).error("published_email_send_failed", {
+              resource_id: resource.id,
+              slug: resource.slug,
+              error: err,
+            })
           );
         }
       }
@@ -151,7 +156,7 @@ router.patch(
         reason,
       });
     } catch (error) {
-      console.error("Error updating resource status:", error);
+      reqLog(req).error("admin_resource_status_update_failed", { error });
       res.status(500).json({ error: "Failed to update resource status" });
     }
   }
@@ -202,7 +207,7 @@ router.get(
         },
       });
     } catch (error) {
-      console.error("Error fetching users:", error);
+      reqLog(req).error("admin_users_fetch_failed", { error });
       res.status(500).json({ error: "Failed to fetch users" });
     }
   }
@@ -245,7 +250,7 @@ router.patch(
         reason,
       });
     } catch (error) {
-      console.error("Error updating user status:", error);
+      reqLog(req).error("admin_user_status_update_failed", { error });
       res.status(500).json({ error: "Failed to update user status" });
     }
   }
@@ -288,7 +293,7 @@ router.patch(
         role,
       });
     } catch (error) {
-      console.error("Error updating user role:", error);
+      reqLog(req).error("admin_user_role_update_failed", { error });
       res.status(500).json({ error: "Failed to update user role" });
     }
   }
@@ -316,7 +321,7 @@ router.delete(
 
       res.json({ message: "Review deleted successfully" });
     } catch (error) {
-      console.error("Error deleting review:", error);
+      reqLog(req).error("admin_review_delete_failed", { error });
       res.status(500).json({ error: "Failed to delete review" });
     }
   }
@@ -332,21 +337,26 @@ router.get(
     try {
       // PLAN B-005: aggregates in the database (COUNT/GROUP BY) instead of
       // full table loads. The endpoint is rate-limited (standardRateLimit).
-      const toCountMap = (rows: Array<{ status: string; n: number }>): Record<string, number> => {
+      // Runtime groupBy returns [{ <groupKeys>, n }], but the static ORM
+      // typing models groupBy rows as full table rows, so the chain is
+      // intentionally loosened here (verified against a live DB in
+      // scripts/db-check.ts).
+      const groupCounts = async (model: unknown, column: string): Promise<Record<string, number>> => {
+        const rows = await (model as {
+          groupBy: (cols: string[]) => {
+            aggregate: (
+              fn: (agg: Record<string, (...args: unknown[]) => unknown>) => Record<string, unknown>
+            ) => Promise<Array<Record<string, unknown>>>;
+          };
+        }).groupBy([column]).aggregate((agg) => ({ n: agg.count() }));
         const map: Record<string, number> = {};
-        for (const row of rows) map[row.status] = Number(row.n);
+        for (const row of rows) map[String(row.status)] = Number(row.n);
         return map;
       };
 
-      const userCounts = toCountMap(
-        await db.orm.public.User.groupBy(["status"]).aggregate((agg: any) => ({ n: agg.count() }))
-      );
-      const resourceCounts = toCountMap(
-        await db.orm.public.Resource.groupBy(["status"]).aggregate((agg: any) => ({ n: agg.count() }))
-      );
-      const purchaseCounts = toCountMap(
-        await db.orm.public.Purchase.groupBy(["status"]).aggregate((agg: any) => ({ n: agg.count() }))
-      );
+      const userCounts = await groupCounts(db.orm.public.User, "status");
+      const resourceCounts = await groupCounts(db.orm.public.Resource, "status");
+      const purchaseCounts = await groupCounts(db.orm.public.Purchase, "status");
       const reviewAgg = await db.orm.public.Review.aggregate((agg: any) => ({
         total: agg.count(),
         averageRating: agg.avg("rating"),
@@ -387,7 +397,7 @@ router.get(
 
       res.json(stats);
     } catch (error) {
-      console.error("Error fetching stats:", error);
+      reqLog(req).error("admin_stats_fetch_failed", { error });
       res.status(500).json({ error: "Failed to fetch stats" });
     }
   }

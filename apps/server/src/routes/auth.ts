@@ -7,6 +7,7 @@ import { hashRefreshToken, generateTokenId, verifyRefreshTokenHash } from "../li
 import { setRefreshCookie, clearRefreshCookie } from "../lib/cookies";
 import { db } from "../prisma/db";
 import { sendWelcomeEmail } from "../lib/email";
+import { reqLog } from "../middleware/requestId";
 
 const router: Router = Router();
 
@@ -81,7 +82,7 @@ router.get("/discord/callback", authRateLimit, async (req: Request, res: Respons
 
     if (!tokenResponse.ok) {
       const error = await tokenResponse.text();
-      console.error("Discord token error:", error);
+      reqLog(req).error("discord_token_exchange_failed", { status: tokenResponse.status, error });
       res.status(500).json({ error: "Failed to exchange code for token" });
       return;
     }
@@ -97,7 +98,7 @@ router.get("/discord/callback", authRateLimit, async (req: Request, res: Respons
 
     if (!userResponse.ok) {
       const error = await userResponse.text();
-      console.error("Discord user error:", error);
+      reqLog(req).error("discord_user_fetch_failed", { status: userResponse.status, error });
       res.status(500).json({ error: "Failed to fetch user data" });
       return;
     }
@@ -129,7 +130,7 @@ router.get("/discord/callback", authRateLimit, async (req: Request, res: Respons
       // Send welcome email
       if (discordUser.email) {
         sendWelcomeEmail(discordUser.email, username).catch((err) =>
-          console.error("Failed to send welcome email:", err)
+          reqLog(req).error("welcome_email_send_failed", { recipient: discordUser.email, username, error: err })
         );
       }
 
@@ -202,7 +203,7 @@ router.get("/discord/callback", authRateLimit, async (req: Request, res: Respons
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
     res.redirect(`${frontendUrl}/auth/callback`);
   } catch (error) {
-    console.error("Discord OAuth error:", error);
+    reqLog(req).error("discord_oauth_failed", { error });
     res.status(500).json({ error: "Authentication failed" });
   }
 });
@@ -229,14 +230,18 @@ router.post("/refresh", authRateLimit, async (req: Request, res: Response) => {
     const session = await db.orm.public.Session.where({ refreshTokenHash }).first();
 
     if (!session) {
-      console.warn(`Refresh token not found: userId ${payload.userId}`);
+      reqLog(req).warn("refresh_session_not_found", { user_id: payload.userId });
       res.status(401).json({ error: "Session not found" });
       return;
     }
 
     // SECURITY: Check for token reuse (rotation detection)
     if (session.reuseDetected) {
-      console.error(`TOKEN REUSE DETECTED: Session ${session.id}, User ${session.userId}, TokenFamily ${session.tokenFamily}`);
+      reqLog(req).error("refresh_token_reuse_detected", {
+        session_id: session.id,
+        user_id: session.userId,
+        token_family: session.tokenFamily,
+      });
 
       // Revoke all sessions in this token family.
       // NOTE: the contract ORM's delete() removes a single row per call,
@@ -252,7 +257,7 @@ router.post("/refresh", authRateLimit, async (req: Request, res: Response) => {
             await db.orm.public.Session.where({ id: familySession.id }).delete();
           }
         }
-        console.warn(`Revoked all sessions in token family ${session.tokenFamily}`);
+        reqLog(req).warn("token_family_sessions_revoked", { token_family: session.tokenFamily });
       } else {
         await db.orm.public.Session.where({ id: session.id }).delete();
       }
@@ -303,7 +308,7 @@ router.post("/refresh", authRateLimit, async (req: Request, res: Response) => {
       expiresIn: process.env.JWT_ACCESS_EXPIRY || "15m",
     });
   } catch (error) {
-    console.error("Refresh token error:", error);
+    reqLog(req).error("refresh_token_failed", { error });
     res.status(500).json({ error: "Failed to refresh token" });
   }
 });
@@ -331,7 +336,7 @@ router.post("/logout", authRateLimit, async (req: Request, res: Response) => {
 
     res.json({ message: "Logged out successfully" });
   } catch (error) {
-    console.error("Logout error:", error);
+    reqLog(req).error("logout_failed", { error });
     res.status(500).json({ error: "Failed to logout" });
   }
 });
@@ -357,7 +362,7 @@ router.get("/me", authenticate, async (req: AuthRequest, res: Response) => {
       createdAt: user.createdAt,
     });
   } catch (error) {
-    console.error("Get user error:", error);
+    reqLog(req).error("get_user_failed", { error });
     res.status(500).json({ error: "Failed to get user" });
   }
 });

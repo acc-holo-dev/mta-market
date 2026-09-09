@@ -63,3 +63,27 @@ export interface AlertConfig {
   channels: ('email' | 'webhook' | 'slack')[];
   threshold: number; // Only alert if mismatch count >= threshold
 }
+
+/** PLAN B-003: one step inside a reconciliation cycle. */
+export interface CycleStepResult {
+  step:
+    | 'payment_reconciliation'
+    | 'refund_reconciliation'
+    | 'payout_reconciliation'
+    | 'provider_event_mismatch'
+    | 'internal_ledger_check';
+  status: 'completed' | 'mismatches_found' | 'failed' | 'skipped';
+  reportId?: string;
+  internalCount?: number;
+  providerCount?: number;
+  mismatchCount?: number;
+  error?: string;
+}
+
+/** PLAN B-003: result of a full reconciliation cycle. */
+export interface CycleResult {
+  window: { periodStart: Date; periodEnd: Date };
+  steps: CycleStepResult[];
+  startedAt: string;
+  finishedAt: string;
+}

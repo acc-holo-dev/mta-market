@@ -97,7 +97,9 @@ export async function createYooKassaPayment(
 
   if (!response.ok) {
     const error = await response.text();
-    throw new Error(`YooKassa API error: ${error}`);
+    // HTTP status in the message: callers (e.g. reconciliation B-003) can
+    // distinguish definitive errors (404) from transient ones.
+    throw new Error(`YooKassa API error (HTTP ${response.status}): ${error}`);
   }
 
   return (await response.json()) as YooKassaPayment;
@@ -121,7 +123,9 @@ export async function getYooKassaPayment(paymentId: string): Promise<YooKassaPay
 
   if (!response.ok) {
     const error = await response.text();
-    throw new Error(`YooKassa API error: ${error}`);
+    // HTTP status in the message: callers (e.g. reconciliation B-003) can
+    // distinguish definitive errors (404) from transient ones.
+    throw new Error(`YooKassa API error (HTTP ${response.status}): ${error}`);
   }
 
   return (await response.json()) as YooKassaPayment;

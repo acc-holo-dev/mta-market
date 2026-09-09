@@ -7,6 +7,9 @@
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
+/** Structured log fields (flat, JSON-serializable; sensitive keys are redacted). */
+export type LogFields = Record<string, unknown>;
+
 const LEVEL_ORDER: Record<LogLevel, number> = {
   debug: 10,
   info: 20,
