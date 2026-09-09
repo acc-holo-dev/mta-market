@@ -18,3 +18,7 @@ apps/server/.claude/
 apps/server/.cursor/
 apps/server/.devin/
 apps/server/migrations/
+
+# Playwright
+test-results/
+playwright-report/

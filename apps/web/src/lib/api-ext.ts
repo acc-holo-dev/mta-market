@@ -238,8 +238,11 @@ export async function fetchResource(slug: string) {
 }
 
 export async function fetchResourceVersions(slug: string) {
-  const { data } = await api.get<{ data: ResourceVersion[] }>(`/resources/${slug}/versions`);
-  return data.data;
+  const { data } = await api.get<ResourceVersion[] | { data: ResourceVersion[] }>(
+    `/resources/${slug}/versions`
+  );
+  // Server returns a plain array; tolerate a {data} wrapper defensively.
+  return Array.isArray(data) ? data : data.data;
 }
 
 export async function fetchResourceReviews(slug: string, page = 1, limit = 10) {
@@ -294,9 +297,13 @@ export async function fetchMyPurchases() {
 }
 
 // ---------- Seller ----------
-export async function fetchSellerProfile() {
-  const { data } = await api.get<SellerProfile>("/seller/profile");
-  return data;
+/**
+ * GET /seller/profile — the server wraps the row: { profile: SellerProfile | null }.
+ * Returns the unwrapped profile (null when the user has not applied yet).
+ */
+export async function fetchSellerProfile(): Promise<SellerProfile | null> {
+  const { data } = await api.get<{ profile: SellerProfile | null }>("/seller/profile");
+  return data.profile ?? null;
 }
 
 export async function applySeller(body: { displayName?: string; supportInfo?: string }) {
@@ -422,8 +429,12 @@ export async function fetchAdminResources(status?: string, page = 1) {
   return data;
 }
 
+/**
+ * Server contract: PATCH /admin/resources/:id/status
+ * (POST is not registered on the backend).
+ */
 export async function adminSetResourceStatus(id: string, status: string, reason?: string) {
-  const { data } = await api.post(`/admin/resources/${id}/status`, reason ? { status, reason } : { status });
+  const { data } = await api.patch(`/admin/resources/${id}/status`, reason ? { status, reason } : { status });
   return data;
 }
 
@@ -432,20 +443,23 @@ export async function fetchModerationEvents(id: string) {
   return data;
 }
 
+/** Seller approval queue lives at GET /seller/list (ADMIN only). */
 export async function fetchAdminSellers(status?: string) {
-  const { data } = await api.get<{ data?: unknown[] } | unknown[]>("/admin/sellers", {
+  const { data } = await api.get<{ data: SellerProfile[]; total: number }>("/seller/list", {
     params: status ? { status } : {},
   });
   return data;
 }
 
+/** Server contract: POST /seller/:userId/approve | /seller/:userId/reject. */
 export async function adminSellerAction(userId: string, action: "approve" | "reject", reason?: string) {
-  const { data } = await api.post(`/admin/sellers/${userId}/${action}`, reason ? { reason } : {});
+  const { data } = await api.post(`/seller/${userId}/${action}`, action === "reject" ? { reason: reason ?? "Отклонено" } : {});
   return data;
 }
 
+/** Admin dispute list lives at GET /disputes/admin/all (ADMIN only). */
 export async function fetchAdminDisputes(status?: string) {
-  const { data } = await api.get<Paginated<Dispute>>("/admin/disputes", {
+  const { data } = await api.get<Paginated<Dispute>>("/disputes/admin/all", {
     params: status ? { status } : {},
   });
   return data;

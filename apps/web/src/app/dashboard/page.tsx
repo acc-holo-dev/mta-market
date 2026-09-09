@@ -4,7 +4,8 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/auth";
-import api, { bootstrapSession } from "@/lib/api";
+import { bootstrapSession } from "@/lib/api";
+import { fetchMyPurchases } from "@/lib/api-ext";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { LoadingSpinner, EmptyState, ErrorState } from "@/components/ui/States";
@@ -14,14 +15,13 @@ import { Package, ShoppingBag, Star, Plus } from "lucide-react";
 
 interface Purchase {
   id: string;
-  resourceId: string;
   status: string;
   priceSnapshot: number;
   createdAt: string;
   resource: {
     title: string;
     slug: string;
-  };
+  } | null;
 }
 
 export default function DashboardPage() {
@@ -49,11 +49,8 @@ export default function DashboardPage() {
     error,
     refetch,
   } = useQuery({
-    queryKey: ["purchases"],
-    queryFn: async () => {
-      const { data } = await api.get<{ data: Purchase[] }>("/purchases/my");
-      return data.data;
-    },
+    queryKey: ["purchases", "my", "dashboard"],
+    queryFn: fetchMyPurchases,
     enabled: isAuthenticated(),
   });
 
@@ -149,10 +146,10 @@ export default function DashboardPage() {
                 >
                   <div>
                     <Link
-                      href={`/resources/${purchase.resource.slug}`}
+                      href={purchase.resource ? `/resources/${purchase.resource.slug}` : "/resources"}
                       className="font-semibold hover:text-blue-600 dark:hover:text-blue-400"
                     >
-                      {purchase.resource.title}
+                      {purchase.resource?.title ?? "Ресурс недоступен"}
                     </Link>
                     <p className="text-sm text-slate-600 dark:text-slate-400">
                       {new Date(purchase.createdAt).toLocaleDateString("ru-RU")}

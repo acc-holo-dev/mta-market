@@ -48,7 +48,7 @@ const TRANSLIT: Record<string, string> = {
   ъ: "", ы: "y", ь: "", э: "e", ю: "yu", я: "ya",
 };
 
-export function slugify(title: string): string {
+function slugify(title: string): string {
   return title
     .toLowerCase()
     .split("")

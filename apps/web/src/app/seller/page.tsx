@@ -17,7 +17,6 @@ import {
   formatRub,
   getErrorMessage,
   type ServiceOrder,
-  type SellerProfile,
   type Resource,
   type Purchase,
 } from "@/lib/api-ext";
@@ -77,7 +76,7 @@ export default function SellerPage() {
   const status = profile?.status;
 
   // No profile or rejected -> allow applying (re-applying).
-  if (!status || status === "REJECTED" || (profile as SellerProfile | undefined) === null) {
+  if (!profile || status === "REJECTED") {
     return <ApplyForm rejected={status === "REJECTED"} />;
   }
 

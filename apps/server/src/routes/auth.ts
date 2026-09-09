@@ -228,7 +228,7 @@ router.post("/register", authRateLimit, async (req: Request, res: Response) => {
 });
 
 // POST /auth/login - PLAN-001 A-002 (username OR email + password)
-router.post("/login", authRateLimit, userRateLimit({ windowMs: 60_000, max: 10, action: "login" }), async (req: Request, res: Response) => {
+router.post("/login", authRateLimit, userRateLimit({ windowMs: 60_000, max: parseInt(process.env.LOGIN_RATE_LIMIT_MAX || "10", 10), action: "login" }), async (req: Request, res: Response) => {
   try {
     const parsed = loginSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -291,7 +291,7 @@ router.post("/login", authRateLimit, userRateLimit({ windowMs: 60_000, max: 10, 
 });
 
 // POST /auth/refresh - Refresh access token with rotation
-router.post("/refresh", authRateLimit, userRateLimit({ windowMs: 60_000, max: 30, action: "refresh" }), async (req: Request, res: Response) => {
+router.post("/refresh", authRateLimit, userRateLimit({ windowMs: 60_000, max: parseInt(process.env.REFRESH_RATE_LIMIT_MAX || "30", 10), action: "refresh" }), async (req: Request, res: Response) => {
   try {
     const refreshToken = req.cookies?.refresh_token;
 

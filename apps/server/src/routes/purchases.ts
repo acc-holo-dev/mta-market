@@ -98,6 +98,14 @@ router.get("/my", authenticate, standardRateLimit, async (req: AuthRequest, res:
 
       const version = await db.orm.public.ResourceVersion.where({ id: purchase.versionId }).first();
 
+      // H-004: the buyer's license state travels with the purchase list
+      // (the account page renders it; without it a COMPLETED purchase
+      // wrongly shows "license not issued").
+      const license =
+        purchase.status === "COMPLETED"
+          ? await db.orm.public.License.where({ purchaseId: purchase.id }).first()
+          : null;
+
       enriched.push({
         id: purchase.id,
         status: purchase.status,
@@ -114,6 +122,12 @@ router.get("/my", authenticate, standardRateLimit, async (req: AuthRequest, res:
         version: version
           ? {
               version: version.version,
+            }
+          : null,
+        license: license
+          ? {
+              id: license.id,
+              status: license.status,
             }
           : null,
       });

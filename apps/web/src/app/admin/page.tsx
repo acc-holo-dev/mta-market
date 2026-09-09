@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   fetchAdminStats,
@@ -20,6 +20,7 @@ import {
   type Dispute,
 } from "@/lib/api-ext";
 import { useAuthStore } from "@/store/auth";
+import { bootstrapSession } from "@/lib/api";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -30,10 +31,33 @@ import { Shield, Gavel, Users, Ban } from "lucide-react";
 type Tab = "moderation" | "sellers" | "disputes" | "versions";
 
 export default function AdminPage() {
-  const { user } = useAuthStore();
+  const { user, accessToken, isAuthenticated } = useAuthStore();
   const [tab, setTab] = useState<Tab>("moderation");
+  const [booted, setBooted] = useState(false);
 
-  if (!user || (user.role !== "ADMIN" && user.role !== "MODERATOR")) {
+  // G-001/G-002: the access token is memory-only, so a direct visit to
+  // /admin (fresh load or reload) must restore the session from the refresh
+  // cookie BEFORE the role check, otherwise an admin sees "access denied".
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      await bootstrapSession();
+      if (!cancelled) setBooted(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!booted) {
+    return (
+      <div className="container mx-auto px-4 py-12">
+        <p className="text-sm text-slate-500">Загрузка...</p>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated() || !user || (user.role !== "ADMIN" && user.role !== "MODERATOR")) {
     return (
       <div className="container mx-auto px-4 py-12">
         <Card className="bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800">
