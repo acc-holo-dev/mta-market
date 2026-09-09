@@ -5,6 +5,21 @@ const nextConfig = {
   // Standalone tracing is enabled in the Linux production image. Keeping it
   // disabled locally avoids pnpm symlink limitations on Windows.
   output: process.env.NEXT_OUTPUT_STANDALONE === "true" ? "standalone" : undefined,
+  async rewrites() {
+    // Same-origin API access (mirrors the production nginx topology of
+    // /api/ -> backend). When NEXT_PUBLIC_API_URL is "/api", the browser
+    // talks to the web origin only — no CORS, no cross-site cookies — so
+    // the site works from any host/IP that can reach this server.
+    if (process.env.NEXT_PUBLIC_API_URL === "/api") {
+      return [
+        {
+          source: "/api/:path*",
+          destination: `${process.env.API_PROXY_TARGET || "http://127.0.0.1:3001"}/:path*`,
+        },
+      ];
+    }
+    return [];
+  },
 };
 
 export default nextConfig;
