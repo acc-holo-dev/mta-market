@@ -10,6 +10,7 @@ import { loadArtifactBuffer } from "../lib/storage";
 import { validateArtifact } from "../lib/sandbox/service";
 import { signVersionArtifact } from "../lib/artifact/signing";
 import { reqLog } from "../middleware/requestId";
+import { incDownloadFailure } from "../lib/metrics";
 
 const router: Router = Router();
 
@@ -187,6 +188,7 @@ router.get(
       }).first();
 
       if (!purchase) {
+        incDownloadFailure();
         reqLog(req).warn("download_denied_no_purchase", {
           user_id: req.user!.userId,
           resource_id: resource.id,

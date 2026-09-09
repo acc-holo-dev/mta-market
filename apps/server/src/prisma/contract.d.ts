@@ -33,9 +33,9 @@ import type {
 } from '@prisma/orm-postgres/contract/types';
 
 export type StorageHash =
-  StorageHashBase<'4aa0fafa29a7633fb6bd8714f7e48c9503899b5ef03c34ea8a4f8bea5b244431'>;
+  StorageHashBase<'08ae151c45c0962c0b195d482017ae47e2831b3b38b2b3891d67c88da132e8a8'>;
 export type ExecutionHash =
-  ExecutionHashBase<'fcf551c88093e02e36118162a438a17a3e04ec11afe57a08093d71173766dd35'>;
+  ExecutionHashBase<'486407c1805c95ccc5e23d5f08f0cf81c0a490b871cc08af7a6a01e8cfe1f692'>;
 export type ProfileHash =
   ProfileHashBase<'3916f444a8a17ad749191acf9e08dad97d1a327b88c2f1d45d12f240296aa8b2'>;
 
@@ -274,6 +274,18 @@ export type FieldOutputTypes = {
       readonly manifest: CodecTypes['pg/json@1']['output'];
       readonly signedAt: CodecTypes['pg/timestamptz-string@1']['output'];
       readonly verifiedAt: CodecTypes['pg/timestamptz-string@1']['output'] | null;
+    };
+    readonly AuditLog: {
+      readonly id: CodecTypes['pg/text@1']['output'];
+      readonly actorId: CodecTypes['pg/text@1']['output'];
+      readonly action: CodecTypes['pg/text@1']['output'];
+      readonly targetType: CodecTypes['pg/text@1']['output'];
+      readonly targetId: CodecTypes['pg/text@1']['output'];
+      readonly before: CodecTypes['pg/text@1']['output'] | null;
+      readonly after: CodecTypes['pg/text@1']['output'] | null;
+      readonly ip: CodecTypes['pg/text@1']['output'] | null;
+      readonly requestId: CodecTypes['pg/text@1']['output'] | null;
+      readonly createdAt: CodecTypes['pg/timestamptz-string@1']['output'];
     };
     readonly CompatibilityReport: {
       readonly id: CodecTypes['pg/text@1']['output'];
@@ -826,6 +838,18 @@ export type FieldInputTypes = {
       readonly signedAt: CodecTypes['pg/timestamptz-string@1']['input'];
       readonly verifiedAt: CodecTypes['pg/timestamptz-string@1']['input'] | null;
     };
+    readonly AuditLog: {
+      readonly id: CodecTypes['pg/text@1']['input'];
+      readonly actorId: CodecTypes['pg/text@1']['input'];
+      readonly action: CodecTypes['pg/text@1']['input'];
+      readonly targetType: CodecTypes['pg/text@1']['input'];
+      readonly targetId: CodecTypes['pg/text@1']['input'];
+      readonly before: CodecTypes['pg/text@1']['input'] | null;
+      readonly after: CodecTypes['pg/text@1']['input'] | null;
+      readonly ip: CodecTypes['pg/text@1']['input'] | null;
+      readonly requestId: CodecTypes['pg/text@1']['input'] | null;
+      readonly createdAt: CodecTypes['pg/timestamptz-string@1']['input'];
+    };
     readonly CompatibilityReport: {
       readonly id: CodecTypes['pg/text@1']['input'];
       readonly versionId: CodecTypes['pg/text@1']['input'];
@@ -1377,6 +1401,18 @@ export type StorageColumnTypes = {
       readonly verifiedAt: CodecTypes['pg/timestamptz-string@1']['output'] | null;
       readonly versionId: CodecTypes['pg/text@1']['output'];
     };
+    readonly auditLog: {
+      readonly action: CodecTypes['pg/text@1']['output'];
+      readonly actorId: CodecTypes['pg/text@1']['output'];
+      readonly after: CodecTypes['pg/text@1']['output'] | null;
+      readonly before: CodecTypes['pg/text@1']['output'] | null;
+      readonly createdAt: CodecTypes['pg/timestamptz-string@1']['output'];
+      readonly id: CodecTypes['pg/text@1']['output'];
+      readonly ip: CodecTypes['pg/text@1']['output'] | null;
+      readonly requestId: CodecTypes['pg/text@1']['output'] | null;
+      readonly targetId: CodecTypes['pg/text@1']['output'];
+      readonly targetType: CodecTypes['pg/text@1']['output'];
+    };
     readonly compatibilityReport: {
       readonly architecture: CodecTypes['pg/text@1']['output'] | null;
       readonly createdAt: CodecTypes['pg/timestamptz-string@1']['output'];
@@ -1927,6 +1963,18 @@ export type StorageColumnInputTypes = {
       readonly signedAt: CodecTypes['pg/timestamptz-string@1']['input'];
       readonly verifiedAt: CodecTypes['pg/timestamptz-string@1']['input'] | null;
       readonly versionId: CodecTypes['pg/text@1']['input'];
+    };
+    readonly auditLog: {
+      readonly action: CodecTypes['pg/text@1']['input'];
+      readonly actorId: CodecTypes['pg/text@1']['input'];
+      readonly after: CodecTypes['pg/text@1']['input'] | null;
+      readonly before: CodecTypes['pg/text@1']['input'] | null;
+      readonly createdAt: CodecTypes['pg/timestamptz-string@1']['input'];
+      readonly id: CodecTypes['pg/text@1']['input'];
+      readonly ip: CodecTypes['pg/text@1']['input'] | null;
+      readonly requestId: CodecTypes['pg/text@1']['input'] | null;
+      readonly targetId: CodecTypes['pg/text@1']['input'];
+      readonly targetType: CodecTypes['pg/text@1']['input'];
     };
     readonly compatibilityReport: {
       readonly architecture: CodecTypes['pg/text@1']['input'] | null;
@@ -2717,6 +2765,84 @@ type ContractBase = Omit<
                   };
                 },
               ];
+            };
+            readonly auditLog: {
+              columns: {
+                readonly id: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly actorId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly action: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly targetType: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly targetId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly before: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+                readonly after: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+                readonly ip: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+                readonly requestId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+                readonly createdAt: {
+                  readonly nativeType: 'timestamptz';
+                  readonly codecId: 'pg/timestamptz-string@1';
+                  readonly nullable: false;
+                  readonly default: { readonly kind: 'function'; readonly expression: 'now()' };
+                };
+              };
+              primaryKey: { readonly columns: readonly ['id'] };
+              uniques: readonly [];
+              indexes: readonly [
+                {
+                  readonly name: 'auditLog_actorId_idx_a58f6b4b';
+                  readonly prefix: 'auditLog_actorId_idx';
+                  readonly columns: readonly ['actorId'];
+                  readonly unique: false;
+                },
+                {
+                  readonly name: 'auditLog_targetType_targetId_idx_7a5ee9cb';
+                  readonly prefix: 'auditLog_targetType_targetId_idx';
+                  readonly columns: readonly ['targetType', 'targetId'];
+                  readonly unique: false;
+                },
+                {
+                  readonly name: 'auditLog_createdAt_idx_9575dbd7';
+                  readonly prefix: 'auditLog_createdAt_idx';
+                  readonly columns: readonly ['createdAt'];
+                  readonly unique: false;
+                },
+              ];
+              foreignKeys: readonly [];
             };
             readonly compatibilityReport: {
               columns: {
@@ -6741,6 +6867,7 @@ type ContractBase = Omit<
       readonly namespace: 'public' & NamespaceId;
       readonly model: 'SellerProfile';
     };
+    readonly auditLog: { readonly namespace: 'public' & NamespaceId; readonly model: 'AuditLog' };
   };
   readonly domain: {
     readonly namespaces: {
@@ -6969,6 +7096,70 @@ type ContractBase = Omit<
                 readonly manifest: { readonly column: 'manifest' };
                 readonly signedAt: { readonly column: 'signedAt' };
                 readonly verifiedAt: { readonly column: 'verifiedAt' };
+              };
+            };
+          };
+          readonly AuditLog: {
+            readonly fields: {
+              readonly id: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly actorId: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly action: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly targetType: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly targetId: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly before: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly after: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly ip: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly requestId: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly createdAt: {
+                readonly nullable: false;
+                readonly type: {
+                  readonly kind: 'scalar';
+                  readonly codecId: 'pg/timestamptz-string@1';
+                };
+              };
+            };
+            readonly relations: Record<string, never>;
+            readonly storage: {
+              readonly table: 'auditLog';
+              readonly namespaceId: 'public';
+              readonly fields: {
+                readonly id: { readonly column: 'id' };
+                readonly actorId: { readonly column: 'actorId' };
+                readonly action: { readonly column: 'action' };
+                readonly targetType: { readonly column: 'targetType' };
+                readonly targetId: { readonly column: 'targetId' };
+                readonly before: { readonly column: 'before' };
+                readonly after: { readonly column: 'after' };
+                readonly ip: { readonly column: 'ip' };
+                readonly requestId: { readonly column: 'requestId' };
+                readonly createdAt: { readonly column: 'createdAt' };
               };
             };
           };
@@ -10962,6 +11153,14 @@ type ContractBase = Omit<
           readonly ref: {
             readonly namespace: 'public';
             readonly table: 'artifactSignature';
+            readonly column: 'id';
+          };
+          readonly onCreate: { readonly kind: 'generator'; readonly id: 'uuidv4' };
+        },
+        {
+          readonly ref: {
+            readonly namespace: 'public';
+            readonly table: 'auditLog';
             readonly column: 'id';
           };
           readonly onCreate: { readonly kind: 'generator'; readonly id: 'uuidv4' };

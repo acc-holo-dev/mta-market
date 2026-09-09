@@ -5,6 +5,7 @@ import { standardRateLimit } from "../lib/rateLimit";
 import { db } from "../prisma/db";
 import { validate } from "../middleware/validate";
 import { createResourceCheckout, CommerceError } from "../lib/commerce";
+import { userRateLimit } from "../lib/rateLimit";
 import { validateCuid } from "../middleware/validateCuid";
 import { createPurchaseSchema } from "../lib/validation";
 import { reqLog } from "../middleware/requestId";
@@ -20,6 +21,7 @@ router.post(
   "/",
   authenticate,
   standardRateLimit,
+  userRateLimit({ windowMs: 60_000, max: 30, action: "checkout" }),
   validate(createPurchaseSchema),
   async (req: AuthRequest, res: Response) => {
     try {

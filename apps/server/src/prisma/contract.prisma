@@ -1131,3 +1131,22 @@ model SellerProfile {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
+
+// PLAN Q-004: append-only audit log, separate from application logs.
+// Records who did WHAT to WHICH target, from where, under which request_id.
+model AuditLog {
+  id         String @id @default(uuid())
+  actorId    String
+  action     String // e.g. moderation.transition, seller.approve, refund.create
+  targetType String
+  targetId   String
+  before     String? // JSON snapshot where safe
+  after      String? // JSON snapshot where safe
+  ip         String?
+  requestId  String?
+  createdAt  TimestamptzString @default(now())
+
+  @@index([actorId])
+  @@index([targetType, targetId])
+  @@index([createdAt])
+}

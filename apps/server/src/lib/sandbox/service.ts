@@ -8,6 +8,7 @@
 
 import { db } from '../../prisma/db';
 import { validateArchive } from './static';
+import { incSandboxFailure } from '../metrics';
 import { runSandbox, isDockerAvailable } from './runner';
 import type {
   StaticValidationResult,
@@ -46,6 +47,7 @@ export async function validateArtifact(
     logger.warn("sandbox_static_validation_failed", { version_id: versionId, errors: staticValidation.errors });
 
     // Store failed validation
+    incSandboxFailure();
     await db.orm.public.SandboxRun.create({
       versionId,
       status: 'FAILED',
@@ -121,6 +123,7 @@ export async function validateArtifact(
       status: sandboxRun.status === 'success' ? 'SUCCESS' :
               sandboxRun.status === 'timeout' ? 'TIMEOUT' :
               sandboxRun.status === 'security_violation' ? 'SECURITY_VIOLATION' : 'FAILED',
+      // failure metric: SECURITY_VIOLATION and FAILED both count (O-001)
       completedAt: new Date().toISOString(),
       exitCode: sandboxRun.exitCode,
       stdout: sandboxRun.stdout,

@@ -10,6 +10,7 @@ import { hasValidSignature } from "../lib/artifact/signing";
 import { getSandboxRun } from "../lib/sandbox/service";
 import { reqLog } from "../middleware/requestId";
 import { validateResourceDependencies } from "../lib/artifact/dependencies";
+import { recordAudit } from "../lib/audit";
 
 const router: Router = Router();
 
@@ -152,6 +153,18 @@ router.patch(
         fromStatus: from,
         toStatus: status,
         reason: req.body?.reason ?? null,
+      });
+
+      // PLAN Q-004: audit trail.
+      await recordAudit({
+        actorId: req.user!.userId,
+        action: "moderation.transition",
+        targetType: "resource",
+        targetId: resource.id,
+        before: { status: from },
+        after: { status },
+        ip: req.ip,
+        requestId: req.id,
       });
 
       // PLAN I-005: publishing the resource marks its versions PUBLISHED in

@@ -6,6 +6,9 @@ import express, { Express } from "express";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import { requestIdMiddleware } from "./middleware/requestId";
+import { observabilityMiddleware } from "./middleware/observability";
+import { metrics, METRIC_HELP } from "./lib/metrics";
+import { db } from "./prisma/db";
 import authRoutes from "./routes/auth";
 import resourcesRoutes from "./routes/resources";
 import versionsRoutes from "./routes/versions";
@@ -55,6 +58,8 @@ export function createApp(): Express {
   app.use(cookieParser());
   // PLAN B-007: request_id on every request (header + logs).
   app.use(requestIdMiddleware);
+  // PLAN O-001/Q-001: metrics + security headers.
+  app.use(observabilityMiddleware);
 
   const allowedOrigins = getAllowedOrigins();
   app.use(
@@ -86,6 +91,34 @@ export function createApp(): Express {
 
   app.get("/health", (_req, res) => {
     res.json({ status: "healthy", timestamp: new Date().toISOString() });
+  });
+
+  // PLAN O-002: separate liveness and readiness probes.
+  // /live: the process is up (no dependency checks).
+  app.get("/live", (_req, res) => {
+    res.json({ status: "live" });
+  });
+
+  // /ready: required dependencies answer. DB is required; Redis failures
+  // degrade (rate limiter fails open) and are reported but non-fatal.
+  app.get("/ready", async (_req, res) => {
+    const checks: Record<string, string> = {};
+    let ready = true;
+    try {
+      await db.orm.public.User.where({ id: "00000000-0000-0000-0000-000000000000" }).first();
+      checks.database = "ok";
+    } catch {
+      checks.database = "unavailable";
+      ready = false;
+    }
+    checks.redis = "optional";
+    res.status(ready ? 200 : 503).json({ status: ready ? "ready" : "not_ready", checks });
+  });
+
+  // PLAN O-001: Prometheus text exposition endpoint.
+  app.get("/metrics", (_req, res) => {
+    res.setHeader("Content-Type", "text/plain; version=0.0.4");
+    res.send(metrics.render());
   });
 
   app.use("/auth", authRoutes);

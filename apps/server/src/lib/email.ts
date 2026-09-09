@@ -2,6 +2,7 @@
 import nodemailer from "nodemailer";
 import type { Transporter } from "nodemailer";
 import { logger } from "./logger";
+import { incEmailFailure } from "./metrics";
 
 const EMAIL_ENABLED = process.env.EMAIL_ENABLED === "true";
 const SMTP_HOST = process.env.SMTP_HOST || "smtp.gmail.com";
@@ -48,6 +49,7 @@ export async function sendEmail(options: SendEmailOptions): Promise<void> {
 
     logger.info("email_sent", { subject: options.subject, recipient: options.to });
   } catch (error) {
+    incEmailFailure();
     logger.error("email_send_failed", { recipient: options.to, error });
     throw error;
   }

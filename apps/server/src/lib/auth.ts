@@ -3,6 +3,8 @@ import { Request, Response, NextFunction } from "express";
 import { verifyAccessToken, JWTPayload } from "../lib/jwt";
 
 export interface AuthRequest extends Request {
+  /** Bound by the requestId middleware (PLAN B-007). */
+  id?: string;
   user?: JWTPayload;
 }
 

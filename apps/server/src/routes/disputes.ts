@@ -10,6 +10,7 @@ import { authenticate, AuthRequest, requireRole } from "../lib/auth";
 import { standardRateLimit } from "../lib/rateLimit";
 import { validateCuid } from "../middleware/validateCuid";
 import { db } from "../prisma/db";
+import { recordAudit } from "../lib/audit";
 import { reqLog } from "../middleware/requestId";
 
 const router: Router = Router();
@@ -291,6 +292,16 @@ router.post("/:id/transition", authenticate, requireRole("ADMIN"), validateCuid(
       }
     }
 
+    await recordAudit({
+      actorId: req.user!.userId,
+      action: "dispute.transition",
+      targetType: "dispute",
+      targetId: dispute.id,
+      before: { status: dispute.status },
+      after: { status },
+      ip: req.ip,
+      requestId: req.id,
+    });
     reqLog(req).info("dispute_transitioned", {
       dispute_id: dispute.id,
       from: dispute.status,

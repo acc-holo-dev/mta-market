@@ -3,6 +3,7 @@ import { Router, Response } from "express";
 import { authenticate, AuthRequest } from "../lib/auth";
 import { standardRateLimit } from "../lib/rateLimit";
 import { db } from "../prisma/db";
+import { userRateLimit } from "../lib/rateLimit";
 import { reqLog } from "../middleware/requestId";
 
 const router: Router = Router();
@@ -68,6 +69,7 @@ router.post(
   "/:slug/reviews",
   authenticate,
   standardRateLimit,
+  userRateLimit({ windowMs: 60 * 60_000, max: 20, action: "review_create" }),
   async (req: AuthRequest, res: Response) => {
     try {
       const slug = req.params.slug as string;

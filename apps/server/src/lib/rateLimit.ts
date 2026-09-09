@@ -63,3 +63,46 @@ export const authRateLimit = rateLimit({
   max: parseInt(process.env.AUTH_RATE_LIMIT_MAX || "5", 10),
   keyPrefix: "rl:auth",
 });
+
+/**
+ * PLAN Q-002: per-account rate limiting for sensitive operations. Identity
+ * (user id) dimensions complement IP limits: a single account cannot brute
+ * force refresh/coupons/reviews by rotating IPs. Fails open like the IP
+ * limiter when Redis is unavailable.
+ */
+export function userRateLimit(options: {
+  windowMs: number;
+  max: number;
+  action: string;
+}) {
+  const { windowMs, max, action } = options;
+
+  return async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    const userId =
+      (req as { user?: { userId?: string } }).user?.userId ??
+      req.ip ??
+      "unknown";
+    const key = `rlu:${action}:${userId}`;
+
+    try {
+      const current = await redis.incr(key);
+      if (current === 1) {
+        await redis.pexpire(key, windowMs);
+      }
+      if (current > max) {
+        logger.warn("user_rate_limit_exceeded", { action, user_id: userId });
+        res.status(429).json({
+          error: "Too many requests for this action",
+          retryAfter: Math.ceil(windowMs / 1000),
+        });
+        return;
+      }
+      next();
+    } catch (error) {
+      logger.error("rate_limit_error", { key_prefix: `rlu:${action}`, error });
+      next();
+    }
+  };
+}
+
+import type { AuthRequest as AuthenticatedRequest } from "./auth";

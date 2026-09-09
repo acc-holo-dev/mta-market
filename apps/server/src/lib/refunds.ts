@@ -20,6 +20,7 @@
 import crypto from "crypto";
 import { db } from "../prisma/db";
 import { logger } from "./logger";
+import { recordAudit } from "./audit";
 import { paymentProviders, type IPaymentProvider } from "./paymentProvider";
 import { PaymentRefundError } from "./paymentErrors";
 import { assertTransition, type PaymentState } from "./paymentStateMachine";
@@ -282,6 +283,13 @@ export async function applyRefundEffects(input: {
   }
   await postLedgerEntries(`refund:${refundId}`, entries);
 
+  await recordAudit({
+    actorId: "system",
+    action: "refund.applied",
+    targetType: "payment",
+    targetId: payment.id,
+    after: { refund_id: refundId, amount, full: willBeFull, status: targetState },
+  });
   logger.info("refund_applied", {
     refund_id: refundId,
     payment_id: payment.id,

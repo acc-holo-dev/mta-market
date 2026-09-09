@@ -22,6 +22,7 @@ import {
 import { createRefund } from "../lib/refunds";
 import { PaymentRefundError } from "../lib/paymentErrors";
 import { reqLog } from "../middleware/requestId";
+import { metrics, METRIC_HELP, incPaymentSuccess } from "../lib/metrics";
 import type { YooKassaWebhook } from "../lib/yookassa";
 
 const router: Router = Router();
@@ -392,6 +393,7 @@ router.post("/webhook", async (req: Request, res: Response) => {
 
       // E-003: entitlement granted + ledger settled -> SETTLED.
       await transitionPaymentTo(object.id, "SETTLED");
+      incPaymentSuccess();
 
       const user = await db.orm.public.User.where({ id: purchase.buyerId }).first();
       const resource = await db.orm.public.Resource.where({ id: purchase.resourceId }).first();
@@ -432,6 +434,7 @@ router.post("/webhook", async (req: Request, res: Response) => {
       }
 
       await transitionPaymentTo(object.id, "SETTLED");
+      incPaymentSuccess();
     }
 
     await db.orm.public.PaymentProviderEvent.where({ id: eventRecord.id }).update({

@@ -10,6 +10,7 @@ import { hashRefreshToken, generateTokenId, verifyRefreshTokenHash } from "../li
 import { setRefreshCookie, clearRefreshCookie } from "../lib/cookies";
 import { db } from "../prisma/db";
 import { sendWelcomeEmail } from "../lib/email";
+import { userRateLimit } from "../lib/rateLimit";
 import { reqLog } from "../middleware/requestId";
 import { identityProviders } from "../lib/identityProvider";
 
@@ -59,7 +60,7 @@ function isRealEmail(email: string): boolean {
 }
 
 // POST /auth/refresh - Refresh access token with rotation
-router.post("/refresh", authRateLimit, async (req: Request, res: Response) => {
+router.post("/refresh", authRateLimit, userRateLimit({ windowMs: 60_000, max: 30, action: "refresh" }), async (req: Request, res: Response) => {
   try {
     const refreshToken = req.cookies?.refresh_token;
 

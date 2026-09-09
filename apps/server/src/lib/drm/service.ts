@@ -363,14 +363,29 @@ export async function recordHeartbeat(
 
   const leaseValid = lease ? new Date(lease.expiresAt) > new Date() : false;
 
-  // TODO (Phase I): check for newer published versions
-  const shouldUpdate = false;
+  // PLAN R-002: safe update flow — the server only ADVISES an update. When a
+  // newer PUBLISHED version exists (not YANKED/DEPRECATED), tell the module
+  // via shouldUpdate + updateVersionId; the module decides whether and when
+  // to update (compatibility + signature checks happen on its side).
+  let shouldUpdate = false;
+  let updateVersionId: string | undefined;
+  if (lease) {
+    const versions = await db.orm.public.ResourceVersion
+      .where({ resourceId })
+      .orderBy((m) => m.publishedAt.desc())
+      .all();
+    const newest = versions.find((v) => v.releaseStatus === 'PUBLISHED');
+    if (newest && newest.id !== lease.resourceVersionId) {
+      shouldUpdate = true;
+      updateVersionId = newest.id;
+    }
+  }
 
   return {
     acknowledged: true,
     leaseValid,
     shouldUpdate,
-    updateVersionId: undefined
+    updateVersionId
   };
 }
 

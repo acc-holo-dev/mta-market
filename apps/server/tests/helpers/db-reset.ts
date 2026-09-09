@@ -146,6 +146,18 @@ export async function resetTestEntities(): Promise<void> {
     console.warn("[reset] orders:", e instanceof Error ? e.message : e);
   }
 
+  // PLAN Q-004: audit rows are append-only; test-range actor rows are removed.
+  try {
+    const audits = await db.orm.public.AuditLog.where({}).all();
+    for (const a of audits) {
+      if (a.actorId.startsWith(TEST_ID_PREFIX)) {
+        await db.orm.public.AuditLog.where({ id: a.id }).delete().catch(() => undefined);
+      }
+    }
+  } catch (e) {
+    console.warn("[reset] audit logs:", e instanceof Error ? e.message : e);
+  }
+
   // 7. Users last (sessions/accounts/reviews cascade)
   for (const uid of testUserIds) {
     await db.orm.public.User.where({ id: uid }).delete().catch(() => undefined);

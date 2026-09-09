@@ -8,6 +8,7 @@ import { Router, Response } from "express";
 import { authenticate, AuthRequest, requireRole } from "../lib/auth";
 import { standardRateLimit } from "../lib/rateLimit";
 import { db } from "../prisma/db";
+import { recordAudit } from "../lib/audit";
 import { reqLog } from "../middleware/requestId";
 
 const router: Router = Router();
@@ -115,6 +116,15 @@ router.post("/:userId/approve", authenticate, requireRole("ADMIN"), standardRate
       reviewedBy: req.user!.userId,
       rejectionReason: null,
     });
+    await recordAudit({
+      actorId: req.user!.userId,
+      action: "seller.approve",
+      targetType: "seller_profile",
+      targetId: profile.id,
+      after: { status: "APPROVED", payoutEnabled: true },
+      ip: req.ip,
+      requestId: req.id,
+    });
     reqLog(req).info("seller_approved", {
       user_id: req.params.userId,
       admin_id: req.user!.userId,
@@ -147,6 +157,15 @@ router.post("/:userId/reject", authenticate, requireRole("ADMIN"), standardRateL
       reviewedAt: new Date().toISOString(),
       reviewedBy: req.user!.userId,
       rejectionReason: reason,
+    });
+    await recordAudit({
+      actorId: req.user!.userId,
+      action: "seller.reject",
+      targetType: "seller_profile",
+      targetId: profile.id,
+      after: { status: "REJECTED", reason },
+      ip: req.ip,
+      requestId: req.id,
     });
     reqLog(req).warn("seller_rejected", {
       user_id: req.params.userId,
