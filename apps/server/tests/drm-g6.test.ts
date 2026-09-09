@@ -29,7 +29,6 @@ import {
 import { encryptWithDek, decryptWithDek } from "../src/lib/artifact/encryption";
 import { createVersionDek } from "../src/lib/drm/service";
 import { CLOCK_SKEW_SECONDS, DEK_ALGORITHM } from "../src/lib/drm/protocol";
-import { canonicalJSON } from "../src/lib/artifact/crypto";
 import { resetTestEntities, createTestUser } from "./helpers/db-reset";
 
 const app = request(createApp());
@@ -192,7 +191,7 @@ describe.skipIf(!dbAvailable)("G-001: protocol contract / clock skew", () => {
     expect(result.valid).toBe(false);
   });
 
-  it("rejects a lease issued in the future beyond the skew", () => {
+  it("rejects a lease issued in the future beyond the skew", async () => {
     const serverKey = process.env.DRM_SERVER_PRIVATE_KEY!;
     const lease = {
       protocolVersion: 2 as const,
@@ -208,15 +207,11 @@ describe.skipIf(!dbAvailable)("G-001: protocol contract / clock skew", () => {
       capabilities: ["run" as const],
     };
     const signature = signLease(lease, serverKey);
-    const { getServerPublicKey: _g, ...rest } = {} as Record<string, unknown>;
-    void rest;
     // verify with the actual server public key of the ACTIVE key
-    (async () => {
-      const keys = await getTrustedServerKeys();
-      const result = verifyLeaseSignature({ ...lease, signature }, keys[0].publicKey);
-      expect(result.valid).toBe(false);
-      expect(result.errors.join(" ")).toMatch(/future|skew/i);
-    })();
+    const keys = await getTrustedServerKeys();
+    const result = verifyLeaseSignature({ ...lease, signature }, keys[0].publicKey);
+    expect(result.valid).toBe(false);
+    expect(result.errors.join(" ")).toMatch(/future|skew/i);
   });
 });
 
