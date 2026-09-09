@@ -9,6 +9,7 @@ import {
   createYooKassaPayment,
   getYooKassaPayment,
   createYooKassaRefund,
+  cancelYooKassaPayment,
   YOOKASSA_ENABLED,
   YOOKASSA_SHOP_ID,
   type YooKassaPayment,
@@ -48,8 +49,7 @@ export class YooKassaPaymentProvider implements IPaymentProvider {
       case "refund.create":
         return this.isEnabled();
       case "payment.cancel":
-        // Cancellation via the provider API is not wired yet (E-010 note).
-        return false;
+        return this.isEnabled();
     }
   }
 
@@ -85,7 +85,7 @@ export class YooKassaPaymentProvider implements IPaymentProvider {
   }
 
   async cancelPayment(providerPaymentId: string): Promise<void> {
-    throw new Error("YooKassa cancellation is not wired yet (E-010)");
+    await cancelYooKassaPayment(providerPaymentId);
   }
 
   async createRefund(input: {

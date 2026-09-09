@@ -1,3 +1,6 @@
+// NAMING DEBT (documented in mta-market-document status.md): ids are UUID v4
+// (schema @default(uuid())), the middleware name is historical. New code
+// should import { validateUuid } — the same implementation.
 // Domain ID validation middleware
 // TASK A-004: domain IDs are opaque strings, never numbers.
 // The contract generates ids with @default(uuid()) (PSL v1 dialect has no
@@ -92,3 +95,6 @@ export function validateCuids(paramNames: string[]) {
 export function isCuid(value: string): boolean {
   return DOMAIN_ID_REGEX.test(value);
 }
+
+// PLAN P-002 finding: ids are UUID v4, not cuid — documented alias.
+export const validateUuid = validateCuid;

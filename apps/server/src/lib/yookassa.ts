@@ -173,3 +173,32 @@ export async function createYooKassaRefund(input: {
     amount: { value: string; currency: string };
   };
 }
+
+// Cancel a pending payment at YooKassa (PLAN E-001 cancelPayment).
+// Only payments in "pending"/"waiting_for_capture" can be canceled.
+export async function cancelYooKassaPayment(paymentId: string): Promise<{
+  id: string;
+  status: string;
+}> {
+  if (!YOOKASSA_ENABLED) {
+    throw new Error("YooKassa is not enabled");
+  }
+
+  const authHeader = Buffer.from(`${YOOKASSA_SHOP_ID}:${YOOKASSA_SECRET_KEY}`).toString("base64");
+
+  const response = await fetch(`https://api.yookassa.ru/v3/payments/${paymentId}/cancel`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotence-Key": crypto.randomUUID(),
+      Authorization: `Basic ${authHeader}`,
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`YooKassa API error (HTTP ${response.status}): ${error}`);
+  }
+
+  return (await response.json()) as { id: string; status: string };
+}

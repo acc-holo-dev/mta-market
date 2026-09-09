@@ -454,6 +454,64 @@ router.post("/webhook", async (req: Request, res: Response) => {
   }
 });
 
+// POST /payments/cancel - cancel a PENDING payment at the provider
+// (authenticated owner; E-001 cancelPayment capability, E-003 CANCELED state)
+router.post(
+  "/cancel",
+  authenticate,
+  standardRateLimit,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { paymentId } = req.body ?? {};
+      if (!paymentId) {
+        res.status(400).json({ error: "Missing paymentId" });
+        return;
+      }
+      const payment = await db.orm.public.Payment.where({ id: paymentId }).first();
+      if (!payment) {
+        res.status(404).json({ error: "Payment not found" });
+        return;
+      }
+      const paymentRow = payment;
+      // Only the payer (or an admin) cancels.
+      if (paymentRow.purchaseId) {
+        const purchase = await db.orm.public.Purchase
+          .where({ id: paymentRow.purchaseId })
+          .first();
+        if (purchase && purchase.buyerId !== req.user!.userId && req.user!.role !== "ADMIN") {
+          res.status(403).json({ error: "Not authorized" });
+          return;
+        }
+      }
+
+      const provider = yooKassaProvider();
+      if (!provider || !provider.supportsCapability("payment.cancel")) {
+        res.status(503).json({ error: "Provider cancellation is not available" });
+        return;
+      }
+      if (paymentRow.status !== "PENDING") {
+        res.status(409).json({ error: `Payment in state ${paymentRow.status} cannot be canceled` });
+        return;
+      }
+
+      await provider.cancelPayment(paymentRow.providerPaymentId);
+      await transitionPaymentTo(paymentRow.providerPaymentId, "CANCELED");
+      reqLog(req).info("payment_canceled", {
+        payment_id: paymentRow.id,
+        actor_id: req.user!.userId,
+      });
+      res.json({ status: "CANCELED" });
+    } catch (error) {
+      if (error instanceof CommerceError) {
+        res.status(error.status).json({ error: error.message });
+        return;
+      }
+      reqLog(req).error("payment_cancel_failed", { error });
+      res.status(500).json({ error: "Failed to cancel payment" });
+    }
+  }
+);
+
 // POST /payments/refunds - create a refund (ADMIN only, E-008)
 // INV-013: the refunded total can never exceed the captured amount.
 router.post(
