@@ -40,6 +40,18 @@ beforeAll(async () => {
   otherSellerToken = await createTestUser(OTHER_SELLER_ID, `other_${SUFFIX}`, "USER", generateAccessToken);
   adminToken = await createTestUser(ADMIN_ID, `admin_${SUFFIX}`, "ADMIN", generateAccessToken);
   moderatorToken = await createTestUser(MODERATOR_ID, `mod_${SUFFIX}`, "MODERATOR", generateAccessToken);
+
+  // PLAN L-002: API listing creation requires an APPROVED seller profile.
+    await db.orm.public.SellerProfile.create({
+    userId: SELLER_ID,
+    status: "APPROVED",
+    payoutEnabled: true,
+  }).catch(() => undefined);
+  await db.orm.public.SellerProfile.create({
+    userId: OTHER_SELLER_ID,
+    status: "APPROVED",
+    payoutEnabled: true,
+  }).catch(() => undefined);
 });
 
 afterAll(async () => {

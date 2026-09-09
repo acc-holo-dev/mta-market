@@ -57,6 +57,13 @@ beforeAll(async () => {
 
   sellerToken = await createTestUser(SELLER_ID, `ps_${SUFFIX}`, "USER", generateAccessToken);
   adminToken = await createTestUser(ADMIN_ID, `pa_${SUFFIX}`, "ADMIN", generateAccessToken);
+
+  // PLAN L-002: API listing creation requires an APPROVED seller profile.
+    await db.orm.public.SellerProfile.create({
+    userId: SELLER_ID,
+    status: "APPROVED",
+    payoutEnabled: true,
+  }).catch(() => undefined);
   sellerId = SELLER_ID;
 
   // Real fixture files in local storage

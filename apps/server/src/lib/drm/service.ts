@@ -258,6 +258,15 @@ export async function activateLicense(
     throw new Error(DRM_ERROR_CODES.INVALID_LICENSE);
   }
 
+  // PLAN I-005: a YANKED version blocks NEW lease issuance; existing leases
+  // keep their natural expiry (ADR-001 policy).
+  const licensedVersion = await db.orm.public.ResourceVersion
+    .where({ id: license.versionId })
+    .first();
+  if (licensedVersion && licensedVersion.releaseStatus === 'YANKED') {
+    throw new Error(DRM_ERROR_CODES.INSUFFICIENT_CAPABILITIES);
+  }
+
   // Get artifact signature for the licensed version
   const signature = await db.orm.public.ArtifactSignature.where({
     versionId: license.versionId

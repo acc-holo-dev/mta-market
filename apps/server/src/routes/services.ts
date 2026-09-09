@@ -9,6 +9,7 @@ import { standardRateLimit } from "../lib/rateLimit";
 import { db } from "../prisma/db";
 import { createServiceCheckout, CommerceError } from "../lib/commerce";
 import { affectedCount } from "../lib/discount";
+import { canCreateListings, sellerGateMessage } from "../lib/permissions";
 import { settleServiceRevenue } from "../lib/ledger";
 import { reqLog } from "../middleware/requestId";
 
@@ -72,6 +73,12 @@ router.post("/", authenticate, standardRateLimit, async (req: AuthRequest, res: 
     }
     if (price < 0 || deliveryDays < 1) {
       res.status(400).json({ error: "price must be >= 0 and deliveryDays >= 1" });
+      return;
+    }
+
+    // PLAN L-002: service creation requires an APPROVED seller profile.
+    if (!(await canCreateListings({ userId: req.user!.userId, role: req.user!.role as "USER" | "ADMIN" | "MODERATOR" }))) {
+      res.status(403).json({ error: sellerGateMessage(), code: "seller_approval_required" });
       return;
     }
 

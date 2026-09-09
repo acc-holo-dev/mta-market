@@ -30,20 +30,28 @@ export function Navbar() {
               href="/resources"
               className="text-sm font-medium text-slate-700 hover:text-blue-600 dark:text-slate-300 dark:hover:text-blue-400"
             >
-              Ресурсы
+              Каталог
             </Link>
             <Link
-              href="/sellers"
+              href="/dashboard"
               className="text-sm font-medium text-slate-700 hover:text-blue-600 dark:text-slate-300 dark:hover:text-blue-400"
             >
-              Продавцы
+              Dashboard
             </Link>
             <Link
-              href="/docs"
+              href="/seller"
               className="text-sm font-medium text-slate-700 hover:text-blue-600 dark:text-slate-300 dark:hover:text-blue-400"
             >
-              Документация
+              Seller
             </Link>
+            {user && (user.role === "ADMIN" || user.role === "MODERATOR") ? (
+              <Link
+                href="/admin"
+                className="text-sm font-medium text-slate-700 hover:text-blue-600 dark:text-slate-300 dark:hover:text-blue-400"
+              >
+                Admin
+              </Link>
+            ) : null}
           </div>
 
           {/* Auth Section */}

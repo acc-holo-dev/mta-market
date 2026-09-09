@@ -9,6 +9,7 @@ import { isResourceStatus, isTransitionAllowed, type ResourceStatus } from "../l
 import { hasValidSignature } from "../lib/artifact/signing";
 import { getSandboxRun } from "../lib/sandbox/service";
 import { reqLog } from "../middleware/requestId";
+import { validateResourceDependencies } from "../lib/artifact/dependencies";
 
 const router: Router = Router();
 
@@ -108,8 +109,18 @@ router.patch(
       // (sandbox execution may be PENDING when Docker is unavailable —
       // manual review path — but FAILED validation blocks publication).
       if (status === "PUBLISHED") {
+        // PLAN I-002: the declared dependency graph must resolve against the
+        // published catalog (missing/circular/unsupported).
         const versions = await db.orm.public.ResourceVersion.where({ resourceId }).all();
         for (const version of versions) {
+          const dependencyCheck = await validateResourceDependencies(resource.slug);
+          if (!dependencyCheck.ok) {
+            res.status(409).json({
+              error: "Dependency graph invalid",
+              message: dependencyCheck.errors.join("; "),
+            });
+            return;
+          }
           const signed = await hasValidSignature(version.id);
           if (!signed) {
             res.status(409).json({
@@ -133,6 +144,33 @@ router.patch(
       }
 
       await db.orm.public.Resource.where({ id: resourceId }).update({ status });
+
+      // PLAN J-002: append-only moderation event log.
+      await db.orm.public.ModerationEvent.create({
+        resourceId: resource.id,
+        actorId: req.user!.userId,
+        fromStatus: from,
+        toStatus: status,
+        reason: req.body?.reason ?? null,
+      });
+
+      // PLAN I-005: publishing the resource marks its versions PUBLISHED in
+      // the release lifecycle.
+      if (status === "PUBLISHED") {
+        const versions = await db.orm.public.ResourceVersion
+          .where({ resourceId: resource.id })
+          .all();
+        for (const version of versions) {
+          const fresh = await db.orm.public.ResourceVersion
+            .where({ id: version.id })
+            .first();
+          if (fresh && ["CANDIDATE", "VERIFIED"].includes(fresh.releaseStatus)) {
+            await db.orm.public.ResourceVersion
+              .where({ id: version.id })
+              .update({ releaseStatus: "PUBLISHED" });
+          }
+        }
+      }
 
       // Send notification if published
       if (status === "PUBLISHED" && resource.status !== "PUBLISHED") {
@@ -399,6 +437,110 @@ router.get(
     } catch (error) {
       reqLog(req).error("admin_stats_fetch_failed", { error });
       res.status(500).json({ error: "Failed to fetch stats" });
+    }
+  }
+);
+
+
+// ---- PLAN I-005: version release lifecycle (admin) ----
+
+// POST /admin/versions/:id/verify - record a compatibility verification (I-004)
+router.post(
+  "/versions/:id/verify",
+  authenticate,
+  adminOnly,
+  validateCuid("id"),
+  standardRateLimit,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { status, mtaVersion, os, architecture, notes } = req.body ?? {};
+      const allowed = ["VERIFIED", "PARTIALLY_VERIFIED", "UNKNOWN", "FAILED"];
+      if (!allowed.includes(status)) {
+        res.status(400).json({ error: `status must be one of: ${allowed.join(", ")}` });
+        return;
+      }
+      const version = await db.orm.public.ResourceVersion
+        .where({ id: req.params.id as string })
+        .first();
+      if (!version) {
+        res.status(404).json({ error: "Version not found" });
+        return;
+      }
+      const report = await db.orm.public.CompatibilityReport.create({
+        versionId: version.id,
+        status,
+        mtaVersion: mtaVersion ?? null,
+        os: os ?? null,
+        architecture: architecture ?? null,
+        notes: notes ?? null,
+        verifiedBy: req.user!.userId,
+      });
+      // A VERIFIED report advances the release lifecycle CANDIDATE -> VERIFIED.
+      if (status === "VERIFIED" && version.releaseStatus === "CANDIDATE") {
+        await db.orm.public.ResourceVersion
+          .where({ id: version.id })
+          .update({ releaseStatus: "VERIFIED" });
+      }
+      reqLog(req).info("version_compatibility_recorded", {
+        version_id: version.id,
+        status,
+        admin_id: req.user!.userId,
+      });
+      res.status(201).json(report);
+    } catch (error) {
+      reqLog(req).error("version_verify_failed", { error });
+      res.status(500).json({ error: "Failed to record compatibility report" });
+    }
+  }
+);
+
+// POST /admin/versions/:id/yank - YANKED blocks new lease issuance (I-005)
+router.post(
+  "/versions/:id/yank",
+  authenticate,
+  adminOnly,
+  validateCuid("id"),
+  standardRateLimit,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const reason = req.body?.reason;
+      if (!reason) {
+        res.status(400).json({ error: "reason is required" });
+        return;
+      }
+      const updated = await db.orm.public.ResourceVersion
+        .where({ id: req.params.id as string })
+        .update({ releaseStatus: "YANKED" });
+      reqLog(req).warn("version_yanked", {
+        version_id: req.params.id,
+        reason,
+        admin_id: req.user!.userId,
+      });
+      res.json(updated);
+    } catch (error) {
+      reqLog(req).error("version_yank_failed", { error });
+      res.status(500).json({ error: "Failed to yank version" });
+    }
+  }
+);
+
+// GET /admin/resources/:id/moderation-events - J-002 audit trail
+router.get(
+  "/resources/:id/moderation-events",
+  authenticate,
+  adminOnly,
+  validateCuid("id"),
+  standardRateLimit,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const events = await db.orm.public.ModerationEvent
+        .where({ resourceId: req.params.id as string })
+        .orderBy((m) => m.createdAt.desc())
+        .all();
+      res.json({ data: events, total: events.length });
+    } catch (error) {
+      reqLog(req).error("moderation_events_fetch_failed", { error });
+      res.status(500).json({ error: "Failed to fetch moderation events" });
     }
   }
 );

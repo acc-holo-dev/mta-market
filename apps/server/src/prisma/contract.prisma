@@ -39,6 +39,7 @@ model User {
   publisherKeys PublisherKey[]
   orders        Order[]
   discountCampaigns DiscountCampaign[]
+  sellerProfile SellerProfile?
 
   @@index([email])
   @@index([username])
@@ -113,6 +114,7 @@ model Resource {
   seller     User              @relation(fields: [sellerId], references: [id], onDelete: Cascade)
   versions   ResourceVersion[]
   reviews    Review[]
+  moderationEvents ModerationEvent[]
 
   @@index([sellerId])
   @@index([status])
@@ -208,6 +210,7 @@ model ServicePurchase {
   service          Service          @relation(fields: [serviceId], references: [id], onDelete: Restrict)
   messages         ServiceOrderMessage[]
   deliveries       ServiceDelivery[]
+  disputes         Dispute[]
 
   @@index([buyerId])
   @@index([serviceId])
@@ -224,12 +227,15 @@ model ResourceVersion {
   fileChecksum String
   publishedAt  TimestamptzString @default(now())
 
+  releaseStatus VersionReleaseStatus @default(CANDIDATE)
+
   resource  Resource  @relation(fields: [resourceId], references: [id], onDelete: Cascade)
   licenses  License[]
   purchases Purchase[]
   signature ArtifactSignature?
   encryption ArtifactEncryption?
   sandboxRuns SandboxRun[]
+  compatibilityReports CompatibilityReport[]
 
   @@unique([resourceId, version])
   @@index([resourceId])
@@ -264,6 +270,7 @@ model Purchase {
   version   ResourceVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
   orderItem OrderItem?      @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
   license   License?
+  disputes  Dispute[]
 
   @@index([buyerId])
   @@index([resourceId])
@@ -941,4 +948,186 @@ model ArtifactEncryption {
   version ResourceVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
 
   @@index([dekId])
+}
+
+// ---------------------------------------------------------------------------
+// PLAN Block 7: artifact pipeline (I-004/I-005), moderation (J-002),
+// disputes (K-002/K-003) and seller onboarding (L-001).
+// ---------------------------------------------------------------------------
+
+// I-005: release lifecycle. YANKED blocks NEW lease issuance; existing
+// licenses/leases stay valid (documented in ADR-002).
+enum VersionReleaseStatus {
+  CANDIDATE
+  VERIFIED
+  PUBLISHED
+  DEPRECATED
+  YANKED
+}
+
+// I-004: compatibility verification outcome with evidence timestamp.
+enum CompatibilityStatus {
+  VERIFIED
+  PARTIALLY_VERIFIED
+  UNKNOWN
+  FAILED
+}
+
+model CompatibilityReport {
+  id           String             @id @default(uuid())
+  versionId    String
+  status       CompatibilityStatus
+  mtaVersion   String?
+  os           String? // windows-x64 | linux-x64
+  architecture String?
+  notes        String?
+  verifiedBy   String
+  verifiedAt   TimestamptzString  @default(now())
+  createdAt    TimestamptzString  @default(now())
+
+  version ResourceVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@index([versionId])
+}
+
+// I-002: declared dependency of a resource on another resource (by slug).
+model ResourceDependency {
+  id            String   @id @default(uuid())
+  resourceId    String
+  dependsOnSlug String
+  minVersion    String?
+  type          String?
+  createdAt     TimestamptzString @default(now())
+
+  resource Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@unique([resourceId, dependsOnSlug])
+  @@index([resourceId])
+}
+
+// J-002: immutable moderation event log.
+model ModerationEvent {
+  id        String @id @default(uuid())
+  resourceId String
+  actorId   String
+  fromStatus String
+  toStatus  String
+  reason    String?
+  createdAt TimestamptzString @default(now())
+
+  resource Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@index([resourceId])
+}
+
+// K-002: dispute state machine.
+// OPEN -> WAITING_BUYER -> WAITING_SELLER -> UNDER_REVIEW -> RESOLVED_BUYER |
+// RESOLVED_SELLER | PARTIAL_REFUND -> CLOSED
+enum DisputeStatus {
+  OPEN
+  WAITING_BUYER
+  WAITING_SELLER
+  UNDER_REVIEW
+  RESOLVED_BUYER
+  RESOLVED_SELLER
+  PARTIAL_REFUND
+  CLOSED
+}
+
+enum DisputeTargetType {
+  PURCHASE
+  SERVICE_PURCHASE
+}
+
+model Dispute {
+  id               String          @id @default(uuid())
+  targetType       DisputeTargetType
+  purchaseId       String? // resource purchase dispute
+  servicePurchaseId String? // service order dispute
+  openedById       String
+  status           DisputeStatus   @default(OPEN)
+  reason           String
+  resolution       String?
+  resolvedById     String?
+  closedAt         TimestamptzString?
+  createdAt        TimestamptzString @default(now())
+  updatedAt        temporal.updatedAtString()
+
+  purchase        Purchase?        @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  servicePurchase ServicePurchase? @relation(fields: [servicePurchaseId], references: [id], onDelete: Cascade)
+  messages        DisputeMessage[]
+  events          DisputeEvent[]
+  attachments     DisputeAttachment[]
+
+  @@index([purchaseId])
+  @@index([servicePurchaseId])
+  @@index([status])
+}
+
+// K-003: dispute communication.
+model DisputeMessage {
+  id        String @id @default(uuid())
+  disputeId String
+  senderId  String
+  senderRole String // BUYER | SELLER | ADMIN
+  body      String
+  createdAt TimestamptzString @default(now())
+
+  dispute Dispute @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+
+  @@index([disputeId])
+}
+
+// K-003: dispute attachments (files go through the regular upload storage).
+model DisputeAttachment {
+  id          String @id @default(uuid())
+  disputeId   String
+  uploadedById String
+  fileName    String
+  fileRef     String // upload storage reference
+  mimeType    String?
+  sizeBytes   Int?
+  createdAt   TimestamptzString @default(now())
+
+  dispute Dispute @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+
+  @@index([disputeId])
+}
+
+// K-003: append-only dispute audit events.
+model DisputeEvent {
+  id        String @id @default(uuid())
+  disputeId String
+  actorId   String
+  event     String
+  fromStatus String?
+  toStatus  String?
+  createdAt TimestamptzString @default(now())
+
+  dispute Dispute @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+
+  @@index([disputeId])
+}
+
+// L-001: seller onboarding.
+enum SellerProfileStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model SellerProfile {
+  id              String             @id @default(uuid())
+  userId          String             @unique
+  status          SellerProfileStatus @default(PENDING)
+  displayName     String?
+  supportInfo     String?
+  payoutEnabled   Boolean            @default(false)
+  appliedAt       TimestamptzString  @default(now())
+  reviewedAt      TimestamptzString?
+  reviewedBy      String?
+  rejectionReason String?
+  updatedAt       temporal.updatedAtString()
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

@@ -101,6 +101,21 @@ router.post(
         fileChecksum,
       });
 
+      // PLAN I-002: persist declared dependencies for the publication gate.
+      const declaredDependencies = Array.isArray(req.body?.dependencies)
+        ? (req.body.dependencies as Array<{ slug?: string; resourceName?: string; minVersion?: string; type?: string }>)
+        : [];
+      for (const dep of declaredDependencies) {
+        const slug = dep.slug ?? dep.resourceName;
+        if (!slug) continue;
+        await db.orm.public.ResourceDependency.create({
+          resourceId: resource.id,
+          dependsOnSlug: slug,
+          minVersion: dep.minVersion ?? null,
+          type: dep.type ?? null,
+        });
+      }
+
       try {
         // PLAN B-001: static validation (+ sandbox execution when Docker is
         // available). A failed validation rolls the version back — a version

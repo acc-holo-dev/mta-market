@@ -55,6 +55,13 @@ beforeAll(async () => {
   adminToken = await createTestUser(ADMIN_ID, `blk4svca_${SUFFIX}`, "ADMIN", generateAccessToken);
   outsiderToken = await createTestUser(OUTSIDER_ID, `blk4svco_${SUFFIX}`, "USER", generateAccessToken);
 
+  // PLAN L-002: API listing creation requires an APPROVED seller profile.
+    await db.orm.public.SellerProfile.create({
+    userId: SELLER_ID,
+    status: "APPROVED",
+    payoutEnabled: true,
+  }).catch(() => undefined);
+
   await db.orm.public.Service.create({
     sellerId: SELLER_ID,
     slug: PAID_SERVICE_SLUG,

@@ -1,33 +1,26 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import api from "@/lib/api";
+import { fetchResources, formatRub, type Resource, type Pagination } from "@/lib/api-ext";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Package, Star, Download } from "lucide-react";
+import { StatusBadge } from "@/components/ui/StatusBadge";
+import { Package } from "lucide-react";
 
-interface Resource {
-  id: string;
-  slug: string;
-  title: string;
-  description: string;
-  type: string;
-  price: number;
-  status: string;
-  averageRating: number | null;
-  reviewCount: number;
-  purchaseCount: number;
-}
+const PAGE_SIZE = 12;
 
 export default function ResourcesPage() {
+  const [page, setPage] = useState(1);
+
   const { data, isLoading, error } = useQuery({
-    queryKey: ["resources"],
-    queryFn: async () => {
-      const { data } = await api.get<{ data: Resource[] }>("/resources");
-      return data.data;
-    },
+    queryKey: ["resources", page],
+    queryFn: () => fetchResources(page, PAGE_SIZE),
   });
+
+  const resources: Resource[] = data?.data ?? [];
+  const pagination: Pagination | undefined = data?.pagination;
 
   if (isLoading) {
     return (
@@ -67,72 +60,70 @@ export default function ResourcesPage() {
       <div className="mb-8">
         <h1 className="text-4xl font-bold mb-2">Каталог ресурсов</h1>
         <p className="text-lg text-slate-600 dark:text-slate-400">
-          Скрипты, моды и другие ресурсы для MTA:SA серверов
+          Серверные ресурсы для MTA:SA с DRM-защитой
         </p>
       </div>
 
-      {!data || data.length === 0 ? (
-        <Card className="text-center py-12">
-          <CardContent className="space-y-4">
-            <Package className="h-16 w-16 text-slate-400 mx-auto" />
-            <h3 className="text-xl font-semibold">Ресурсов пока нет</h3>
-            <p className="text-slate-600 dark:text-slate-400">
-              Станьте первым продавцом на платформе!
-            </p>
-            <Link href="/dashboard/resources/new">
-              <Button variant="primary">Добавить ресурс</Button>
-            </Link>
-          </CardContent>
-        </Card>
+      {resources.length === 0 ? (
+        <div className="text-center py-16">
+          <Package className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+          <p className="text-slate-600 dark:text-slate-400">Пока нет опубликованных ресурсов</p>
+        </div>
       ) : (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {data.map((resource) => (
-            <Link key={resource.id} href={`/resources/${resource.slug}`}>
-              <Card className="h-full hover:shadow-lg transition-shadow cursor-pointer">
+          {resources.map((resource) => (
+            <Link key={resource.id} href={`/resources/${resource.slug}`} className="group">
+              <Card className="h-full transition-shadow group-hover:shadow-md">
                 <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <CardTitle className="text-xl">{resource.title}</CardTitle>
-                    <span className="text-sm px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400 rounded">
+                  <div className="flex items-start justify-between gap-2">
+                    <CardTitle className="text-lg group-hover:text-blue-600 dark:group-hover:text-blue-400">
+                      {resource.title}
+                    </CardTitle>
+                    <span className="text-xs px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400 rounded flex-shrink-0">
                       {resource.type}
                     </span>
                   </div>
-                  <CardDescription className="line-clamp-2">{resource.description}</CardDescription>
+                  <CardDescription className="line-clamp-3">{resource.description}</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  {/* Stats */}
-                  <div className="flex items-center gap-4 text-sm text-slate-600 dark:text-slate-400">
-                    <div className="flex items-center gap-1">
-                      <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
-                      <span>
-                        {resource.averageRating ? resource.averageRating.toFixed(1) : "N/A"}
-                      </span>
-                      <span className="text-xs">({resource.reviewCount})</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Download className="h-4 w-4" />
-                      <span>{resource.purchaseCount}</span>
-                    </div>
-                  </div>
-
-                  {/* Price */}
-                  <div className="flex items-center justify-between">
-                    <span className="text-2xl font-bold">
-                      {resource.price === 0 ? (
-                        <span className="text-green-600 dark:text-green-400">Бесплатно</span>
-                      ) : (
-                        <>{(resource.price / 100).toFixed(2)} ₽</>
-                      )}
-                    </span>
-                    <Button variant="primary" size="sm">
-                      Подробнее
-                    </Button>
-                  </div>
+                <CardContent className="flex items-center justify-between">
+                  {resource.price === 0 ? (
+                    <StatusBadge status="FREE">БЕСПЛАТНО</StatusBadge>
+                  ) : (
+                    <span className="text-lg font-bold">{formatRub(resource.price)}</span>
+                  )}
+                  <Button variant="ghost" size="sm">
+                    Подробнее
+                  </Button>
                 </CardContent>
               </Card>
             </Link>
           ))}
         </div>
       )}
+
+      {pagination && pagination.pages > 1 ? (
+        <div className="flex items-center justify-center gap-4 mt-10">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page <= 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+          >
+            Назад
+          </Button>
+          <span className="text-sm text-slate-600 dark:text-slate-400">
+            Страница {pagination.page} из {pagination.pages}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page >= pagination.pages}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            Вперёд
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -102,6 +102,13 @@ router.post(
         return;
       }
 
+      // PLAN K-001: self-purchase reviews are review fraud — the resource
+      // seller can never review their own listing.
+      if (resource.sellerId === req.user!.userId) {
+        res.status(403).json({ error: "You cannot review your own resource" });
+        return;
+      }
+
       // Check if review already exists
       const existing = await db.orm.public.Review.where({
         resourceId: resource.id,

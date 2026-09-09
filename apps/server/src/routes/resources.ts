@@ -16,6 +16,7 @@ import {
   RESOURCE_STATUSES,
   type ResourceStatus,
 } from "../lib/moderation";
+import { canCreateListings, sellerGateMessage } from "../lib/permissions";
 import { reqLog } from "../middleware/requestId";
 
 const router: Router = Router();
@@ -62,6 +63,19 @@ router.get(
   }
 );
 
+// GET /resources/my - Seller's own resources (PLAN M-002; must precede /:slug)
+router.get("/my", authenticate, standardRateLimit, async (req: AuthRequest, res: Response) => {
+  try {
+    const resources = await db.orm.public.Resource.where({ sellerId: req.user!.userId })
+      .orderBy((m) => m.createdAt.desc())
+      .all();
+    res.json({ data: resources, total: resources.length });
+  } catch (error) {
+    reqLog(req).error("resources_my_fetch_failed", { error });
+    res.status(500).json({ error: "Failed to fetch own resources" });
+  }
+});
+
 // GET /resources/:slug - Get resource by slug
 router.get("/:slug", standardRateLimit, async (req, res: Response) => {
   try {
@@ -87,7 +101,7 @@ router.get("/:slug", standardRateLimit, async (req, res: Response) => {
   }
 });
 
-// POST /resources - Create new resource (authenticated)
+// POST /resources - Create new resource (seller-gated, PLAN L-002)
 router.post(
   "/",
   authenticate,
@@ -95,6 +109,12 @@ router.post(
   validate(createResourceSchema),
   async (req: AuthRequest, res: Response) => {
     try {
+      // PLAN L-002: listing creation requires an APPROVED seller profile.
+      if (!(await canCreateListings({ userId: req.user!.userId, role: req.user!.role as "USER" | "ADMIN" | "MODERATOR" }))) {
+        res.status(403).json({ error: sellerGateMessage(), code: "seller_approval_required" });
+        return;
+      }
+
       const { title, description, type, price, slug } = req.body;
 
       // Check slug uniqueness
