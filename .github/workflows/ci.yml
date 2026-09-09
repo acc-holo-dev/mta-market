@@ -16,6 +16,69 @@ env:
   IMAGE_NAME_FRONTEND: ${{ github.repository }}/frontend
 
 jobs:
+  # PLAN O-005/Q-005: unit + integration tests against a real Postgres
+  test:
+    name: Tests (unit + integration)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - run: pnpm install --frozen-lockfile
+      - name: Apply contract schema (migration check)
+        working-directory: apps/server
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5433/postgres?schema=public
+        run: npx prisma contract emit && npx prisma db update --confirm postgres
+      - name: Type check
+        run: pnpm type-check
+      - name: Run test suite
+        working-directory: apps/server
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5433/postgres?schema=public
+          JWT_SECRET: ci_secret_min_32_chars_long_xxxxxxxxxxxx
+        run: npx vitest run
+
+  # PLAN Q-005: supply-chain checks — secret scan + dependency audit
+  security:
+    name: Secret scan & dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Gitleaks secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - run: pnpm install --frozen-lockfile
+      - name: Dependency audit (high/critical)
+        run: pnpm audit --prod --audit-level high || true
+
   # Lint and Type Check
   lint:
     name: Lint & Type Check
