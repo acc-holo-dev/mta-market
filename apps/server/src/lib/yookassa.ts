@@ -132,3 +132,44 @@ export async function getYooKassaPayment(paymentId: string): Promise<YooKassaPay
 }
 
 export { YOOKASSA_ENABLED, YOOKASSA_SHOP_ID };
+
+// Create a refund for a captured payment (PLAN E-008).
+// YooKassa refunds are idempotent via Idempotence-Key.
+export async function createYooKassaRefund(input: {
+  paymentId: string;
+  amountValue: string; // decimal rubles, e.g. "50.00"
+  currency?: string;
+  idempotenceKey: string;
+  reason?: string;
+}): Promise<{ id: string; status: string; amount: { value: string; currency: string } }> {
+  if (!YOOKASSA_ENABLED) {
+    throw new Error("YooKassa is not enabled");
+  }
+
+  const authHeader = Buffer.from(`${YOOKASSA_SHOP_ID}:${YOOKASSA_SECRET_KEY}`).toString("base64");
+
+  const response = await fetch("https://api.yookassa.ru/v3/refunds", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotence-Key": input.idempotenceKey,
+      Authorization: `Basic ${authHeader}`,
+    },
+    body: JSON.stringify({
+      payment_id: input.paymentId,
+      amount: { value: input.amountValue, currency: input.currency ?? "RUB" },
+      ...(input.reason ? { description: input.reason } : {}),
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`YooKassa API error (HTTP ${response.status}): ${error}`);
+  }
+
+  return (await response.json()) as {
+    id: string;
+    status: string;
+    amount: { value: string; currency: string };
+  };
+}

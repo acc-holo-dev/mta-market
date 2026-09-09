@@ -33,9 +33,9 @@ import type {
 } from '@prisma/orm-postgres/contract/types';
 
 export type StorageHash =
-  StorageHashBase<'b0c132873362a03a3eb4c97b75af5740755d5ff69f7d808c874db35caa62318f'>;
+  StorageHashBase<'05a16f0be28aa4288e99cf6408a7d12625058611a299b39a0873bfd2b833f4e5'>;
 export type ExecutionHash =
-  ExecutionHashBase<'1a15995ebb9ce6018eba9d8eea093642c76e70df8a4ec2adb2191e51be71f566'>;
+  ExecutionHashBase<'a3e9120cfca55e52eac9dff965ceec0aecc9529a4ab1adec147c4453d7c9d88b'>;
 export type ProfileHash =
   ProfileHashBase<'3916f444a8a17ad749191acf9e08dad97d1a327b88c2f1d45d12f240296aa8b2'>;
 
@@ -346,6 +346,34 @@ export type FieldOutputTypes = {
       readonly expiresAt: CodecTypes['pg/timestamptz-string@1']['output'];
       readonly lastVerifiedAt: CodecTypes['pg/timestamptz-string@1']['output'] | null;
     };
+    readonly LedgerAccount: {
+      readonly id: CodecTypes['pg/text@1']['output'];
+      readonly code: CodecTypes['pg/text@1']['output'];
+      readonly kind:
+        | 'PLATFORM_CASH'
+        | 'SELLER_PENDING'
+        | 'SELLER_AVAILABLE'
+        | 'PLATFORM_REVENUE'
+        | 'PROVIDER_FEES'
+        | 'REFUND_RESERVE'
+        | 'ADJUSTMENTS';
+      readonly currency: CodecTypes['pg/text@1']['output'];
+      readonly userId: CodecTypes['pg/text@1']['output'] | null;
+      readonly createdAt: CodecTypes['pg/timestamptz-string@1']['output'];
+    };
+    readonly LedgerEntry: {
+      readonly id: CodecTypes['pg/text@1']['output'];
+      readonly transactionId: CodecTypes['pg/text@1']['output'];
+      readonly accountId: CodecTypes['pg/text@1']['output'];
+      readonly direction: 'DEBIT' | 'CREDIT';
+      readonly amount: CodecTypes['pg/int4@1']['output'];
+      readonly currency: CodecTypes['pg/text@1']['output'];
+      readonly orderId: CodecTypes['pg/text@1']['output'] | null;
+      readonly paymentId: CodecTypes['pg/text@1']['output'] | null;
+      readonly userId: CodecTypes['pg/text@1']['output'] | null;
+      readonly memo: CodecTypes['pg/text@1']['output'] | null;
+      readonly createdAt: CodecTypes['pg/timestamptz-string@1']['output'];
+    };
     readonly License: {
       readonly id: CodecTypes['pg/text@1']['output'];
       readonly purchaseId: CodecTypes['pg/text@1']['output'];
@@ -394,7 +422,15 @@ export type FieldOutputTypes = {
       readonly orderItemId: CodecTypes['pg/text@1']['output'] | null;
       readonly provider: 'YUKASSA' | 'STRIPE' | 'TEST';
       readonly providerPaymentId: CodecTypes['pg/text@1']['output'];
-      readonly status: 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'REFUNDED';
+      readonly status:
+        | 'PENDING'
+        | 'SUCCEEDED'
+        | 'SETTLEMENT_PENDING'
+        | 'SETTLED'
+        | 'FAILED'
+        | 'CANCELED'
+        | 'REFUNDED'
+        | 'PARTIALLY_REFUNDED';
       readonly amount: CodecTypes['pg/int4@1']['output'];
       readonly currency: CodecTypes['pg/text@1']['output'];
       readonly metadata: CodecTypes['pg/json@1']['output'] | null;
@@ -476,6 +512,18 @@ export type FieldOutputTypes = {
       readonly createdAt: CodecTypes['pg/timestamptz-string@1']['output'];
       readonly completedAt: CodecTypes['pg/timestamptz-string@1']['output'] | null;
       readonly errorMessage: CodecTypes['pg/text@1']['output'] | null;
+    };
+    readonly Refund: {
+      readonly id: CodecTypes['pg/text@1']['output'];
+      readonly paymentId: CodecTypes['pg/text@1']['output'];
+      readonly providerRefundId: CodecTypes['pg/text@1']['output'] | null;
+      readonly amount: CodecTypes['pg/int4@1']['output'];
+      readonly currency: CodecTypes['pg/text@1']['output'];
+      readonly status: 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'CANCELED';
+      readonly reason: CodecTypes['pg/text@1']['output'] | null;
+      readonly createdAt: CodecTypes['pg/timestamptz-string@1']['output'];
+      readonly processedAt: CodecTypes['pg/timestamptz-string@1']['output'] | null;
+      readonly lastError: CodecTypes['pg/text@1']['output'] | null;
     };
     readonly Resource: {
       readonly id: CodecTypes['pg/text@1']['output'];
@@ -747,6 +795,34 @@ export type FieldInputTypes = {
       readonly expiresAt: CodecTypes['pg/timestamptz-string@1']['input'];
       readonly lastVerifiedAt: CodecTypes['pg/timestamptz-string@1']['input'] | null;
     };
+    readonly LedgerAccount: {
+      readonly id: CodecTypes['pg/text@1']['input'];
+      readonly code: CodecTypes['pg/text@1']['input'];
+      readonly kind:
+        | 'PLATFORM_CASH'
+        | 'SELLER_PENDING'
+        | 'SELLER_AVAILABLE'
+        | 'PLATFORM_REVENUE'
+        | 'PROVIDER_FEES'
+        | 'REFUND_RESERVE'
+        | 'ADJUSTMENTS';
+      readonly currency: CodecTypes['pg/text@1']['input'];
+      readonly userId: CodecTypes['pg/text@1']['input'] | null;
+      readonly createdAt: CodecTypes['pg/timestamptz-string@1']['input'];
+    };
+    readonly LedgerEntry: {
+      readonly id: CodecTypes['pg/text@1']['input'];
+      readonly transactionId: CodecTypes['pg/text@1']['input'];
+      readonly accountId: CodecTypes['pg/text@1']['input'];
+      readonly direction: 'DEBIT' | 'CREDIT';
+      readonly amount: CodecTypes['pg/int4@1']['input'];
+      readonly currency: CodecTypes['pg/text@1']['input'];
+      readonly orderId: CodecTypes['pg/text@1']['input'] | null;
+      readonly paymentId: CodecTypes['pg/text@1']['input'] | null;
+      readonly userId: CodecTypes['pg/text@1']['input'] | null;
+      readonly memo: CodecTypes['pg/text@1']['input'] | null;
+      readonly createdAt: CodecTypes['pg/timestamptz-string@1']['input'];
+    };
     readonly License: {
       readonly id: CodecTypes['pg/text@1']['input'];
       readonly purchaseId: CodecTypes['pg/text@1']['input'];
@@ -795,7 +871,15 @@ export type FieldInputTypes = {
       readonly orderItemId: CodecTypes['pg/text@1']['input'] | null;
       readonly provider: 'YUKASSA' | 'STRIPE' | 'TEST';
       readonly providerPaymentId: CodecTypes['pg/text@1']['input'];
-      readonly status: 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'REFUNDED';
+      readonly status:
+        | 'PENDING'
+        | 'SUCCEEDED'
+        | 'SETTLEMENT_PENDING'
+        | 'SETTLED'
+        | 'FAILED'
+        | 'CANCELED'
+        | 'REFUNDED'
+        | 'PARTIALLY_REFUNDED';
       readonly amount: CodecTypes['pg/int4@1']['input'];
       readonly currency: CodecTypes['pg/text@1']['input'];
       readonly metadata: CodecTypes['pg/json@1']['input'] | null;
@@ -877,6 +961,18 @@ export type FieldInputTypes = {
       readonly createdAt: CodecTypes['pg/timestamptz-string@1']['input'];
       readonly completedAt: CodecTypes['pg/timestamptz-string@1']['input'] | null;
       readonly errorMessage: CodecTypes['pg/text@1']['input'] | null;
+    };
+    readonly Refund: {
+      readonly id: CodecTypes['pg/text@1']['input'];
+      readonly paymentId: CodecTypes['pg/text@1']['input'];
+      readonly providerRefundId: CodecTypes['pg/text@1']['input'] | null;
+      readonly amount: CodecTypes['pg/int4@1']['input'];
+      readonly currency: CodecTypes['pg/text@1']['input'];
+      readonly status: 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'CANCELED';
+      readonly reason: CodecTypes['pg/text@1']['input'] | null;
+      readonly createdAt: CodecTypes['pg/timestamptz-string@1']['input'];
+      readonly processedAt: CodecTypes['pg/timestamptz-string@1']['input'] | null;
+      readonly lastError: CodecTypes['pg/text@1']['input'] | null;
     };
     readonly Resource: {
       readonly id: CodecTypes['pg/text@1']['input'];
@@ -1148,6 +1244,34 @@ export type StorageColumnTypes = {
       readonly serverKeyId: CodecTypes['pg/text@1']['output'];
       readonly signature: CodecTypes['pg/text@1']['output'];
     };
+    readonly ledgerAccount: {
+      readonly code: CodecTypes['pg/text@1']['output'];
+      readonly createdAt: CodecTypes['pg/timestamptz-string@1']['output'];
+      readonly currency: CodecTypes['pg/text@1']['output'];
+      readonly id: CodecTypes['pg/text@1']['output'];
+      readonly kind:
+        | 'PLATFORM_CASH'
+        | 'SELLER_PENDING'
+        | 'SELLER_AVAILABLE'
+        | 'PLATFORM_REVENUE'
+        | 'PROVIDER_FEES'
+        | 'REFUND_RESERVE'
+        | 'ADJUSTMENTS';
+      readonly userId: CodecTypes['pg/text@1']['output'] | null;
+    };
+    readonly ledgerEntry: {
+      readonly accountId: CodecTypes['pg/text@1']['output'];
+      readonly amount: CodecTypes['pg/int4@1']['output'];
+      readonly createdAt: CodecTypes['pg/timestamptz-string@1']['output'];
+      readonly currency: CodecTypes['pg/text@1']['output'];
+      readonly direction: 'DEBIT' | 'CREDIT';
+      readonly id: CodecTypes['pg/text@1']['output'];
+      readonly memo: CodecTypes['pg/text@1']['output'] | null;
+      readonly orderId: CodecTypes['pg/text@1']['output'] | null;
+      readonly paymentId: CodecTypes['pg/text@1']['output'] | null;
+      readonly transactionId: CodecTypes['pg/text@1']['output'];
+      readonly userId: CodecTypes['pg/text@1']['output'] | null;
+    };
     readonly license: {
       readonly activatedAt: CodecTypes['pg/timestamptz-string@1']['output'] | null;
       readonly createdAt: CodecTypes['pg/timestamptz-string@1']['output'];
@@ -1201,7 +1325,15 @@ export type StorageColumnTypes = {
       readonly provider: 'YUKASSA' | 'STRIPE' | 'TEST';
       readonly providerPaymentId: CodecTypes['pg/text@1']['output'];
       readonly purchaseId: CodecTypes['pg/text@1']['output'] | null;
-      readonly status: 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'REFUNDED';
+      readonly status:
+        | 'PENDING'
+        | 'SUCCEEDED'
+        | 'SETTLEMENT_PENDING'
+        | 'SETTLED'
+        | 'FAILED'
+        | 'CANCELED'
+        | 'REFUNDED'
+        | 'PARTIALLY_REFUNDED';
       readonly succeededAt: CodecTypes['pg/timestamptz-string@1']['output'] | null;
     };
     readonly paymentProviderEvent: {
@@ -1278,6 +1410,18 @@ export type StorageColumnTypes = {
       readonly providerTotal: CodecTypes['pg/int4@1']['output'];
       readonly reportType: 'PAYMENT' | 'REFUND' | 'PAYOUT';
       readonly status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
+    };
+    readonly refund: {
+      readonly amount: CodecTypes['pg/int4@1']['output'];
+      readonly createdAt: CodecTypes['pg/timestamptz-string@1']['output'];
+      readonly currency: CodecTypes['pg/text@1']['output'];
+      readonly id: CodecTypes['pg/text@1']['output'];
+      readonly lastError: CodecTypes['pg/text@1']['output'] | null;
+      readonly paymentId: CodecTypes['pg/text@1']['output'];
+      readonly processedAt: CodecTypes['pg/timestamptz-string@1']['output'] | null;
+      readonly providerRefundId: CodecTypes['pg/text@1']['output'] | null;
+      readonly reason: CodecTypes['pg/text@1']['output'] | null;
+      readonly status: 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'CANCELED';
     };
     readonly resource: {
       readonly createdAt: CodecTypes['pg/timestamptz-string@1']['output'];
@@ -1549,6 +1693,34 @@ export type StorageColumnInputTypes = {
       readonly serverKeyId: CodecTypes['pg/text@1']['input'];
       readonly signature: CodecTypes['pg/text@1']['input'];
     };
+    readonly ledgerAccount: {
+      readonly code: CodecTypes['pg/text@1']['input'];
+      readonly createdAt: CodecTypes['pg/timestamptz-string@1']['input'];
+      readonly currency: CodecTypes['pg/text@1']['input'];
+      readonly id: CodecTypes['pg/text@1']['input'];
+      readonly kind:
+        | 'PLATFORM_CASH'
+        | 'SELLER_PENDING'
+        | 'SELLER_AVAILABLE'
+        | 'PLATFORM_REVENUE'
+        | 'PROVIDER_FEES'
+        | 'REFUND_RESERVE'
+        | 'ADJUSTMENTS';
+      readonly userId: CodecTypes['pg/text@1']['input'] | null;
+    };
+    readonly ledgerEntry: {
+      readonly accountId: CodecTypes['pg/text@1']['input'];
+      readonly amount: CodecTypes['pg/int4@1']['input'];
+      readonly createdAt: CodecTypes['pg/timestamptz-string@1']['input'];
+      readonly currency: CodecTypes['pg/text@1']['input'];
+      readonly direction: 'DEBIT' | 'CREDIT';
+      readonly id: CodecTypes['pg/text@1']['input'];
+      readonly memo: CodecTypes['pg/text@1']['input'] | null;
+      readonly orderId: CodecTypes['pg/text@1']['input'] | null;
+      readonly paymentId: CodecTypes['pg/text@1']['input'] | null;
+      readonly transactionId: CodecTypes['pg/text@1']['input'];
+      readonly userId: CodecTypes['pg/text@1']['input'] | null;
+    };
     readonly license: {
       readonly activatedAt: CodecTypes['pg/timestamptz-string@1']['input'] | null;
       readonly createdAt: CodecTypes['pg/timestamptz-string@1']['input'];
@@ -1602,7 +1774,15 @@ export type StorageColumnInputTypes = {
       readonly provider: 'YUKASSA' | 'STRIPE' | 'TEST';
       readonly providerPaymentId: CodecTypes['pg/text@1']['input'];
       readonly purchaseId: CodecTypes['pg/text@1']['input'] | null;
-      readonly status: 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'REFUNDED';
+      readonly status:
+        | 'PENDING'
+        | 'SUCCEEDED'
+        | 'SETTLEMENT_PENDING'
+        | 'SETTLED'
+        | 'FAILED'
+        | 'CANCELED'
+        | 'REFUNDED'
+        | 'PARTIALLY_REFUNDED';
       readonly succeededAt: CodecTypes['pg/timestamptz-string@1']['input'] | null;
     };
     readonly paymentProviderEvent: {
@@ -1679,6 +1859,18 @@ export type StorageColumnInputTypes = {
       readonly providerTotal: CodecTypes['pg/int4@1']['input'];
       readonly reportType: 'PAYMENT' | 'REFUND' | 'PAYOUT';
       readonly status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
+    };
+    readonly refund: {
+      readonly amount: CodecTypes['pg/int4@1']['input'];
+      readonly createdAt: CodecTypes['pg/timestamptz-string@1']['input'];
+      readonly currency: CodecTypes['pg/text@1']['input'];
+      readonly id: CodecTypes['pg/text@1']['input'];
+      readonly lastError: CodecTypes['pg/text@1']['input'] | null;
+      readonly paymentId: CodecTypes['pg/text@1']['input'];
+      readonly processedAt: CodecTypes['pg/timestamptz-string@1']['input'] | null;
+      readonly providerRefundId: CodecTypes['pg/text@1']['input'] | null;
+      readonly reason: CodecTypes['pg/text@1']['input'] | null;
+      readonly status: 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'CANCELED';
     };
     readonly resource: {
       readonly createdAt: CodecTypes['pg/timestamptz-string@1']['input'];
@@ -2620,6 +2812,156 @@ type ContractBase = Omit<
                   readonly target: {
                     readonly namespaceId: 'public' & NamespaceId;
                     readonly tableName: 'serverSigningKey';
+                    readonly columns: readonly ['id'];
+                  };
+                },
+              ];
+            };
+            readonly ledgerAccount: {
+              columns: {
+                readonly id: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly code: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly kind: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly currency: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                  readonly default: {
+                    readonly kind: 'literal';
+                    readonly value: DefaultLiteralValue<'pg/text@1', 'RUB'>;
+                  };
+                };
+                readonly userId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+                readonly createdAt: {
+                  readonly nativeType: 'timestamptz';
+                  readonly codecId: 'pg/timestamptz-string@1';
+                  readonly nullable: false;
+                  readonly default: { readonly kind: 'function'; readonly expression: 'now()' };
+                };
+              };
+              primaryKey: { readonly columns: readonly ['id'] };
+              uniques: readonly [{ readonly columns: readonly ['code'] }];
+              indexes: readonly [
+                {
+                  readonly name: 'ledgerAccount_kind_idx_c9ca668f';
+                  readonly prefix: 'ledgerAccount_kind_idx';
+                  readonly columns: readonly ['kind'];
+                  readonly unique: false;
+                },
+              ];
+              foreignKeys: readonly [];
+            };
+            readonly ledgerEntry: {
+              columns: {
+                readonly id: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly transactionId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly accountId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly direction: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly amount: {
+                  readonly nativeType: 'int4';
+                  readonly codecId: 'pg/int4@1';
+                  readonly nullable: false;
+                };
+                readonly currency: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                  readonly default: {
+                    readonly kind: 'literal';
+                    readonly value: DefaultLiteralValue<'pg/text@1', 'RUB'>;
+                  };
+                };
+                readonly orderId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+                readonly paymentId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+                readonly userId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+                readonly memo: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+                readonly createdAt: {
+                  readonly nativeType: 'timestamptz';
+                  readonly codecId: 'pg/timestamptz-string@1';
+                  readonly nullable: false;
+                  readonly default: { readonly kind: 'function'; readonly expression: 'now()' };
+                };
+              };
+              primaryKey: { readonly columns: readonly ['id'] };
+              uniques: readonly [];
+              indexes: readonly [
+                {
+                  readonly name: 'ledgerEntry_transactionId_idx_d3180832';
+                  readonly prefix: 'ledgerEntry_transactionId_idx';
+                  readonly columns: readonly ['transactionId'];
+                  readonly unique: false;
+                },
+                {
+                  readonly name: 'ledgerEntry_accountId_idx_cbfb3085';
+                  readonly prefix: 'ledgerEntry_accountId_idx';
+                  readonly columns: readonly ['accountId'];
+                  readonly unique: false;
+                },
+                {
+                  readonly name: 'ledgerEntry_userId_idx_a489d58a';
+                  readonly prefix: 'ledgerEntry_userId_idx';
+                  readonly columns: readonly ['userId'];
+                  readonly unique: false;
+                },
+              ];
+              foreignKeys: readonly [
+                {
+                  readonly source: {
+                    readonly namespaceId: 'public' & NamespaceId;
+                    readonly tableName: 'ledgerEntry';
+                    readonly columns: readonly ['accountId'];
+                  };
+                  readonly target: {
+                    readonly namespaceId: 'public' & NamespaceId;
+                    readonly tableName: 'ledgerAccount';
                     readonly columns: readonly ['id'];
                   };
                 },
@@ -3638,6 +3980,99 @@ type ContractBase = Omit<
                 },
               ];
               foreignKeys: readonly [];
+            };
+            readonly refund: {
+              columns: {
+                readonly id: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly paymentId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly providerRefundId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+                readonly amount: {
+                  readonly nativeType: 'int4';
+                  readonly codecId: 'pg/int4@1';
+                  readonly nullable: false;
+                };
+                readonly currency: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                  readonly default: {
+                    readonly kind: 'literal';
+                    readonly value: DefaultLiteralValue<'pg/text@1', 'RUB'>;
+                  };
+                };
+                readonly status: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                  readonly default: {
+                    readonly kind: 'literal';
+                    readonly value: DefaultLiteralValue<'pg/text@1', 'PENDING'>;
+                  };
+                };
+                readonly reason: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+                readonly createdAt: {
+                  readonly nativeType: 'timestamptz';
+                  readonly codecId: 'pg/timestamptz-string@1';
+                  readonly nullable: false;
+                  readonly default: { readonly kind: 'function'; readonly expression: 'now()' };
+                };
+                readonly processedAt: {
+                  readonly nativeType: 'timestamptz';
+                  readonly codecId: 'pg/timestamptz-string@1';
+                  readonly nullable: true;
+                };
+                readonly lastError: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+              };
+              primaryKey: { readonly columns: readonly ['id'] };
+              uniques: readonly [{ readonly columns: readonly ['providerRefundId'] }];
+              indexes: readonly [
+                {
+                  readonly name: 'refund_paymentId_idx_b2fe9a10';
+                  readonly prefix: 'refund_paymentId_idx';
+                  readonly columns: readonly ['paymentId'];
+                  readonly unique: false;
+                },
+                {
+                  readonly name: 'refund_status_idx_e98638ab';
+                  readonly prefix: 'refund_status_idx';
+                  readonly columns: readonly ['status'];
+                  readonly unique: false;
+                },
+              ];
+              foreignKeys: readonly [
+                {
+                  readonly source: {
+                    readonly namespaceId: 'public' & NamespaceId;
+                    readonly tableName: 'refund';
+                    readonly columns: readonly ['paymentId'];
+                  };
+                  readonly target: {
+                    readonly namespaceId: 'public' & NamespaceId;
+                    readonly tableName: 'payment';
+                    readonly columns: readonly ['id'];
+                  };
+                },
+              ];
             };
             readonly resource: {
               columns: {
@@ -4905,6 +5340,22 @@ type ContractBase = Omit<
               readonly kind: 'valueSet';
               readonly values: readonly ['ACTIVE', 'REVOKED', 'EXPIRED'];
             };
+            readonly LedgerAccountKind: {
+              readonly kind: 'valueSet';
+              readonly values: readonly [
+                'PLATFORM_CASH',
+                'SELLER_PENDING',
+                'SELLER_AVAILABLE',
+                'PLATFORM_REVENUE',
+                'PROVIDER_FEES',
+                'REFUND_RESERVE',
+                'ADJUSTMENTS',
+              ];
+            };
+            readonly LedgerDirection: {
+              readonly kind: 'valueSet';
+              readonly values: readonly ['DEBIT', 'CREDIT'];
+            };
             readonly LicenseStatus: {
               readonly kind: 'valueSet';
               readonly values: readonly ['ACTIVE', 'REVOKED', 'EXPIRED'];
@@ -4932,7 +5383,16 @@ type ContractBase = Omit<
             };
             readonly PaymentStatus: {
               readonly kind: 'valueSet';
-              readonly values: readonly ['PENDING', 'SUCCEEDED', 'FAILED', 'REFUNDED'];
+              readonly values: readonly [
+                'PENDING',
+                'SUCCEEDED',
+                'SETTLEMENT_PENDING',
+                'SETTLED',
+                'FAILED',
+                'CANCELED',
+                'REFUNDED',
+                'PARTIALLY_REFUNDED',
+              ];
             };
             readonly ProviderEventStatus: {
               readonly kind: 'valueSet';
@@ -4949,6 +5409,10 @@ type ContractBase = Omit<
             readonly ReconciliationStatus: {
               readonly kind: 'valueSet';
               readonly values: readonly ['PENDING', 'IN_PROGRESS', 'COMPLETED', 'FAILED'];
+            };
+            readonly RefundStatus: {
+              readonly kind: 'valueSet';
+              readonly values: readonly ['PENDING', 'SUCCEEDED', 'FAILED', 'CANCELED'];
             };
             readonly ResourceStatus: {
               readonly kind: 'valueSet';
@@ -5109,6 +5573,15 @@ type ContractBase = Omit<
     readonly serviceRevision: {
       readonly namespace: 'public' & NamespaceId;
       readonly model: 'ServiceRevision';
+    };
+    readonly refund: { readonly namespace: 'public' & NamespaceId; readonly model: 'Refund' };
+    readonly ledgerAccount: {
+      readonly namespace: 'public' & NamespaceId;
+      readonly model: 'LedgerAccount';
+    };
+    readonly ledgerEntry: {
+      readonly namespace: 'public' & NamespaceId;
+      readonly model: 'LedgerEntry';
     };
   };
   readonly domain: {
@@ -5787,6 +6260,143 @@ type ContractBase = Omit<
               };
             };
           };
+          readonly LedgerAccount: {
+            readonly fields: {
+              readonly id: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly code: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly kind: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly currency: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly userId: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly createdAt: {
+                readonly nullable: false;
+                readonly type: {
+                  readonly kind: 'scalar';
+                  readonly codecId: 'pg/timestamptz-string@1';
+                };
+              };
+            };
+            readonly relations: {
+              readonly entries: {
+                readonly to: {
+                  readonly namespace: 'public' & NamespaceId;
+                  readonly model: 'LedgerEntry';
+                };
+                readonly cardinality: '1:N';
+                readonly on: {
+                  readonly localFields: readonly ['id'];
+                  readonly targetFields: readonly ['accountId'];
+                };
+              };
+            };
+            readonly storage: {
+              readonly table: 'ledgerAccount';
+              readonly namespaceId: 'public';
+              readonly fields: {
+                readonly id: { readonly column: 'id' };
+                readonly code: { readonly column: 'code' };
+                readonly kind: { readonly column: 'kind' };
+                readonly currency: { readonly column: 'currency' };
+                readonly userId: { readonly column: 'userId' };
+                readonly createdAt: { readonly column: 'createdAt' };
+              };
+            };
+          };
+          readonly LedgerEntry: {
+            readonly fields: {
+              readonly id: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly transactionId: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly accountId: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly direction: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly amount: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/int4@1' };
+              };
+              readonly currency: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly orderId: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly paymentId: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly userId: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly memo: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly createdAt: {
+                readonly nullable: false;
+                readonly type: {
+                  readonly kind: 'scalar';
+                  readonly codecId: 'pg/timestamptz-string@1';
+                };
+              };
+            };
+            readonly relations: {
+              readonly account: {
+                readonly to: {
+                  readonly namespace: 'public' & NamespaceId;
+                  readonly model: 'LedgerAccount';
+                };
+                readonly cardinality: 'N:1';
+                readonly on: {
+                  readonly localFields: readonly ['accountId'];
+                  readonly targetFields: readonly ['id'];
+                };
+              };
+            };
+            readonly storage: {
+              readonly table: 'ledgerEntry';
+              readonly namespaceId: 'public';
+              readonly fields: {
+                readonly id: { readonly column: 'id' };
+                readonly transactionId: { readonly column: 'transactionId' };
+                readonly accountId: { readonly column: 'accountId' };
+                readonly direction: { readonly column: 'direction' };
+                readonly amount: { readonly column: 'amount' };
+                readonly currency: { readonly column: 'currency' };
+                readonly orderId: { readonly column: 'orderId' };
+                readonly paymentId: { readonly column: 'paymentId' };
+                readonly userId: { readonly column: 'userId' };
+                readonly memo: { readonly column: 'memo' };
+                readonly createdAt: { readonly column: 'createdAt' };
+              };
+            };
+          };
           readonly License: {
             readonly fields: {
               readonly id: {
@@ -6186,7 +6796,19 @@ type ContractBase = Omit<
                 };
               };
             };
-            readonly relations: Record<string, never>;
+            readonly relations: {
+              readonly refunds: {
+                readonly to: {
+                  readonly namespace: 'public' & NamespaceId;
+                  readonly model: 'Refund';
+                };
+                readonly cardinality: '1:N';
+                readonly on: {
+                  readonly localFields: readonly ['id'];
+                  readonly targetFields: readonly ['paymentId'];
+                };
+              };
+            };
             readonly storage: {
               readonly table: 'payment';
               readonly namespaceId: 'public';
@@ -6703,6 +7325,85 @@ type ContractBase = Omit<
                 readonly createdAt: { readonly column: 'createdAt' };
                 readonly completedAt: { readonly column: 'completedAt' };
                 readonly errorMessage: { readonly column: 'errorMessage' };
+              };
+            };
+          };
+          readonly Refund: {
+            readonly fields: {
+              readonly id: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly paymentId: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly providerRefundId: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly amount: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/int4@1' };
+              };
+              readonly currency: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly status: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly reason: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly createdAt: {
+                readonly nullable: false;
+                readonly type: {
+                  readonly kind: 'scalar';
+                  readonly codecId: 'pg/timestamptz-string@1';
+                };
+              };
+              readonly processedAt: {
+                readonly nullable: true;
+                readonly type: {
+                  readonly kind: 'scalar';
+                  readonly codecId: 'pg/timestamptz-string@1';
+                };
+              };
+              readonly lastError: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+            };
+            readonly relations: {
+              readonly payment: {
+                readonly to: {
+                  readonly namespace: 'public' & NamespaceId;
+                  readonly model: 'Payment';
+                };
+                readonly cardinality: 'N:1';
+                readonly on: {
+                  readonly localFields: readonly ['paymentId'];
+                  readonly targetFields: readonly ['id'];
+                };
+              };
+            };
+            readonly storage: {
+              readonly table: 'refund';
+              readonly namespaceId: 'public';
+              readonly fields: {
+                readonly id: { readonly column: 'id' };
+                readonly paymentId: { readonly column: 'paymentId' };
+                readonly providerRefundId: { readonly column: 'providerRefundId' };
+                readonly amount: { readonly column: 'amount' };
+                readonly currency: { readonly column: 'currency' };
+                readonly status: { readonly column: 'status' };
+                readonly reason: { readonly column: 'reason' };
+                readonly createdAt: { readonly column: 'createdAt' };
+                readonly processedAt: { readonly column: 'processedAt' };
+                readonly lastError: { readonly column: 'lastError' };
               };
             };
           };
@@ -8140,8 +8841,12 @@ type ContractBase = Omit<
             readonly members: readonly [
               { readonly name: 'PENDING'; readonly value: 'PENDING' },
               { readonly name: 'SUCCEEDED'; readonly value: 'SUCCEEDED' },
+              { readonly name: 'SETTLEMENT_PENDING'; readonly value: 'SETTLEMENT_PENDING' },
+              { readonly name: 'SETTLED'; readonly value: 'SETTLED' },
               { readonly name: 'FAILED'; readonly value: 'FAILED' },
+              { readonly name: 'CANCELED'; readonly value: 'CANCELED' },
               { readonly name: 'REFUNDED'; readonly value: 'REFUNDED' },
+              { readonly name: 'PARTIALLY_REFUNDED'; readonly value: 'PARTIALLY_REFUNDED' },
             ];
           };
           readonly ProviderEventStatus: {
@@ -8240,6 +8945,34 @@ type ContractBase = Omit<
               { readonly name: 'SERVICE'; readonly value: 'SERVICE' },
             ];
           };
+          readonly RefundStatus: {
+            readonly codecId: 'pg/text@1';
+            readonly members: readonly [
+              { readonly name: 'PENDING'; readonly value: 'PENDING' },
+              { readonly name: 'SUCCEEDED'; readonly value: 'SUCCEEDED' },
+              { readonly name: 'FAILED'; readonly value: 'FAILED' },
+              { readonly name: 'CANCELED'; readonly value: 'CANCELED' },
+            ];
+          };
+          readonly LedgerAccountKind: {
+            readonly codecId: 'pg/text@1';
+            readonly members: readonly [
+              { readonly name: 'PLATFORM_CASH'; readonly value: 'PLATFORM_CASH' },
+              { readonly name: 'SELLER_PENDING'; readonly value: 'SELLER_PENDING' },
+              { readonly name: 'SELLER_AVAILABLE'; readonly value: 'SELLER_AVAILABLE' },
+              { readonly name: 'PLATFORM_REVENUE'; readonly value: 'PLATFORM_REVENUE' },
+              { readonly name: 'PROVIDER_FEES'; readonly value: 'PROVIDER_FEES' },
+              { readonly name: 'REFUND_RESERVE'; readonly value: 'REFUND_RESERVE' },
+              { readonly name: 'ADJUSTMENTS'; readonly value: 'ADJUSTMENTS' },
+            ];
+          };
+          readonly LedgerDirection: {
+            readonly codecId: 'pg/text@1';
+            readonly members: readonly [
+              { readonly name: 'DEBIT'; readonly value: 'DEBIT' },
+              { readonly name: 'CREDIT'; readonly value: 'CREDIT' },
+            ];
+          };
         };
       };
     };
@@ -8335,6 +9068,22 @@ type ContractBase = Omit<
         {
           readonly ref: {
             readonly namespace: 'public';
+            readonly table: 'ledgerAccount';
+            readonly column: 'id';
+          };
+          readonly onCreate: { readonly kind: 'generator'; readonly id: 'uuidv4' };
+        },
+        {
+          readonly ref: {
+            readonly namespace: 'public';
+            readonly table: 'ledgerEntry';
+            readonly column: 'id';
+          };
+          readonly onCreate: { readonly kind: 'generator'; readonly id: 'uuidv4' };
+        },
+        {
+          readonly ref: {
+            readonly namespace: 'public';
             readonly table: 'license';
             readonly column: 'id';
           };
@@ -8409,6 +9158,14 @@ type ContractBase = Omit<
           readonly ref: {
             readonly namespace: 'public';
             readonly table: 'reconciliationReport';
+            readonly column: 'id';
+          };
+          readonly onCreate: { readonly kind: 'generator'; readonly id: 'uuidv4' };
+        },
+        {
+          readonly ref: {
+            readonly namespace: 'public';
+            readonly table: 'refund';
             readonly column: 'id';
           };
           readonly onCreate: { readonly kind: 'generator'; readonly id: 'uuidv4' };

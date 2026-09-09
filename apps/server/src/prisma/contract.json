@@ -32,6 +32,14 @@
       "model": "Lease",
       "namespace": "public"
     },
+    "ledgerAccount": {
+      "model": "LedgerAccount",
+      "namespace": "public"
+    },
+    "ledgerEntry": {
+      "model": "LedgerEntry",
+      "namespace": "public"
+    },
     "license": {
       "model": "License",
       "namespace": "public"
@@ -66,6 +74,10 @@
     },
     "reconciliationReport": {
       "model": "ReconciliationReport",
+      "namespace": "public"
+    },
+    "refund": {
+      "model": "Refund",
       "namespace": "public"
     },
     "resource": {
@@ -193,6 +205,52 @@
               }
             ]
           },
+          "LedgerAccountKind": {
+            "codecId": "pg/text@1",
+            "members": [
+              {
+                "name": "PLATFORM_CASH",
+                "value": "PLATFORM_CASH"
+              },
+              {
+                "name": "SELLER_PENDING",
+                "value": "SELLER_PENDING"
+              },
+              {
+                "name": "SELLER_AVAILABLE",
+                "value": "SELLER_AVAILABLE"
+              },
+              {
+                "name": "PLATFORM_REVENUE",
+                "value": "PLATFORM_REVENUE"
+              },
+              {
+                "name": "PROVIDER_FEES",
+                "value": "PROVIDER_FEES"
+              },
+              {
+                "name": "REFUND_RESERVE",
+                "value": "REFUND_RESERVE"
+              },
+              {
+                "name": "ADJUSTMENTS",
+                "value": "ADJUSTMENTS"
+              }
+            ]
+          },
+          "LedgerDirection": {
+            "codecId": "pg/text@1",
+            "members": [
+              {
+                "name": "DEBIT",
+                "value": "DEBIT"
+              },
+              {
+                "name": "CREDIT",
+                "value": "CREDIT"
+              }
+            ]
+          },
           "LicenseStatus": {
             "codecId": "pg/text@1",
             "members": [
@@ -290,12 +348,28 @@
                 "value": "SUCCEEDED"
               },
               {
+                "name": "SETTLEMENT_PENDING",
+                "value": "SETTLEMENT_PENDING"
+              },
+              {
+                "name": "SETTLED",
+                "value": "SETTLED"
+              },
+              {
                 "name": "FAILED",
                 "value": "FAILED"
               },
               {
+                "name": "CANCELED",
+                "value": "CANCELED"
+              },
+              {
                 "name": "REFUNDED",
                 "value": "REFUNDED"
+              },
+              {
+                "name": "PARTIALLY_REFUNDED",
+                "value": "PARTIALLY_REFUNDED"
               }
             ]
           },
@@ -380,6 +454,27 @@
               {
                 "name": "FAILED",
                 "value": "FAILED"
+              }
+            ]
+          },
+          "RefundStatus": {
+            "codecId": "pg/text@1",
+            "members": [
+              {
+                "name": "PENDING",
+                "value": "PENDING"
+              },
+              {
+                "name": "SUCCEEDED",
+                "value": "SUCCEEDED"
+              },
+              {
+                "name": "FAILED",
+                "value": "FAILED"
+              },
+              {
+                "name": "CANCELED",
+                "value": "CANCELED"
               }
             ]
           },
@@ -1738,6 +1833,242 @@
               "table": "lease"
             }
           },
+          "LedgerAccount": {
+            "fields": {
+              "code": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "createdAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "currency": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "kind": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                },
+                "valueSet": {
+                  "entityKind": "enum",
+                  "entityName": "LedgerAccountKind",
+                  "namespaceId": "public",
+                  "plane": "domain"
+                }
+              },
+              "userId": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {
+              "entries": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "accountId"
+                  ]
+                },
+                "to": {
+                  "model": "LedgerEntry",
+                  "namespace": "public"
+                }
+              }
+            },
+            "storage": {
+              "fields": {
+                "code": {
+                  "column": "code"
+                },
+                "createdAt": {
+                  "column": "createdAt"
+                },
+                "currency": {
+                  "column": "currency"
+                },
+                "id": {
+                  "column": "id"
+                },
+                "kind": {
+                  "column": "kind"
+                },
+                "userId": {
+                  "column": "userId"
+                }
+              },
+              "namespaceId": "public",
+              "table": "ledgerAccount"
+            }
+          },
+          "LedgerEntry": {
+            "fields": {
+              "accountId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "amount": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/int4@1",
+                  "kind": "scalar"
+                }
+              },
+              "createdAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "currency": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "direction": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                },
+                "valueSet": {
+                  "entityKind": "enum",
+                  "entityName": "LedgerDirection",
+                  "namespaceId": "public",
+                  "plane": "domain"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "memo": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "orderId": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "paymentId": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "transactionId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "userId": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {
+              "account": {
+                "cardinality": "N:1",
+                "on": {
+                  "localFields": [
+                    "accountId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "LedgerAccount",
+                  "namespace": "public"
+                }
+              }
+            },
+            "storage": {
+              "fields": {
+                "accountId": {
+                  "column": "accountId"
+                },
+                "amount": {
+                  "column": "amount"
+                },
+                "createdAt": {
+                  "column": "createdAt"
+                },
+                "currency": {
+                  "column": "currency"
+                },
+                "direction": {
+                  "column": "direction"
+                },
+                "id": {
+                  "column": "id"
+                },
+                "memo": {
+                  "column": "memo"
+                },
+                "orderId": {
+                  "column": "orderId"
+                },
+                "paymentId": {
+                  "column": "paymentId"
+                },
+                "transactionId": {
+                  "column": "transactionId"
+                },
+                "userId": {
+                  "column": "userId"
+                }
+              },
+              "namespaceId": "public",
+              "table": "ledgerEntry"
+            }
+          },
           "License": {
             "fields": {
               "activatedAt": {
@@ -2386,7 +2717,23 @@
                 }
               }
             },
-            "relations": {},
+            "relations": {
+              "refunds": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "paymentId"
+                  ]
+                },
+                "to": {
+                  "model": "Refund",
+                  "namespace": "public"
+                }
+              }
+            },
             "storage": {
               "fields": {
                 "amount": {
@@ -3289,6 +3636,139 @@
               },
               "namespaceId": "public",
               "table": "reconciliationReport"
+            }
+          },
+          "Refund": {
+            "fields": {
+              "amount": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/int4@1",
+                  "kind": "scalar"
+                }
+              },
+              "createdAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "currency": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "lastError": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "paymentId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "processedAt": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "providerRefundId": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "reason": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "status": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                },
+                "valueSet": {
+                  "entityKind": "enum",
+                  "entityName": "RefundStatus",
+                  "namespaceId": "public",
+                  "plane": "domain"
+                }
+              }
+            },
+            "relations": {
+              "payment": {
+                "cardinality": "N:1",
+                "on": {
+                  "localFields": [
+                    "paymentId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "Payment",
+                  "namespace": "public"
+                }
+              }
+            },
+            "storage": {
+              "fields": {
+                "amount": {
+                  "column": "amount"
+                },
+                "createdAt": {
+                  "column": "createdAt"
+                },
+                "currency": {
+                  "column": "currency"
+                },
+                "id": {
+                  "column": "id"
+                },
+                "lastError": {
+                  "column": "lastError"
+                },
+                "paymentId": {
+                  "column": "paymentId"
+                },
+                "processedAt": {
+                  "column": "processedAt"
+                },
+                "providerRefundId": {
+                  "column": "providerRefundId"
+                },
+                "reason": {
+                  "column": "reason"
+                },
+                "status": {
+                  "column": "status"
+                }
+              },
+              "namespaceId": "public",
+              "table": "refund"
             }
           },
           "Resource": {
@@ -6421,6 +6901,215 @@
                 }
               ]
             },
+            "ledgerAccount": {
+              "checks": [
+                {
+                  "expression": "\"kind\" IN ('PLATFORM_CASH', 'SELLER_PENDING', 'SELLER_AVAILABLE', 'PLATFORM_REVENUE', 'PROVIDER_FEES', 'REFUND_RESERVE', 'ADJUSTMENTS')",
+                  "name": "ledgerAccount_kind_check_d48c17eb",
+                  "prefix": "ledgerAccount_kind_check"
+                }
+              ],
+              "columns": {
+                "code": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "createdAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "default": {
+                    "expression": "now()",
+                    "kind": "function"
+                  },
+                  "nativeType": "timestamptz",
+                  "nullable": false
+                },
+                "currency": {
+                  "codecId": "pg/text@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": "RUB"
+                  },
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "id": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "kind": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false,
+                  "valueSet": {
+                    "entityKind": "valueSet",
+                    "entityName": "LedgerAccountKind",
+                    "namespaceId": "public",
+                    "plane": "storage"
+                  }
+                },
+                "userId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                }
+              },
+              "foreignKeys": [],
+              "indexes": [
+                {
+                  "columns": [
+                    "kind"
+                  ],
+                  "name": "ledgerAccount_kind_idx_c9ca668f",
+                  "prefix": "ledgerAccount_kind_idx",
+                  "unique": false
+                }
+              ],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
+              "uniques": [
+                {
+                  "columns": [
+                    "code"
+                  ]
+                }
+              ]
+            },
+            "ledgerEntry": {
+              "checks": [
+                {
+                  "expression": "\"direction\" IN ('DEBIT', 'CREDIT')",
+                  "name": "ledgerEntry_direction_check_e2bfd96c",
+                  "prefix": "ledgerEntry_direction_check"
+                }
+              ],
+              "columns": {
+                "accountId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "amount": {
+                  "codecId": "pg/int4@1",
+                  "nativeType": "int4",
+                  "nullable": false
+                },
+                "createdAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "default": {
+                    "expression": "now()",
+                    "kind": "function"
+                  },
+                  "nativeType": "timestamptz",
+                  "nullable": false
+                },
+                "currency": {
+                  "codecId": "pg/text@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": "RUB"
+                  },
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "direction": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false,
+                  "valueSet": {
+                    "entityKind": "valueSet",
+                    "entityName": "LedgerDirection",
+                    "namespaceId": "public",
+                    "plane": "storage"
+                  }
+                },
+                "id": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "memo": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "orderId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "paymentId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "transactionId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "userId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                }
+              },
+              "foreignKeys": [
+                {
+                  "onDelete": "restrict",
+                  "source": {
+                    "columns": [
+                      "accountId"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "ledgerEntry"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "ledgerAccount"
+                  }
+                }
+              ],
+              "indexes": [
+                {
+                  "columns": [
+                    "accountId"
+                  ],
+                  "name": "ledgerEntry_accountId_idx_cbfb3085",
+                  "prefix": "ledgerEntry_accountId_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "transactionId"
+                  ],
+                  "name": "ledgerEntry_transactionId_idx_d3180832",
+                  "prefix": "ledgerEntry_transactionId_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "userId"
+                  ],
+                  "name": "ledgerEntry_userId_idx_a489d58a",
+                  "prefix": "ledgerEntry_userId_idx",
+                  "unique": false
+                }
+              ],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
+              "uniques": []
+            },
             "license": {
               "checks": [
                 {
@@ -6889,8 +7578,8 @@
                   "prefix": "payment_provider_check"
                 },
                 {
-                  "expression": "\"status\" IN ('PENDING', 'SUCCEEDED', 'FAILED', 'REFUNDED')",
-                  "name": "payment_status_check_218a9bc3",
+                  "expression": "\"status\" IN ('PENDING', 'SUCCEEDED', 'SETTLEMENT_PENDING', 'SETTLED', 'FAILED', 'CANCELED', 'REFUNDED', 'PARTIALLY_REFUNDED')",
+                  "name": "payment_status_check_c2fd0c5a",
                   "prefix": "payment_status_check"
                 }
               ],
@@ -7779,6 +8468,134 @@
                 ]
               },
               "uniques": []
+            },
+            "refund": {
+              "checks": [
+                {
+                  "expression": "\"status\" IN ('PENDING', 'SUCCEEDED', 'FAILED', 'CANCELED')",
+                  "name": "refund_status_check_6abad72d",
+                  "prefix": "refund_status_check"
+                }
+              ],
+              "columns": {
+                "amount": {
+                  "codecId": "pg/int4@1",
+                  "nativeType": "int4",
+                  "nullable": false
+                },
+                "createdAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "default": {
+                    "expression": "now()",
+                    "kind": "function"
+                  },
+                  "nativeType": "timestamptz",
+                  "nullable": false
+                },
+                "currency": {
+                  "codecId": "pg/text@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": "RUB"
+                  },
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "id": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "lastError": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "paymentId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "processedAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "nativeType": "timestamptz",
+                  "nullable": true
+                },
+                "providerRefundId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "reason": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "status": {
+                  "codecId": "pg/text@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": "PENDING"
+                  },
+                  "nativeType": "text",
+                  "nullable": false,
+                  "valueSet": {
+                    "entityKind": "valueSet",
+                    "entityName": "RefundStatus",
+                    "namespaceId": "public",
+                    "plane": "storage"
+                  }
+                }
+              },
+              "foreignKeys": [
+                {
+                  "onDelete": "restrict",
+                  "source": {
+                    "columns": [
+                      "paymentId"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "refund"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "payment"
+                  }
+                }
+              ],
+              "indexes": [
+                {
+                  "columns": [
+                    "paymentId"
+                  ],
+                  "name": "refund_paymentId_idx_b2fe9a10",
+                  "prefix": "refund_paymentId_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "status"
+                  ],
+                  "name": "refund_status_idx_e98638ab",
+                  "prefix": "refund_status_idx",
+                  "unique": false
+                }
+              ],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
+              "uniques": [
+                {
+                  "columns": [
+                    "providerRefundId"
+                  ]
+                }
+              ]
             },
             "resource": {
               "checks": [
@@ -9455,6 +10272,25 @@
                 "EXPIRED"
               ]
             },
+            "LedgerAccountKind": {
+              "kind": "valueSet",
+              "values": [
+                "PLATFORM_CASH",
+                "SELLER_PENDING",
+                "SELLER_AVAILABLE",
+                "PLATFORM_REVENUE",
+                "PROVIDER_FEES",
+                "REFUND_RESERVE",
+                "ADJUSTMENTS"
+              ]
+            },
+            "LedgerDirection": {
+              "kind": "valueSet",
+              "values": [
+                "DEBIT",
+                "CREDIT"
+              ]
+            },
             "LicenseStatus": {
               "kind": "valueSet",
               "values": [
@@ -9500,8 +10336,12 @@
               "values": [
                 "PENDING",
                 "SUCCEEDED",
+                "SETTLEMENT_PENDING",
+                "SETTLED",
                 "FAILED",
-                "REFUNDED"
+                "CANCELED",
+                "REFUNDED",
+                "PARTIALLY_REFUNDED"
               ]
             },
             "ProviderEventStatus": {
@@ -9538,6 +10378,15 @@
                 "IN_PROGRESS",
                 "COMPLETED",
                 "FAILED"
+              ]
+            },
+            "RefundStatus": {
+              "kind": "valueSet",
+              "values": [
+                "PENDING",
+                "SUCCEEDED",
+                "FAILED",
+                "CANCELED"
               ]
             },
             "ResourceStatus": {
@@ -9636,10 +10485,10 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "b0c132873362a03a3eb4c97b75af5740755d5ff69f7d808c874db35caa62318f"
+    "storageHash": "05a16f0be28aa4288e99cf6408a7d12625058611a299b39a0873bfd2b833f4e5"
   },
   "execution": {
-    "executionHash": "1a15995ebb9ce6018eba9d8eea093642c76e70df8a4ec2adb2191e51be71f566",
+    "executionHash": "a3e9120cfca55e52eac9dff965ceec0aecc9529a4ab1adec147c4453d7c9d88b",
     "mutations": {
       "defaults": [
         {
@@ -9732,6 +10581,28 @@
             "column": "id",
             "namespace": "public",
             "table": "lease"
+          }
+        },
+        {
+          "onCreate": {
+            "id": "uuidv4",
+            "kind": "generator"
+          },
+          "ref": {
+            "column": "id",
+            "namespace": "public",
+            "table": "ledgerAccount"
+          }
+        },
+        {
+          "onCreate": {
+            "id": "uuidv4",
+            "kind": "generator"
+          },
+          "ref": {
+            "column": "id",
+            "namespace": "public",
+            "table": "ledgerEntry"
           }
         },
         {
@@ -9846,6 +10717,17 @@
             "column": "id",
             "namespace": "public",
             "table": "reconciliationReport"
+          }
+        },
+        {
+          "onCreate": {
+            "id": "uuidv4",
+            "kind": "generator"
+          },
+          "ref": {
+            "column": "id",
+            "namespace": "public",
+            "table": "refund"
           }
         },
         {

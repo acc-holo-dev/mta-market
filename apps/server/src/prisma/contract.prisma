@@ -333,10 +333,14 @@ enum PaymentProvider {
 }
 
 enum PaymentStatus {
-  PENDING
-  SUCCEEDED
+  PENDING             // Created, awaiting provider result (E-003)
+  SUCCEEDED           // Provider confirmed capture
+  SETTLEMENT_PENDING  // Captured; ledger settlement in progress/retryable
+  SETTLED             // Settled into the ledger
   FAILED
-  REFUNDED
+  CANCELED
+  REFUNDED            // Fully refunded
+  PARTIALLY_REFUNDED  // Partially refunded; may be refunded further
 }
 
 model Payment {
@@ -352,6 +356,8 @@ model Payment {
   createdAt         TimestamptzString @default(now())
   succeededAt       TimestamptzString?
   failedAt          TimestamptzString?
+
+  refunds Refund[]
 
   @@index([providerPaymentId])
   @@index([status])
@@ -826,4 +832,90 @@ model ServiceRevision {
 
   @@index([servicePurchaseId])
   @@index([deliveryId])
+}
+
+// ---------------------------------------------------------------------------
+// PLAN Block 5 / E-008: refund is an independent lifecycle.
+// INV-013: the sum of successful refunds on a payment can never exceed the
+// captured amount.
+// ---------------------------------------------------------------------------
+
+enum RefundStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
+model Refund {
+  id               String       @id @default(uuid())
+  paymentId        String
+  providerRefundId String?      @unique
+  amount           Int // kopecks; partial refunds supported
+  currency         String       @default("RUB")
+  status           RefundStatus @default(PENDING)
+  reason           String?
+  createdAt        TimestamptzString @default(now())
+  processedAt      TimestamptzString?
+  lastError        String?
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+
+  @@index([paymentId])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// PLAN Block 5 / F-001..F-003: append-only double-entry ledger.
+// Source of truth = LedgerEntry rows; balances (SellerBalance etc.) are
+// derived caches. Every posted transaction must balance:
+// sum(debits) == sum(credits) (INV-012).
+// ---------------------------------------------------------------------------
+
+enum LedgerAccountKind {
+  PLATFORM_CASH     // money actually captured at the platform
+  SELLER_PENDING    // seller revenue awaiting settlement/payout
+  SELLER_AVAILABLE  // seller revenue available for payout
+  PLATFORM_REVENUE  // platform fees
+  PROVIDER_FEES     // provider processing fees (when known)
+  REFUND_RESERVE    // funds reserved for refunds
+  ADJUSTMENTS       // manual corrections
+}
+
+enum LedgerDirection {
+  DEBIT
+  CREDIT
+}
+
+model LedgerAccount {
+  id        String            @id @default(uuid())
+  code      String            @unique // e.g. platform_cash, seller_available:<userId>
+  kind      LedgerAccountKind
+  currency  String            @default("RUB")
+  userId    String? // owner for seller-scoped accounts
+  createdAt TimestamptzString @default(now())
+
+  entries LedgerEntry[]
+
+  @@index([kind])
+}
+
+model LedgerEntry {
+  id            String          @id @default(uuid())
+  transactionId String // groups balanced entries together (INV-012)
+  accountId     String
+  direction     LedgerDirection
+  amount        Int // kopecks, always positive; direction carries the sign
+  currency      String          @default("RUB")
+  orderId       String?
+  paymentId     String?
+  userId        String? // seller/buyer the entry relates to
+  memo          String?
+  createdAt     TimestamptzString @default(now())
+
+  account LedgerAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@index([transactionId])
+  @@index([accountId])
+  @@index([userId])
 }

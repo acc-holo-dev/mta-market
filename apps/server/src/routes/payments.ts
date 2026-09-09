@@ -1,23 +1,53 @@
-// Payment webhooks (YooKassa)
+// Payment routes (PLAN E-001..E-008).
+// Routes talk to the neutral IPaymentProvider registry, never a provider SDK
+// directly (E-002). Payment row mutations go through the state machine
+// (E-003). Refunds are an independent lifecycle (E-008, INV-013).
 import { Router, Request, Response } from "express";
 import { db } from "../prisma/db";
-import {
-  createYooKassaPayment,
-  getYooKassaPayment,
-  YOOKASSA_ENABLED,
-  YOOKASSA_SHOP_ID,
-  YooKassaWebhook,
-} from "../lib/yookassa";
 import crypto from "crypto";
-import { authenticate, AuthRequest } from "../lib/auth";
+import { authenticate, requireRole, AuthRequest } from "../lib/auth";
 import { standardRateLimit } from "../lib/rateLimit";
 import { validateCuid } from "../middleware/validateCuid";
-import { isYooKassaIP, verifyYooKassaAuth, getClientIP } from "../lib/yookassaWebhook";
+import { getClientIP } from "../lib/yookassaWebhook";
 import { sendPurchaseEmail } from "../lib/email";
 import { completeResourceOrderItem, markServicePurchasePaid, CommerceError } from "../lib/commerce";
+import { paymentProviders, type IPaymentProvider } from "../lib/paymentProvider";
+// E-002: side-effect import registers the YooKassa implementation.
+import "../lib/providers/payment-yookassa";
+import {
+  assertTransition,
+  canTransition,
+  type PaymentState,
+} from "../lib/paymentStateMachine";
+import { createRefund } from "../lib/refunds";
+import { PaymentRefundError } from "../lib/paymentErrors";
 import { reqLog } from "../middleware/requestId";
+import type { YooKassaWebhook } from "../lib/yookassa";
 
 const router: Router = Router();
+
+function yooKassaProvider(): IPaymentProvider | null {
+  const provider = paymentProviders.get("YUKASSA");
+  return provider && provider.isEnabled() ? provider : null;
+}
+
+/**
+ * E-003: apply a state-machine transition to a Payment row. No-op when the
+ * row is already in the target state; throws PaymentStateError on illegal
+ * transitions ( surfacing as 500 — a programming error, not a client one).
+ */
+async function transitionPaymentTo(providerPaymentId: string, to: PaymentState): Promise<void> {
+  const row = await db.orm.public.Payment.where({ providerPaymentId }).first();
+  if (!row) return;
+  const from = row.status as PaymentState;
+  if (from === to) return;
+  assertTransition(from, to);
+  await db.orm.public.Payment.where({ id: row.id }).update({
+    status: to,
+    ...(to === "SUCCEEDED" ? { succeededAt: new Date().toISOString() } : {}),
+    ...(to === "FAILED" ? { failedAt: new Date().toISOString() } : {}),
+  });
+}
 
 // POST /payments/create - Create payment (authenticated)
 // Accepts { purchaseId } for resource lines (legacy) or { servicePurchaseId }
@@ -30,6 +60,8 @@ router.post("/create", authenticate, standardRateLimit, async (req: AuthRequest,
       res.status(400).json({ error: "Missing purchaseId or servicePurchaseId" });
       return;
     }
+
+    const provider = yooKassaProvider();
 
     // ---- Service payment (C-010) ----
     if (servicePurchaseId) {
@@ -56,7 +88,7 @@ router.post("/create", authenticate, standardRateLimit, async (req: AuthRequest,
         return;
       }
 
-      if (!YOOKASSA_ENABLED) {
+      if (!provider) {
         res.json({
           message: "YooKassa disabled - service order awaits manual payment setup",
           servicePurchaseId: servicePurchase.id,
@@ -64,9 +96,9 @@ router.post("/create", authenticate, standardRateLimit, async (req: AuthRequest,
         return;
       }
 
-      const payment = await createYooKassaPayment({
-        amount: servicePurchase.finalPrice,
-        description: `Заказ услуги`,
+      const created = await provider.createPayment({
+        amount: { value: servicePurchase.finalPrice, currency: "RUB" },
+        description: "Заказ услуги",
         orderId: servicePurchase.id,
         returnUrl: `${process.env.FRONTEND_URL}/services/orders/${servicePurchase.id}`,
       });
@@ -75,15 +107,15 @@ router.post("/create", authenticate, standardRateLimit, async (req: AuthRequest,
         purchaseId: null,
         orderItemId: serviceOrderItem.orderItemId,
         provider: "YUKASSA",
-        providerPaymentId: payment.id,
+        providerPaymentId: created.providerPaymentId,
         amount: servicePurchase.finalPrice,
         currency: "RUB",
         status: "PENDING",
       });
 
       res.json({
-        paymentUrl: payment.confirmation.confirmation_url,
-        paymentId: payment.id,
+        paymentUrl: created.redirectUrl,
+        paymentId: created.providerPaymentId,
       });
       return;
     }
@@ -114,30 +146,28 @@ router.post("/create", authenticate, standardRateLimit, async (req: AuthRequest,
       return;
     }
 
-    if (YOOKASSA_ENABLED) {
-      // Create payment in YooKassa
+    if (provider) {
       // TASK A-011: the provider amount must equal the order FINAL total
       // (after discounts) — never the pre-discount snapshot.
-      const payment = await createYooKassaPayment({
-        amount: purchase.finalPrice,
+      const created = await provider.createPayment({
+        amount: { value: purchase.finalPrice, currency: "RUB" },
         description: `Покупка ресурса: ${resource.title}`,
         orderId: purchase.id.toString(),
         returnUrl: `${process.env.FRONTEND_URL}/purchases/${purchase.id}`,
       });
 
-      // Save payment info
       await db.orm.public.Payment.create({
         purchaseId: purchase.id,
         provider: "YUKASSA",
-        providerPaymentId: payment.id,
+        providerPaymentId: created.providerPaymentId,
         amount: purchase.finalPrice,
         currency: "RUB",
         status: "PENDING",
       });
 
       res.json({
-        paymentUrl: payment.confirmation.confirmation_url,
-        paymentId: payment.id,
+        paymentUrl: created.redirectUrl,
+        paymentId: created.providerPaymentId,
       });
     } else {
       // Development mode: simulate payment
@@ -153,38 +183,36 @@ router.post("/create", authenticate, standardRateLimit, async (req: AuthRequest,
 });
 
 // POST /payments/webhook - YooKassa webhook
-// YooKassa sends HTTP Basic Auth notifications configured in its dashboard.
-// We verify IP whitelist, Basic Auth, record idempotency event, and confirm
-// payment state via the provider API. Repeated deliveries are safe.
+// Transport authenticity (IP allowlist + HTTP Basic auth) is delegated to the
+// provider implementation (E-006); business verification re-fetches the
+// payment from the provider API (A-010/A-011). The event is persisted before
+// any business effect (E-004/E-005); repeated deliveries are safe.
 router.post("/webhook", async (req: Request, res: Response) => {
   try {
     // TASK A-010: when the provider is not configured there is no way to
     // verify transport authenticity or re-fetch provider state — the endpoint
-    // must be DISABLED, not open. (Previously the IP/auth/re-fetch checks were
-    // all skipped when YOOKASSA_ENABLED=false, leaving an unauthenticated
-    // purchase-completion bypass.)
-    if (!YOOKASSA_ENABLED) {
+    // must be DISABLED, not open.
+    const provider = yooKassaProvider();
+    if (!provider) {
       res.status(503).json({ error: "Payment provider is not configured" });
       return;
     }
 
-    // Security Layer 1: IP Whitelist
+    // Transport verification: IP allowlist + Basic auth (E-006).
     const clientIP = getClientIP(req);
-    if (!isYooKassaIP(clientIP)) {
-      reqLog(req).warn("webhook_rejected_ip_not_whitelisted", { client_ip: clientIP });
-      res.status(403).json({ error: "Forbidden: Invalid source IP" });
+    const verification = provider.verifyWebhook({ req, body: req.body, sourceIp: clientIP });
+    if (!verification.ok) {
+      if (verification.reason === "ip") {
+        reqLog(req).warn("webhook_rejected_ip_not_whitelisted", { client_ip: clientIP });
+        res.status(403).json({ error: "Forbidden: Invalid source IP" });
+      } else {
+        reqLog(req).warn("webhook_rejected_invalid_auth", { client_ip: clientIP });
+        res.status(401).json({ error: "Unauthorized: Invalid credentials" });
+      }
       return;
     }
 
-    // Security Layer 2: Basic Auth
-    const notificationPassword = process.env.YOOKASSA_NOTIFICATION_PASSWORD || "";
-    if (!verifyYooKassaAuth(req.headers.authorization, YOOKASSA_SHOP_ID, notificationPassword)) {
-      reqLog(req).warn("webhook_rejected_invalid_auth", { client_ip: clientIP });
-      res.status(401).json({ error: "Unauthorized: Invalid credentials" });
-      return;
-    }
-
-    const webhook: YooKassaWebhook = req.body;
+    const webhook = req.body as YooKassaWebhook;
 
     if (!webhook?.event || !webhook.object?.id) {
       res.status(400).json({ error: "Invalid webhook payload" });
@@ -267,10 +295,9 @@ router.post("/webhook", async (req: Request, res: Response) => {
 
     // Do not trust webhook body alone. Confirm current provider state and amount.
     // TASK A-010/A-011: provider re-fetch + amount/currency/reference invariants.
-    const providerPayment = await getYooKassaPayment(object.id);
+    const providerPayment = await provider.getPayment(object.id);
     const expectedEntity = purchase ?? servicePurchase!;
-    const expectedAmount = (expectedEntity.finalPrice / 100).toFixed(2);
-    if (providerPayment.status !== "succeeded" || providerPayment.paid !== true) {
+    if (providerPayment.state !== "SUCCEEDED" || providerPayment.paid !== true) {
       await db.orm.public.PaymentProviderEvent.where({ id: eventRecord.id }).update({
         status: "FAILED",
         lastError: "Provider payment is not succeeded",
@@ -279,19 +306,19 @@ router.post("/webhook", async (req: Request, res: Response) => {
       return;
     }
     if (
-      providerPayment.amount.value !== expectedAmount ||
+      providerPayment.amount.value !== expectedEntity.finalPrice ||
       providerPayment.amount.currency !== "RUB"
     ) {
       // TASK A-011: amount/currency mismatch -> quarantine, no entitlement.
       await db.orm.public.PaymentProviderEvent.where({ id: eventRecord.id }).update({
         status: "FAILED",
-        lastError: `Amount mismatch: provider ${providerPayment.amount.value} ${providerPayment.amount.currency}, expected ${expectedAmount} RUB`,
+        lastError: `Amount mismatch: provider ${providerPayment.amount.value} ${providerPayment.amount.currency}, expected ${expectedEntity.finalPrice} RUB`,
       });
       reqLog(req).error("payment_quarantined_amount_mismatch", {
         provider_payment_id: object.id,
         provider_amount: providerPayment.amount.value,
         provider_currency: providerPayment.amount.currency,
-        expected_amount: expectedAmount,
+        expected_amount: expectedEntity.finalPrice,
         order_ref: orderRef,
       });
       res.status(409).json({ error: "Provider payment amount mismatch" });
@@ -326,6 +353,11 @@ router.post("/webhook", async (req: Request, res: Response) => {
       }
     }
 
+    // E-003: provider confirmed capture -> SUCCEEDED (before settlement).
+    if (existingPayment) {
+      await transitionPaymentTo(object.id, "SUCCEEDED");
+    }
+
     if (purchase) {
       // ---- Resource completion (atomic; INV-001/INV-006) ----
       if (!purchase.orderItemId) {
@@ -342,6 +374,7 @@ router.post("/webhook", async (req: Request, res: Response) => {
       if (existingPayment) {
         await db.orm.public.Payment.where({ providerPaymentId: object.id }).update({
           status: "SUCCEEDED",
+          succeededAt: new Date().toISOString(),
         });
       } else {
         // Provider-confirmed payment without a local record (e.g. created via
@@ -353,8 +386,12 @@ router.post("/webhook", async (req: Request, res: Response) => {
           amount: purchase.finalPrice,
           currency: "RUB",
           status: "SUCCEEDED",
+          succeededAt: new Date().toISOString(),
         });
       }
+
+      // E-003: entitlement granted + ledger settled -> SETTLED.
+      await transitionPaymentTo(object.id, "SETTLED");
 
       const user = await db.orm.public.User.where({ id: purchase.buyerId }).first();
       const resource = await db.orm.public.Resource.where({ id: purchase.resourceId }).first();
@@ -376,6 +413,7 @@ router.post("/webhook", async (req: Request, res: Response) => {
       if (existingPayment) {
         await db.orm.public.Payment.where({ providerPaymentId: object.id }).update({
           status: "SUCCEEDED",
+          succeededAt: new Date().toISOString(),
         });
       } else {
         const serviceOrderItem = await db.orm.public.ServiceOrderItem
@@ -389,8 +427,11 @@ router.post("/webhook", async (req: Request, res: Response) => {
           amount: servicePurchase.finalPrice,
           currency: "RUB",
           status: "SUCCEEDED",
+          succeededAt: new Date().toISOString(),
         });
       }
+
+      await transitionPaymentTo(object.id, "SETTLED");
     }
 
     await db.orm.public.PaymentProviderEvent.where({ id: eventRecord.id }).update({
@@ -410,6 +451,65 @@ router.post("/webhook", async (req: Request, res: Response) => {
   }
 });
 
+// POST /payments/refunds - create a refund (ADMIN only, E-008)
+// INV-013: the refunded total can never exceed the captured amount.
+router.post(
+  "/refunds",
+  authenticate,
+  requireRole("ADMIN"),
+  standardRateLimit,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { paymentId, amount, reason } = req.body ?? {};
+      if (!paymentId) {
+        res.status(400).json({ error: "Missing paymentId" });
+        return;
+      }
+      const result = await createRefund({
+        actorId: req.user!.userId,
+        paymentId,
+        amount: amount ?? undefined,
+        reason,
+      });
+      reqLog(req).info("refund_created", {
+        refund_id: result.refundId,
+        payment_id: paymentId,
+        amount: result.amount,
+        actor_id: req.user!.userId,
+      });
+      res.status(201).json(result);
+    } catch (error) {
+      if (error instanceof PaymentRefundError) {
+        reqLog(req).warn("refund_rejected", { code: error.code, status: error.status });
+        res.status(error.status).json({ error: error.message, code: error.code });
+        return;
+      }
+      reqLog(req).error("refund_create_failed", { error });
+      res.status(500).json({ error: "Failed to create refund" });
+    }
+  }
+);
+
+// GET /payments/:paymentId/refunds - list refunds for a payment (ADMIN only)
+router.get(
+  "/:paymentId/refunds",
+  authenticate,
+  requireRole("ADMIN"),
+  validateCuid("paymentId"),
+  standardRateLimit,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const refunds = await db.orm.public.Refund.where({ paymentId: req.params.paymentId as string })
+        .orderBy((m) => m.createdAt.desc())
+        .all();
+      res.json({ data: refunds, total: refunds.length });
+    } catch (error) {
+      reqLog(req).error("refunds_fetch_failed", { error });
+      res.status(500).json({ error: "Failed to fetch refunds" });
+    }
+  }
+);
+
 // POST /payments/:id/simulate - Simulate payment (development only)
 // This route is ONLY compiled in non-production environments
 if (process.env.NODE_ENV !== 'production') {
@@ -420,7 +520,7 @@ if (process.env.NODE_ENV !== 'production') {
     standardRateLimit,
     async (req: AuthRequest, res: Response) => {
       try {
-        if (YOOKASSA_ENABLED) {
+        if (yooKassaProvider()) {
           res.status(403).json({ error: "Cannot simulate in production" });
           return;
         }
