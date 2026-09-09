@@ -31,5 +31,8 @@ export {
   recordHeartbeat,
   revokeInstallation,
   getServerPublicKey,
+  rotateServerSigningKey,
+  getTrustedServerKeys,
+  issueVersionDek,
   getActiveLease
 } from './service';

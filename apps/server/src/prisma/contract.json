@@ -8,6 +8,10 @@
       "model": "Account",
       "namespace": "public"
     },
+    "artifactEncryption": {
+      "model": "ArtifactEncryption",
+      "namespace": "public"
+    },
     "artifactSignature": {
       "model": "ArtifactSignature",
       "namespace": "public"
@@ -194,6 +198,10 @@
               {
                 "name": "ACTIVE",
                 "value": "ACTIVE"
+              },
+              {
+                "name": "PREVIOUS",
+                "value": "PREVIOUS"
               },
               {
                 "name": "REVOKED",
@@ -830,6 +838,113 @@
               },
               "namespaceId": "public",
               "table": "account"
+            }
+          },
+          "ArtifactEncryption": {
+            "fields": {
+              "algorithm": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "createdAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "dekId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "versionId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "wrapNonce": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "wrapTag": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "wrappedDek": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {
+              "version": {
+                "cardinality": "N:1",
+                "on": {
+                  "localFields": [
+                    "versionId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "ResourceVersion",
+                  "namespace": "public"
+                }
+              }
+            },
+            "storage": {
+              "fields": {
+                "algorithm": {
+                  "column": "algorithm"
+                },
+                "createdAt": {
+                  "column": "createdAt"
+                },
+                "dekId": {
+                  "column": "dekId"
+                },
+                "id": {
+                  "column": "id"
+                },
+                "versionId": {
+                  "column": "versionId"
+                },
+                "wrapNonce": {
+                  "column": "wrapNonce"
+                },
+                "wrapTag": {
+                  "column": "wrapTag"
+                },
+                "wrappedDek": {
+                  "column": "wrappedDek"
+                }
+              },
+              "namespaceId": "public",
+              "table": "artifactEncryption"
             }
           },
           "ArtifactSignature": {
@@ -4000,6 +4115,21 @@
               }
             },
             "relations": {
+              "encryption": {
+                "cardinality": "1:1",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "versionId"
+                  ]
+                },
+                "to": {
+                  "model": "ArtifactEncryption",
+                  "namespace": "public"
+                }
+              },
               "licenses": {
                 "cardinality": "1:N",
                 "on": {
@@ -6008,6 +6138,104 @@
                 }
               ]
             },
+            "artifactEncryption": {
+              "columns": {
+                "algorithm": {
+                  "codecId": "pg/text@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": "AES-256-GCM"
+                  },
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "createdAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "default": {
+                    "expression": "now()",
+                    "kind": "function"
+                  },
+                  "nativeType": "timestamptz",
+                  "nullable": false
+                },
+                "dekId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "id": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "versionId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "wrapNonce": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "wrapTag": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "wrappedDek": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                }
+              },
+              "foreignKeys": [
+                {
+                  "onDelete": "cascade",
+                  "source": {
+                    "columns": [
+                      "versionId"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "artifactEncryption"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "resourceVersion"
+                  }
+                }
+              ],
+              "indexes": [
+                {
+                  "columns": [
+                    "dekId"
+                  ],
+                  "name": "artifactEncryption_dekId_idx_ae8dda1d",
+                  "prefix": "artifactEncryption_dekId_idx",
+                  "unique": false
+                }
+              ],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
+              "uniques": [
+                {
+                  "columns": [
+                    "versionId"
+                  ]
+                },
+                {
+                  "columns": [
+                    "dekId"
+                  ]
+                }
+              ]
+            },
             "artifactSignature": {
               "columns": {
                 "algorithm": {
@@ -7852,8 +8080,8 @@
             "publisherKey": {
               "checks": [
                 {
-                  "expression": "\"status\" IN ('ACTIVE', 'REVOKED', 'EXPIRED')",
-                  "name": "publisherKey_status_check_15f2bee4",
+                  "expression": "\"status\" IN ('ACTIVE', 'PREVIOUS', 'REVOKED', 'EXPIRED')",
+                  "name": "publisherKey_status_check_89af429c",
                   "prefix": "publisherKey_status_check"
                 }
               ],
@@ -9173,8 +9401,8 @@
             "serverSigningKey": {
               "checks": [
                 {
-                  "expression": "\"status\" IN ('ACTIVE', 'REVOKED', 'EXPIRED')",
-                  "name": "serverSigningKey_status_check_15f2bee4",
+                  "expression": "\"status\" IN ('ACTIVE', 'PREVIOUS', 'REVOKED', 'EXPIRED')",
+                  "name": "serverSigningKey_status_check_89af429c",
                   "prefix": "serverSigningKey_status_check"
                 }
               ],
@@ -10268,6 +10496,7 @@
               "kind": "valueSet",
               "values": [
                 "ACTIVE",
+                "PREVIOUS",
                 "REVOKED",
                 "EXPIRED"
               ]
@@ -10485,10 +10714,10 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "05a16f0be28aa4288e99cf6408a7d12625058611a299b39a0873bfd2b833f4e5"
+    "storageHash": "a3cf993f8d47715beb5d203d922fcb74594970fd6c7253d651a00f34947b51d1"
   },
   "execution": {
-    "executionHash": "a3e9120cfca55e52eac9dff965ceec0aecc9529a4ab1adec147c4453d7c9d88b",
+    "executionHash": "f5e203a8f0e51d3726f88dae447bcfb6952d325ad7f70da941f09d3721103e5f",
     "mutations": {
       "defaults": [
         {
@@ -10500,6 +10729,17 @@
             "column": "id",
             "namespace": "public",
             "table": "account"
+          }
+        },
+        {
+          "onCreate": {
+            "id": "uuidv4",
+            "kind": "generator"
+          },
+          "ref": {
+            "column": "id",
+            "namespace": "public",
+            "table": "artifactEncryption"
           }
         },
         {

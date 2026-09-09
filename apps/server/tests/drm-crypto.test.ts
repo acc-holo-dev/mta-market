@@ -128,7 +128,8 @@ describe('DRM Protocol v2 - Cryptography', () => {
         resourceVersionId: 'version-abc',
         artifactHash: 'a'.repeat(64),
         issuedAt: new Date(Date.now() - 100000).toISOString(),
-        expiresAt: new Date(Date.now() - 10000).toISOString(), // Expired
+        // Expired beyond the tolerated clock skew (G-001: 90s)
+        expiresAt: new Date(Date.now() - (90 + 10) * 1000).toISOString(),
         nonce: 'b'.repeat(64),
         serverKeyId: 'key-123',
         capabilities: ['run'] as Capability[]

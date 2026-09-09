@@ -33,9 +33,10 @@ import {
   calculateLeaseExpiry
 } from './crypto';
 import { DRM_ERROR_CODES } from './types';
+import { LEASE_DURATION_SECONDS, DEK_ALGORITHM } from './protocol';
 
-// Default lease duration: 7 days
-const DEFAULT_LEASE_DURATION_SECONDS = 7 * 24 * 60 * 60;
+// Default lease duration (G-001 protocol constant)
+const DEFAULT_LEASE_DURATION_SECONDS = LEASE_DURATION_SECONDS;
 
 /**
  * Generate server signing keypair.
@@ -429,5 +430,166 @@ export async function getActiveLease(
     serverKeyId: lease.serverKeyId,
     capabilities: lease.capabilities as Capability[],
     signature: lease.signature
+  };
+}
+/**
+ * PLAN G-007: rotate the server signing key.
+ * The current ACTIVE key becomes PREVIOUS (still trusted for verification of
+ * existing leases); a new keypair is created and becomes ACTIVE. The new
+ * private key is returned exactly once and must be installed into the
+ * DRM_SERVER_PRIVATE_KEY environment by the operator — leases are signed
+ * with the private key matching the ACTIVE key id.
+ */
+export async function rotateServerSigningKey(): Promise<ServerKeyPair> {
+  const { generatePublisherKeypair } = await import('../artifact/crypto');
+
+  const current = await db.orm.public.ServerSigningKey.where({ status: 'ACTIVE' }).first();
+  if (current) {
+    await db.orm.public.ServerSigningKey.where({ id: current.id }).update({
+      status: 'PREVIOUS'
+    });
+  }
+
+  const { publicKey, privateKey } = generatePublisherKeypair();
+  const key = await db.orm.public.ServerSigningKey.create({
+    keyType: 'ED25519',
+    publicKey,
+    algorithm: 'EdDSA',
+    status: 'ACTIVE'
+  });
+
+  return { keyId: key.id, publicKey, privateKey };
+}
+
+/**
+ * PLAN G-007: keys a module must trust during rotation — the ACTIVE key plus
+ * the PREVIOUS key (existing leases stay verifiable). REVOKED/EXPIRED keys
+ * are never returned.
+ */
+export async function getTrustedServerKeys(): Promise<
+  Array<{ keyId: string; publicKey: string; status: 'ACTIVE' | 'PREVIOUS' }>
+> {
+  const rows = await db.orm.public.ServerSigningKey
+    .where({ status: 'ACTIVE' })
+    .all();
+  const previous = await db.orm.public.ServerSigningKey
+    .where({ status: 'PREVIOUS' })
+    .all();
+  return [
+    ...rows.map((k) => ({ keyId: k.id, publicKey: k.publicKey, status: 'ACTIVE' as const })),
+    ...previous.map((k) => ({ keyId: k.id, publicKey: k.publicKey, status: 'PREVIOUS' as const }))
+  ];
+}
+
+export interface VersionDekRequest {
+  versionId: string;
+  installationId: string;
+  nonce: string;
+  /** Ed25519 signature (base64) over the ASCII bytes `dek:${versionId}:${nonce}` */
+  signature: string;
+}
+
+/**
+ * PLAN G-005: release the unwrapped DEK of a resource version to an
+ * installation that (a) is verified and not revoked, (b) proves possession
+ * of its private key by signing a fresh nonce, and (c) holds an unexpired
+ * lease for that version's resource. The server master key is never exposed.
+ */
+export async function issueVersionDek(input: VersionDekRequest): Promise<{
+  dekId: string;
+  dek: string;
+  algorithm: string;
+}> {
+  const { versionId, installationId, nonce, signature } = input;
+
+  if (!/^[a-f0-9]{64}$/i.test(nonce)) {
+    throw new Error('Invalid nonce format');
+  }
+
+  const installation = await db.orm.public.Installation.where({ id: installationId }).first();
+  if (!installation) {
+    throw new Error(DRM_ERROR_CODES.INSTALLATION_NOT_FOUND);
+  }
+  if (installation.status === 'REVOKED') {
+    throw new Error(DRM_ERROR_CODES.INSTALLATION_REVOKED);
+  }
+  if (installation.status !== 'ACTIVE') {
+    throw new Error(DRM_ERROR_CODES.INSTALLATION_NOT_VERIFIED);
+  }
+
+  // Possession of the installation private key.
+  const { verifyChallengeResponse } = await import('./crypto');
+  const possessionProof = Buffer.from(`dek:${versionId}:${nonce}`, 'ascii').toString('base64');
+  if (!verifyChallengeResponse(possessionProof, signature, installation.publicKey)) {
+    throw new Error(DRM_ERROR_CODES.INVALID_SIGNATURE);
+  }
+
+  // A valid, unexpired lease for this installation must cover the version's
+  // resource (G-004: a lease for resource A must not unlock resource B).
+  const version = await db.orm.public.ResourceVersion.where({ id: versionId }).first();
+  if (!version) {
+    throw new Error(DRM_ERROR_CODES.ARTIFACT_HASH_MISMATCH);
+  }
+  const lease = await getActiveLease(installationId, version.resourceId);
+  if (!lease || lease.resourceVersionId !== versionId) {
+    throw new Error(DRM_ERROR_CODES.INSUFFICIENT_CAPABILITIES);
+  }
+
+  const encryption = await db.orm.public.ArtifactEncryption
+    .where({ versionId })
+    .first();
+  if (!encryption) {
+    throw new Error('Resource version is not encrypted');
+  }
+
+  const { unwrapDek } = await import('../artifact/encryption');
+  const dek = unwrapDek({
+    wrappedDek: encryption.wrappedDek,
+    wrapNonce: encryption.wrapNonce,
+    wrapTag: encryption.wrapTag,
+  });
+
+  return {
+    dekId: encryption.dekId,
+    dek: dek.toString('base64'),
+    algorithm: encryption.algorithm
+  };
+}
+
+/**
+ * PLAN G-005: create the per-version DEK envelope for a resource version.
+ * Server-only operation (publication pipeline / CLI).
+ */
+export async function createVersionDek(versionId: string): Promise<{
+  dekId: string;
+  wrappedDek: string;
+  wrapNonce: string;
+  wrapTag: string;
+  algorithm: string;
+  /** raw DEK (base64) — returned once for encrypting the artifact payload */
+  dek: string;
+}> {
+  const existing = await db.orm.public.ArtifactEncryption.where({ versionId }).first();
+  if (existing) {
+    throw new Error('Version already has a DEK');
+  }
+  const { generateVersionDek, wrapDek } = await import('../artifact/encryption');
+  const { dekId, dek } = generateVersionDek();
+  const wrapped = wrapDek(dek);
+  await db.orm.public.ArtifactEncryption.create({
+    versionId,
+    dekId,
+    algorithm: DEK_ALGORITHM,
+    wrappedDek: wrapped.wrappedDek,
+    wrapNonce: wrapped.wrapNonce,
+    wrapTag: wrapped.wrapTag
+  });
+  return {
+    dekId,
+    wrappedDek: wrapped.wrappedDek,
+    wrapNonce: wrapped.wrapNonce,
+    wrapTag: wrapped.wrapTag,
+    algorithm: DEK_ALGORITHM,
+    dek: dek.toString('base64')
   };
 }

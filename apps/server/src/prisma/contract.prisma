@@ -228,6 +228,7 @@ model ResourceVersion {
   licenses  License[]
   purchases Purchase[]
   signature ArtifactSignature?
+  encryption ArtifactEncryption?
   sandboxRuns SandboxRun[]
 
   @@unique([resourceId, version])
@@ -451,7 +452,8 @@ model Review {
 // ============================================
 
 enum KeyStatus {
-  ACTIVE
+  ACTIVE      // signs new leases
+  PREVIOUS    // no longer signs, still trusted for verification (G-007)
   REVOKED
   EXPIRED
 }
@@ -918,4 +920,25 @@ model LedgerEntry {
   @@index([transactionId])
   @@index([accountId])
   @@index([userId])
+}
+
+// PLAN G-005: per-resource-version DEK, stored wrapped under the server
+// master key (envelope encryption). The raw master key never leaves the
+// server; the unwrapped DEK is only released to installations holding a
+// valid lease for the version.
+model ArtifactEncryption {
+  id         String @id @default(uuid())
+  versionId  String @unique
+  dekId      String @unique
+  // display default kept uppercase for legacy rows; the value is always
+  // passed explicitly from DEK_ALGORITHM (lowercase) by the service layer
+  algorithm  String @default("AES-256-GCM")
+  wrappedDek String // base64 DEK ciphertext (wrapped by the master key)
+  wrapNonce  String // base64 GCM nonce for the wrapping
+  wrapTag    String // base64 GCM auth tag for the wrapping
+  createdAt  TimestamptzString @default(now())
+
+  version ResourceVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@index([dekId])
 }

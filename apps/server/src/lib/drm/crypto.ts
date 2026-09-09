@@ -17,6 +17,7 @@
 
 import { randomBytes, createHash, sign, verify } from 'crypto';
 import { canonicalJSON, generatePublisherKeypair } from '../artifact/crypto';
+import { isLeaseExpiredWithSkew, isLeaseIssuanceTimeValid } from './protocol';
 import type {
   InstallationKeypair,
   SignedLease,
@@ -136,11 +137,19 @@ export function verifyLeaseSignature(
       };
     }
 
-    // 2. Expiry
-    if (Date.now() > new Date(lease.expiresAt).getTime()) {
+    // 2. Timestamps (G-001): expiry with tolerated clock skew; issuedAt
+    // must not be in the future beyond the skew.
+    if (isLeaseExpiredWithSkew(lease.expiresAt)) {
       return {
         valid: false,
         errors: ['Lease expired'],
+        warnings: []
+      };
+    }
+    if (!isLeaseIssuanceTimeValid(lease.issuedAt)) {
+      return {
+        valid: false,
+        errors: ['Lease issuedAt is in the future beyond tolerated clock skew'],
         warnings: []
       };
     }

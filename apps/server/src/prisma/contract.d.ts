@@ -33,9 +33,9 @@ import type {
 } from '@prisma/orm-postgres/contract/types';
 
 export type StorageHash =
-  StorageHashBase<'05a16f0be28aa4288e99cf6408a7d12625058611a299b39a0873bfd2b833f4e5'>;
+  StorageHashBase<'a3cf993f8d47715beb5d203d922fcb74594970fd6c7253d651a00f34947b51d1'>;
 export type ExecutionHash =
-  ExecutionHashBase<'a3e9120cfca55e52eac9dff965ceec0aecc9529a4ab1adec147c4453d7c9d88b'>;
+  ExecutionHashBase<'f5e203a8f0e51d3726f88dae447bcfb6952d325ad7f70da941f09d3721103e5f'>;
 export type ProfileHash =
   ProfileHashBase<'3916f444a8a17ad749191acf9e08dad97d1a327b88c2f1d45d12f240296aa8b2'>;
 
@@ -253,6 +253,16 @@ export type FieldOutputTypes = {
       readonly scope: CodecTypes['pg/text@1']['output'] | null;
       readonly idToken: CodecTypes['pg/text@1']['output'] | null;
     };
+    readonly ArtifactEncryption: {
+      readonly id: CodecTypes['pg/text@1']['output'];
+      readonly versionId: CodecTypes['pg/text@1']['output'];
+      readonly dekId: CodecTypes['pg/text@1']['output'];
+      readonly algorithm: CodecTypes['pg/text@1']['output'];
+      readonly wrappedDek: CodecTypes['pg/text@1']['output'];
+      readonly wrapNonce: CodecTypes['pg/text@1']['output'];
+      readonly wrapTag: CodecTypes['pg/text@1']['output'];
+      readonly createdAt: CodecTypes['pg/timestamptz-string@1']['output'];
+    };
     readonly ArtifactSignature: {
       readonly id: CodecTypes['pg/text@1']['output'];
       readonly versionId: CodecTypes['pg/text@1']['output'];
@@ -459,7 +469,7 @@ export type FieldOutputTypes = {
       readonly keyType: CodecTypes['pg/text@1']['output'];
       readonly publicKey: CodecTypes['pg/text@1']['output'];
       readonly algorithm: CodecTypes['pg/text@1']['output'];
-      readonly status: 'ACTIVE' | 'REVOKED' | 'EXPIRED';
+      readonly status: 'ACTIVE' | 'PREVIOUS' | 'REVOKED' | 'EXPIRED';
       readonly createdAt: CodecTypes['pg/timestamptz-string@1']['output'];
       readonly revokedAt: CodecTypes['pg/timestamptz-string@1']['output'] | null;
       readonly revokedBy: CodecTypes['pg/text@1']['output'] | null;
@@ -586,7 +596,7 @@ export type FieldOutputTypes = {
       readonly keyType: CodecTypes['pg/text@1']['output'];
       readonly publicKey: CodecTypes['pg/text@1']['output'];
       readonly algorithm: CodecTypes['pg/text@1']['output'];
-      readonly status: 'ACTIVE' | 'REVOKED' | 'EXPIRED';
+      readonly status: 'ACTIVE' | 'PREVIOUS' | 'REVOKED' | 'EXPIRED';
       readonly createdAt: CodecTypes['pg/timestamptz-string@1']['output'];
       readonly revokedAt: CodecTypes['pg/timestamptz-string@1']['output'] | null;
       readonly revokedBy: CodecTypes['pg/text@1']['output'] | null;
@@ -702,6 +712,16 @@ export type FieldInputTypes = {
       readonly scope: CodecTypes['pg/text@1']['input'] | null;
       readonly idToken: CodecTypes['pg/text@1']['input'] | null;
     };
+    readonly ArtifactEncryption: {
+      readonly id: CodecTypes['pg/text@1']['input'];
+      readonly versionId: CodecTypes['pg/text@1']['input'];
+      readonly dekId: CodecTypes['pg/text@1']['input'];
+      readonly algorithm: CodecTypes['pg/text@1']['input'];
+      readonly wrappedDek: CodecTypes['pg/text@1']['input'];
+      readonly wrapNonce: CodecTypes['pg/text@1']['input'];
+      readonly wrapTag: CodecTypes['pg/text@1']['input'];
+      readonly createdAt: CodecTypes['pg/timestamptz-string@1']['input'];
+    };
     readonly ArtifactSignature: {
       readonly id: CodecTypes['pg/text@1']['input'];
       readonly versionId: CodecTypes['pg/text@1']['input'];
@@ -908,7 +928,7 @@ export type FieldInputTypes = {
       readonly keyType: CodecTypes['pg/text@1']['input'];
       readonly publicKey: CodecTypes['pg/text@1']['input'];
       readonly algorithm: CodecTypes['pg/text@1']['input'];
-      readonly status: 'ACTIVE' | 'REVOKED' | 'EXPIRED';
+      readonly status: 'ACTIVE' | 'PREVIOUS' | 'REVOKED' | 'EXPIRED';
       readonly createdAt: CodecTypes['pg/timestamptz-string@1']['input'];
       readonly revokedAt: CodecTypes['pg/timestamptz-string@1']['input'] | null;
       readonly revokedBy: CodecTypes['pg/text@1']['input'] | null;
@@ -1035,7 +1055,7 @@ export type FieldInputTypes = {
       readonly keyType: CodecTypes['pg/text@1']['input'];
       readonly publicKey: CodecTypes['pg/text@1']['input'];
       readonly algorithm: CodecTypes['pg/text@1']['input'];
-      readonly status: 'ACTIVE' | 'REVOKED' | 'EXPIRED';
+      readonly status: 'ACTIVE' | 'PREVIOUS' | 'REVOKED' | 'EXPIRED';
       readonly createdAt: CodecTypes['pg/timestamptz-string@1']['input'];
       readonly revokedAt: CodecTypes['pg/timestamptz-string@1']['input'] | null;
       readonly revokedBy: CodecTypes['pg/text@1']['input'] | null;
@@ -1150,6 +1170,16 @@ export type StorageColumnTypes = {
       readonly scope: CodecTypes['pg/text@1']['output'] | null;
       readonly tokenType: CodecTypes['pg/text@1']['output'] | null;
       readonly userId: CodecTypes['pg/text@1']['output'];
+    };
+    readonly artifactEncryption: {
+      readonly algorithm: CodecTypes['pg/text@1']['output'];
+      readonly createdAt: CodecTypes['pg/timestamptz-string@1']['output'];
+      readonly dekId: CodecTypes['pg/text@1']['output'];
+      readonly id: CodecTypes['pg/text@1']['output'];
+      readonly versionId: CodecTypes['pg/text@1']['output'];
+      readonly wrapNonce: CodecTypes['pg/text@1']['output'];
+      readonly wrappedDek: CodecTypes['pg/text@1']['output'];
+      readonly wrapTag: CodecTypes['pg/text@1']['output'];
     };
     readonly artifactSignature: {
       readonly algorithm: CodecTypes['pg/text@1']['output'];
@@ -1361,7 +1391,7 @@ export type StorageColumnTypes = {
       readonly revokedAt: CodecTypes['pg/timestamptz-string@1']['output'] | null;
       readonly revokedBy: CodecTypes['pg/text@1']['output'] | null;
       readonly sellerId: CodecTypes['pg/text@1']['output'];
-      readonly status: 'ACTIVE' | 'REVOKED' | 'EXPIRED';
+      readonly status: 'ACTIVE' | 'PREVIOUS' | 'REVOKED' | 'EXPIRED';
     };
     readonly purchase: {
       readonly buyerId: CodecTypes['pg/text@1']['output'];
@@ -1488,7 +1518,7 @@ export type StorageColumnTypes = {
       readonly revocationReason: CodecTypes['pg/text@1']['output'] | null;
       readonly revokedAt: CodecTypes['pg/timestamptz-string@1']['output'] | null;
       readonly revokedBy: CodecTypes['pg/text@1']['output'] | null;
-      readonly status: 'ACTIVE' | 'REVOKED' | 'EXPIRED';
+      readonly status: 'ACTIVE' | 'PREVIOUS' | 'REVOKED' | 'EXPIRED';
     };
     readonly service: {
       readonly createdAt: CodecTypes['pg/timestamptz-string@1']['output'];
@@ -1599,6 +1629,16 @@ export type StorageColumnInputTypes = {
       readonly scope: CodecTypes['pg/text@1']['input'] | null;
       readonly tokenType: CodecTypes['pg/text@1']['input'] | null;
       readonly userId: CodecTypes['pg/text@1']['input'];
+    };
+    readonly artifactEncryption: {
+      readonly algorithm: CodecTypes['pg/text@1']['input'];
+      readonly createdAt: CodecTypes['pg/timestamptz-string@1']['input'];
+      readonly dekId: CodecTypes['pg/text@1']['input'];
+      readonly id: CodecTypes['pg/text@1']['input'];
+      readonly versionId: CodecTypes['pg/text@1']['input'];
+      readonly wrapNonce: CodecTypes['pg/text@1']['input'];
+      readonly wrappedDek: CodecTypes['pg/text@1']['input'];
+      readonly wrapTag: CodecTypes['pg/text@1']['input'];
     };
     readonly artifactSignature: {
       readonly algorithm: CodecTypes['pg/text@1']['input'];
@@ -1810,7 +1850,7 @@ export type StorageColumnInputTypes = {
       readonly revokedAt: CodecTypes['pg/timestamptz-string@1']['input'] | null;
       readonly revokedBy: CodecTypes['pg/text@1']['input'] | null;
       readonly sellerId: CodecTypes['pg/text@1']['input'];
-      readonly status: 'ACTIVE' | 'REVOKED' | 'EXPIRED';
+      readonly status: 'ACTIVE' | 'PREVIOUS' | 'REVOKED' | 'EXPIRED';
     };
     readonly purchase: {
       readonly buyerId: CodecTypes['pg/text@1']['input'];
@@ -1937,7 +1977,7 @@ export type StorageColumnInputTypes = {
       readonly revocationReason: CodecTypes['pg/text@1']['input'] | null;
       readonly revokedAt: CodecTypes['pg/timestamptz-string@1']['input'] | null;
       readonly revokedBy: CodecTypes['pg/text@1']['input'] | null;
-      readonly status: 'ACTIVE' | 'REVOKED' | 'EXPIRED';
+      readonly status: 'ACTIVE' | 'PREVIOUS' | 'REVOKED' | 'EXPIRED';
     };
     readonly service: {
       readonly createdAt: CodecTypes['pg/timestamptz-string@1']['input'];
@@ -2126,6 +2166,82 @@ type ContractBase = Omit<
                   readonly target: {
                     readonly namespaceId: 'public' & NamespaceId;
                     readonly tableName: 'user';
+                    readonly columns: readonly ['id'];
+                  };
+                },
+              ];
+            };
+            readonly artifactEncryption: {
+              columns: {
+                readonly id: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly versionId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly dekId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly algorithm: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                  readonly default: {
+                    readonly kind: 'literal';
+                    readonly value: DefaultLiteralValue<'pg/text@1', 'AES-256-GCM'>;
+                  };
+                };
+                readonly wrappedDek: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly wrapNonce: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly wrapTag: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly createdAt: {
+                  readonly nativeType: 'timestamptz';
+                  readonly codecId: 'pg/timestamptz-string@1';
+                  readonly nullable: false;
+                  readonly default: { readonly kind: 'function'; readonly expression: 'now()' };
+                };
+              };
+              primaryKey: { readonly columns: readonly ['id'] };
+              uniques: readonly [
+                { readonly columns: readonly ['versionId'] },
+                { readonly columns: readonly ['dekId'] },
+              ];
+              indexes: readonly [
+                {
+                  readonly name: 'artifactEncryption_dekId_idx_ae8dda1d';
+                  readonly prefix: 'artifactEncryption_dekId_idx';
+                  readonly columns: readonly ['dekId'];
+                  readonly unique: false;
+                },
+              ];
+              foreignKeys: readonly [
+                {
+                  readonly source: {
+                    readonly namespaceId: 'public' & NamespaceId;
+                    readonly tableName: 'artifactEncryption';
+                    readonly columns: readonly ['versionId'];
+                  };
+                  readonly target: {
+                    readonly namespaceId: 'public' & NamespaceId;
+                    readonly tableName: 'resourceVersion';
                     readonly columns: readonly ['id'];
                   };
                 },
@@ -5338,7 +5454,7 @@ type ContractBase = Omit<
             };
             readonly KeyStatus: {
               readonly kind: 'valueSet';
-              readonly values: readonly ['ACTIVE', 'REVOKED', 'EXPIRED'];
+              readonly values: readonly ['ACTIVE', 'PREVIOUS', 'REVOKED', 'EXPIRED'];
             };
             readonly LedgerAccountKind: {
               readonly kind: 'valueSet';
@@ -5583,6 +5699,10 @@ type ContractBase = Omit<
       readonly namespace: 'public' & NamespaceId;
       readonly model: 'LedgerEntry';
     };
+    readonly artifactEncryption: {
+      readonly namespace: 'public' & NamespaceId;
+      readonly model: 'ArtifactEncryption';
+    };
   };
   readonly domain: {
     readonly namespaces: {
@@ -5655,6 +5775,72 @@ type ContractBase = Omit<
                 readonly tokenType: { readonly column: 'tokenType' };
                 readonly scope: { readonly column: 'scope' };
                 readonly idToken: { readonly column: 'idToken' };
+              };
+            };
+          };
+          readonly ArtifactEncryption: {
+            readonly fields: {
+              readonly id: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly versionId: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly dekId: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly algorithm: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly wrappedDek: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly wrapNonce: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly wrapTag: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly createdAt: {
+                readonly nullable: false;
+                readonly type: {
+                  readonly kind: 'scalar';
+                  readonly codecId: 'pg/timestamptz-string@1';
+                };
+              };
+            };
+            readonly relations: {
+              readonly version: {
+                readonly to: {
+                  readonly namespace: 'public' & NamespaceId;
+                  readonly model: 'ResourceVersion';
+                };
+                readonly cardinality: 'N:1';
+                readonly on: {
+                  readonly localFields: readonly ['versionId'];
+                  readonly targetFields: readonly ['id'];
+                };
+              };
+            };
+            readonly storage: {
+              readonly table: 'artifactEncryption';
+              readonly namespaceId: 'public';
+              readonly fields: {
+                readonly id: { readonly column: 'id' };
+                readonly versionId: { readonly column: 'versionId' };
+                readonly dekId: { readonly column: 'dekId' };
+                readonly algorithm: { readonly column: 'algorithm' };
+                readonly wrappedDek: { readonly column: 'wrappedDek' };
+                readonly wrapNonce: { readonly column: 'wrapNonce' };
+                readonly wrapTag: { readonly column: 'wrapTag' };
+                readonly createdAt: { readonly column: 'createdAt' };
               };
             };
           };
@@ -7544,6 +7730,17 @@ type ContractBase = Omit<
               };
             };
             readonly relations: {
+              readonly encryption: {
+                readonly to: {
+                  readonly namespace: 'public' & NamespaceId;
+                  readonly model: 'ArtifactEncryption';
+                };
+                readonly cardinality: '1:1';
+                readonly on: {
+                  readonly localFields: readonly ['id'];
+                  readonly targetFields: readonly ['versionId'];
+                };
+              };
               readonly licenses: {
                 readonly to: {
                   readonly namespace: 'public' & NamespaceId;
@@ -8874,6 +9071,7 @@ type ContractBase = Omit<
             readonly codecId: 'pg/text@1';
             readonly members: readonly [
               { readonly name: 'ACTIVE'; readonly value: 'ACTIVE' },
+              { readonly name: 'PREVIOUS'; readonly value: 'PREVIOUS' },
               { readonly name: 'REVOKED'; readonly value: 'REVOKED' },
               { readonly name: 'EXPIRED'; readonly value: 'EXPIRED' },
             ];
@@ -9004,6 +9202,14 @@ type ContractBase = Omit<
           readonly ref: {
             readonly namespace: 'public';
             readonly table: 'account';
+            readonly column: 'id';
+          };
+          readonly onCreate: { readonly kind: 'generator'; readonly id: 'uuidv4' };
+        },
+        {
+          readonly ref: {
+            readonly namespace: 'public';
+            readonly table: 'artifactEncryption';
             readonly column: 'id';
           };
           readonly onCreate: { readonly kind: 'generator'; readonly id: 'uuidv4' };

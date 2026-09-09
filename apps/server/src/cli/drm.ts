@@ -15,6 +15,7 @@ import { writeFile } from 'fs/promises';
 import { join } from 'path';
 import { 
   createServerSigningKey,
+  rotateServerSigningKey,
   generateInstallationKeypair,
   generateNonce
 } from '../lib/drm';
@@ -25,6 +26,34 @@ program
   .name('drm-cli')
   .description('CLI tool for DRM v2 protocol management')
   .version('1.0.0');
+
+// Rotate the server signing key (PLAN G-007)
+program
+  .command('rotate')
+  .description('Rotate the server signing key (old key becomes PREVIOUS, still trusted)')
+  .option('--output <path>', 'Output directory for the new private key', '.keys')
+  .action(async (options) => {
+    try {
+      console.log('🔑 Rotating DRM server signing key...');
+
+      const result = await rotateServerSigningKey();
+
+      console.log('✅ Rotation complete. New ACTIVE key id:', result.keyId);
+      console.log('⚠️  Install the new private key into DRM_SERVER_PRIVATE_KEY and restart the server.');
+      console.log('   The PREVIOUS key remains trusted for verification of existing leases.');
+
+      const { writeFile, mkdir } = await import('fs/promises');
+      const { join } = await import('path');
+      await mkdir(options.output, { recursive: true });
+      const keyPath = join(options.output, `drm-server-key-${result.keyId}.txt`);
+      await writeFile(keyPath, result.privateKey, { mode: 0o600 });
+      console.log(`💾 New private key written once to ${keyPath} (0600). Delete it after installing into the environment.`);
+      process.exit(0);
+    } catch (error) {
+      console.error('❌ Rotation failed:', error instanceof Error ? error.message : error);
+      process.exit(1);
+    }
+  });
 
 // Generate server signing keypair
 program

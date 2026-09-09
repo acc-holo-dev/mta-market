@@ -20,7 +20,9 @@ import {
   activateLicense,
   recordHeartbeat,
   getServerPublicKey,
-  getActiveLease
+  getActiveLease,
+  getTrustedServerKeys,
+  issueVersionDek
 } from '../../lib/drm/service';
 import { DRM_ERROR_CODES } from '../../lib/drm/types';
 import { authenticate, AuthRequest } from '../../lib/auth';
@@ -50,6 +52,12 @@ function drmErrorStatus(error: Error): number | null {
       return 401;
     case DRM_ERROR_CODES.NONCE_ALREADY_USED:
       return 409;
+    case DRM_ERROR_CODES.INVALID_SIGNATURE:
+      return 401;
+    case DRM_ERROR_CODES.ARTIFACT_HASH_MISMATCH:
+      return 404;
+    case DRM_ERROR_CODES.INSUFFICIENT_CAPABILITIES:
+      return 403;
     default:
       return null;
   }
@@ -355,6 +363,86 @@ router.get('/v2/leases/:installationId/:resourceId', standardRateLimit, async (r
         message: 'Failed to retrieve lease'
       }
     });
+  }
+});
+
+
+/**
+ * GET /drm/v2/public-keys
+ *
+ * PLAN G-007: all trusted server public keys (ACTIVE + PREVIOUS) so modules
+ * can verify leases signed before/during a key rotation. Verification picks
+ * the key by lease.serverKeyId. REVOKED/EXPIRED keys are never returned.
+ */
+router.get('/v2/public-keys', async (req: Request, res: Response) => {
+  try {
+    const keys = await getTrustedServerKeys();
+    res.json({
+      keys,
+      algorithm: 'EdDSA',
+      keyType: 'ED25519'
+    });
+  } catch (error) {
+    reqLog(req).error("drm_public_keys_fetch_failed", { error });
+    res.status(500).json({
+      error: {
+        code: 'SERVER_ERROR',
+        message: 'Failed to retrieve server public keys'
+      }
+    });
+  }
+});
+
+/**
+ * POST /drm/v2/versions/:versionId/dek
+ *
+ * PLAN G-005: release the per-version DEK to an installation that proves
+ * possession of its private key and holds a valid lease covering this
+ * version. The server master key never leaves the server.
+ * Body: { installationId, nonce, signature } — signature (base64 Ed25519)
+ * over the ASCII bytes `dek:${versionId}:${nonce}`.
+ */
+router.post('/v2/versions/:versionId/dek', strictRateLimit, async (req: Request, res: Response) => {
+  try {
+    const { versionId } = req.params;
+    const { installationId, nonce, signature } = req.body ?? {};
+
+    if (!installationId || !nonce || !signature) {
+      return res.status(400).json({
+        error: {
+          code: 'INVALID_REQUEST',
+          message: 'Missing required fields: installationId, nonce, signature'
+        }
+      });
+    }
+    if (typeof versionId !== 'string' || !UUID_REGEX.test(versionId)) {
+      return res.status(400).json({
+        error: {
+          code: 'INVALID_REQUEST',
+          message: 'versionId must be a valid domain ID (UUID)'
+        }
+      });
+    }
+
+    const result = await issueVersionDek({ versionId, installationId, nonce, signature });
+    res.json(result);
+  } catch (error) {
+    reqLog(req).warn("drm_version_dek_denied", {
+      error: error instanceof Error ? error.message : String(error)
+    });
+
+    if (error instanceof Error && error.message === 'Invalid nonce format') {
+      return res.status(400).json({
+        error: { code: 'INVALID_REQUEST', message: 'Invalid nonce format' }
+      });
+    }
+    if (error instanceof Error && error.message === 'Resource version is not encrypted') {
+      return res.status(404).json({
+        error: { code: 'NOT_ENCRYPTED', message: 'Resource version is not encrypted' }
+      });
+    }
+
+    return sendDrmError(res, error as Error, 'Failed to release version DEK');
   }
 });
 
