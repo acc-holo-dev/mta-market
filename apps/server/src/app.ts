@@ -24,6 +24,19 @@ import servicesRoutes from "./routes/services";
 import sellerRoutes from "./routes/seller";
 import sellersRoutes from "./routes/sellers";
 import disputesRoutes from "./routes/disputes";
+// PLAN-005: Community & Server Foundation routers.
+import serversRoutes from "./routes/servers";
+import serverNewsRoutes from "./routes/serverNews";
+import serverReviewsRoutes from "./routes/serverReviews";
+import communityRoutes from "./routes/community";
+import notificationsRoutes from "./routes/notifications";
+import reportsRoutes from "./routes/reports";
+import integrationRoutes from "./routes/integration";
+import profilesRoutes from "./routes/profiles";
+import searchRoutes from "./routes/search";
+import newsRoutes from "./routes/news";
+import dashboardRoutes from "./routes/dashboard";
+import adminCommunityRoutes from "./routes/adminCommunity";
 import { standardRateLimit } from "./lib/rateLimit";
 import { reqLog } from "./middleware/requestId";
 
@@ -145,6 +158,20 @@ export function createApp(): Express {
   app.use("/sellers", sellersRoutes);
   app.use("/disputes", disputesRoutes);
   app.use("/admin", adminRoutes);
+  // PLAN-005 mounts. /servers/:slug/create-safety: static subroutes are
+  // registered inside each router before dynamic ones.
+  app.use("/servers", serversRoutes);
+  app.use("/servers", serverNewsRoutes);
+  app.use("/servers", serverReviewsRoutes);
+  app.use("/community", communityRoutes);
+  app.use("/notifications", notificationsRoutes);
+  app.use("/reports", reportsRoutes);
+  app.use("/integration", integrationRoutes);
+  app.use("/profiles", profilesRoutes);
+  app.use("/search", searchRoutes);
+  app.use("/news", newsRoutes);
+  app.use("/dashboard", dashboardRoutes);
+  app.use("/admin", adminCommunityRoutes);
 
   // PLAN-004 J-003 (audit): global error handler — in Express 4 a rejected
   // async handler would otherwise become an unhandledRejection and crash the

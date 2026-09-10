@@ -42,6 +42,19 @@ model User {
   discountCampaigns DiscountCampaign[]
   sellerProfile SellerProfile?
   balance       UserBalance?
+  // PLAN-005: Community & Server Foundation
+  ownedServers  Server[]
+  serverMemberships ServerMember[]
+  serverFollows ServerFollow[]
+  serverReviewEligibilities ServerReviewEligibility[]
+  serverReviews ServerReview[]
+  serverNews    ServerNews[]
+  serverUpdates ServerUpdate[]
+  forumThreads  ForumThread[]
+  forumPosts    ForumPost[]
+  forumReactions ForumReaction[]
+  notifications Notification[]
+  reports       Report[]
 
   @@index([email])
   @@index([username])
@@ -1186,4 +1199,434 @@ model UserBalance {
   createdAt      TimestamptzString @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ============================================================
+// PLAN-005: Community & Server Foundation
+// ============================================================
+
+// A-003: conceptual lifecycle. CREATED -> PENDING_VERIFICATION -> VERIFIED ->
+// ACTIVE. SUSPENDED/ARCHIVED are moderation/owner states. OFFLINE is NOT a
+// lifecycle state — offline is operational (see ServerMonitoringState).
+enum ServerLifecycleState {
+  CREATED
+  PENDING_VERIFICATION
+  VERIFIED
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+}
+
+// E-001/E-006: operational state reported by real monitoring data only.
+// UNKNOWN means "the system does not know" — never silently mapped to OFFLINE.
+enum ServerMonitoringState {
+  ONLINE
+  OFFLINE
+  UNKNOWN
+}
+
+// C-002/C-003: verification state. VERIFIED means only
+// "ownership/control verified" — nothing about quality or honesty.
+enum ServerVerificationState {
+  PENDING
+  VERIFIED
+  FAILED
+  EXPIRED
+}
+
+// G-003/A-004: staff membership. Audience follows are ServerFollow.
+enum ServerMemberRole {
+  OWNER
+  ADMIN
+  MODERATOR
+}
+
+enum ServerReviewTokenStatus {
+  ACTIVE
+  CONSUMED
+  EXPIRED
+}
+
+enum ServerReviewStatus {
+  VISIBLE
+  HIDDEN
+}
+
+enum ServerNewsStatus {
+  DRAFT
+  PUBLISHED
+}
+
+// F-005: minimal thread states. Finer moderation state is a later system.
+enum ForumThreadState {
+  OPEN
+  LOCKED
+  ARCHIVED
+}
+
+// M-002: PLAN-005 notification types.
+enum NotificationType {
+  SERVER_NEWS
+  SERVER_UPDATE
+  FORUM_REPLY
+  REVIEW_EVENT
+  MODERATION
+}
+
+// R: reportable surfaces.
+enum ReportTargetType {
+  THREAD
+  POST
+  REVIEW
+  NEWS
+  SERVER
+  PROFILE
+}
+
+enum ReportStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+}
+
+// A-002: the hub entity of PLAN-005. Server is the identity + monitoring +
+// news + community + reviews anchor of a game server.
+model Server {
+  id          String @id @default(uuid())
+  ownerId     String
+  slug        String @unique
+  name        String
+  description String
+
+  // D-004/U: visual identity (validated /media/<name> references only).
+  logoUrl     String?
+  bannerUrl   String?
+  accentColor String?
+
+  // D-002 hero actions — rendered only when actually present.
+  websiteUrl  String?
+  discordUrl  String?
+
+  // B-003/S: connection data. Private by default — never in public payloads
+  // unless the owner explicitly opts in.
+  host  String?
+  port  Int?
+  region String?
+
+  lifecycle    ServerLifecycleState    @default(CREATED)
+  verification ServerVerificationState @default(PENDING)
+  monitoring   ServerMonitoringState   @default(UNKNOWN)
+
+  // E: real monitoring data only (no fabricated values).
+  playerCount Int?
+  maxPlayers  Int?
+  lastSeenAt  TimestamptzString?
+  verifiedAt  TimestamptzString?
+  verificationNote String? // human-readable pending/failed/expired reason (C-003)
+
+  // S/T: privacy switches — private by default. Backend authorization layer,
+  // not a frontend checkbox.
+  showResources Boolean @default(false)
+  showStaff     Boolean @default(false)
+  showTechStack Boolean @default(false)
+  showStats     Boolean @default(true)
+  showCommunity Boolean @default(false)
+
+  // C-001: proof-of-control secret (module configures it; sha256 stored).
+  integrationTokenHash String?
+  integrationTokenIssuedAt TimestamptzString?
+
+  createdAt TimestamptzString @default(now())
+  updatedAt temporal.updatedAtString()
+
+  owner    User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  members  ServerMember[]
+  follows  ServerFollow[]
+  news     ServerNews[]
+  updates  ServerUpdate[]
+  reviews  ServerReview[]
+  reviewTokens ServerReviewToken[]
+  reviewEligibilities ServerReviewEligibility[]
+  statusSamples ServerStatusSample[]
+  resources ServerResource[]
+  threads  ForumThread[]
+
+  @@index([ownerId])
+  @@index([lifecycle])
+  @@index([monitoring])
+}
+
+// Staff membership (owner/admin/moderator capabilities).
+model ServerMember {
+  id        String @id @default(uuid())
+  serverId  String
+  userId    String
+  role      ServerMemberRole @default(OWNER)
+  createdAt TimestamptzString @default(now())
+
+  server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([serverId, userId])
+  @@index([userId])
+}
+
+// L: audience subscription. Follower count is public; the member list is not.
+model ServerFollow {
+  id        String @id @default(uuid())
+  serverId  String
+  userId    String
+  createdAt TimestamptzString @default(now())
+
+  server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([serverId, userId])
+  @@index([userId])
+}
+
+// T: the server<->resource relationship. Created only by explicit owner
+// action; publicly rendered only while server.showResources is enabled.
+model ServerResource {
+  id          String  @id @default(uuid())
+  serverId    String
+  resourceId  String? // marketplace Resource link (optional)
+  displayName String  // fallback label for non-marketplace resources
+  note        String?
+  createdAt   TimestamptzString @default(now())
+
+  server Server    @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  resource Resource? @relation(fields: [resourceId], references: [id], onDelete: SetNull)
+
+  @@index([serverId])
+  @@index([resourceId])
+}
+
+// E-005: raw monitoring samples for last-seen/peak/uptime/history.
+// Written exclusively by the integration heartbeat — never fabricated.
+model ServerStatusSample {
+  id         String @id @default(uuid())
+  serverId   String
+  state      ServerMonitoringState
+  players    Int
+  maxPlayers Int?
+  sampledAt  TimestamptzString @default(now())
+
+  server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  @@index([serverId, sampledAt])
+}
+
+// J-002: one-time review token bound to a server. Issued by the server
+// integration, claimed by a player. Expiry + single consumption = replay
+// protection. Plaintext is shown once; only the sha256 hash is stored.
+model ServerReviewToken {
+  id        String @id @default(uuid())
+  serverId  String
+  tokenHash String @unique
+  status    ServerReviewTokenStatus @default(ACTIVE)
+  issuedAt  TimestamptzString @default(now())
+  expiresAt TimestamptzString
+  consumedAt TimestamptzString?
+  consumedBy String?
+  note      String? // optional in-game context chosen by the server owner
+
+  server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  @@index([serverId, status])
+}
+
+// J-001: eligibility to review a server, granted by claiming a valid token.
+// Survives review deletion so moderation cannot be circumvented by re-review.
+model ServerReviewEligibility {
+  id        String @id @default(uuid())
+  serverId  String
+  userId    String
+  tokenId   String?
+  grantedAt TimestamptzString @default(now())
+
+  server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([serverId, userId])
+  @@index([userId])
+}
+
+// J-003/J-004: server review. verifiedInteraction marks "the system confirmed
+// an interaction" — it does not endorse the review's content.
+model ServerReview {
+  id        String @id @default(uuid())
+  serverId  String
+  userId    String
+  rating    Int
+  comment   String?
+  verifiedInteraction Boolean @default(false)
+  status    ServerReviewStatus @default(VISIBLE)
+  createdAt TimestamptzString @default(now())
+  updatedAt temporal.updatedAtString()
+
+  server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([serverId, userId])
+  @@index([serverId, status])
+}
+
+// H: server news — one object, many surfaces (server page, global feed,
+// follower feed). Optional discussion thread lives on ForumThread.newsId.
+model ServerNews {
+  id        String @id @default(uuid())
+  serverId  String
+  authorId  String
+  title     String
+  content   String
+  coverUrl  String?
+  status    ServerNewsStatus @default(DRAFT)
+  publishedAt TimestamptzString?
+  createdAt TimestamptzString @default(now())
+  updatedAt temporal.updatedAtString()
+
+  server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  author User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  thread ForumThread?
+
+  @@index([serverId, status, publishedAt])
+  @@index([authorId])
+}
+
+// I: server updates are distinct from news — a versioned changelog entry.
+model ServerUpdate {
+  id          String @id @default(uuid())
+  serverId    String
+  authorId    String
+  version     String
+  title       String
+  changelog   String
+  publishedAt TimestamptzString @default(now())
+  createdAt   TimestamptzString @default(now())
+  updatedAt   temporal.updatedAtString()
+
+  server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  author User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([serverId, publishedAt])
+}
+
+// F-002: forum categories (global community).
+model ForumCategory {
+  id          String @id @default(uuid())
+  slug        String @unique
+  name        String
+  description String?
+  position    Int @default(0)
+  createdAt   TimestamptzString @default(now())
+  updatedAt   temporal.updatedAtString()
+
+  threads ForumThread[]
+
+  @@index([position])
+}
+
+// F-003/F-005/G-004: threads live in a category and may be explicitly linked
+// to a Server (server discussion) or a ServerNews item (news discussion).
+model ForumThread {
+  id         String @id @default(uuid())
+  categoryId String
+  authorId   String
+  serverId   String?
+  newsId     String? @unique
+  title      String
+  state      ForumThreadState @default(OPEN)
+  pinned     Boolean @default(false)
+  views      Int @default(0)
+  replyCount Int @default(0)
+  lastPostAt TimestamptzString?
+  createdAt  TimestamptzString @default(now())
+  updatedAt  temporal.updatedAtString()
+
+  category ForumCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  server   Server? @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  news     ServerNews? @relation(fields: [newsId], references: [id], onDelete: SetNull)
+  posts    ForumPost[]
+
+  @@index([categoryId, lastPostAt])
+  @@index([serverId])
+  @@index([authorId])
+  @@index([newsId])
+}
+
+// F-004: posts (first post of a thread is position 0). Soft delete where
+// permitted; content stays queryable for moderation.
+model ForumPost {
+  id        String @id @default(uuid())
+  threadId  String
+  authorId  String
+  content   String
+  position  Int @default(0)
+  deletedAt TimestamptzString?
+  editedAt  TimestamptzString?
+  createdAt TimestamptzString @default(now())
+  updatedAt temporal.updatedAtString()
+
+  thread    ForumThread    @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  author    User           @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  reactions ForumReaction[]
+
+  @@index([threadId, position])
+  @@index([authorId])
+}
+
+// F-004: reactions on posts. kind stays a string so new reaction kinds do
+// not require schema churn; uniqueness prevents double-tapping.
+model ForumReaction {
+  id        String @id @default(uuid())
+  postId    String
+  userId    String
+  kind      String @default("LIKE")
+  createdAt TimestamptzString @default(now())
+
+  post ForumPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId, kind])
+  @@index([postId])
+}
+
+// M: minimal notification object. Recipient-owned; read state is explicit.
+model Notification {
+  id          String @id @default(uuid())
+  recipientId String
+  type        NotificationType
+  title       String
+  body        String?
+  entityType  String?
+  entityId    String?
+  readAt      TimestamptzString?
+  createdAt   TimestamptzString @default(now())
+
+  recipient User @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@index([recipientId, readAt])
+  @@index([recipientId, createdAt])
+}
+
+// R: user reports flow into the moderation queue. No automatic bans —
+// every action is a human moderation decision recorded in the audit log.
+model Report {
+  id           String @id @default(uuid())
+  reporterId   String
+  targetType   ReportTargetType
+  targetId     String
+  reason       String
+  status       ReportStatus @default(OPEN)
+  resolution   String?
+  resolvedById String?
+  resolvedAt   TimestamptzString?
+  createdAt    TimestamptzString @default(now())
+
+  reporter User @relation(fields: [reporterId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([targetType, targetId])
 }

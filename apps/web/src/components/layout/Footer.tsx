@@ -23,6 +23,21 @@ export function Footer() {
                 </Link>
               </li>
               <li>
+                <Link href="/servers" className="hover:text-accent-strong">
+                  Серверы
+                </Link>
+              </li>
+              <li>
+                <Link href="/community" className="hover:text-accent-strong">
+                  Сообщество
+                </Link>
+              </li>
+              <li>
+                <Link href="/news" className="hover:text-accent-strong">
+                  Новости
+                </Link>
+              </li>
+              <li>
                 <Link href="/dashboard" className="hover:text-accent-strong">
                   Мои покупки
                 </Link>

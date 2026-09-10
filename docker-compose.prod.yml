@@ -99,6 +99,11 @@ services:
       # PLAN-004 G-005/A-005: CORS allowlist and refresh-cookie policy.
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       COOKIE_SAMESITE: ${COOKIE_SAMESITE:-lax}
+      # PLAN-005 E-006: server monitoring sweep (stale heartbeat -> UNKNOWN,
+      # never OFFLINE; expired review tokens -> EXPIRED).
+      SERVER_MONITORING_ENABLED: ${SERVER_MONITORING_ENABLED:-true}
+      SERVER_MONITORING_INTERVAL_MS: ${SERVER_MONITORING_INTERVAL_MS:-60000}
+      SERVER_HEARTBEAT_INTERVAL_SECONDS: ${SERVER_HEARTBEAT_INTERVAL_SECONDS:-60}
     volumes:
       - uploads_data:/app/uploads
     networks:

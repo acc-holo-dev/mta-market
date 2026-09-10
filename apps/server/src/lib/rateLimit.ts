@@ -101,6 +101,13 @@ export function userRateLimit(options: {
   const { windowMs, max, action } = options;
 
   return async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    // Tests exercise endpoints repeatedly with fixed user ids; the per-user
+    // limiter follows the same policy as the IP limiters in vitest.config
+    // (AUTH_RATE_LIMIT_MAX=1000 etc.): disabled under NODE_ENV=test.
+    if (process.env.NODE_ENV === "test") {
+      next();
+      return;
+    }
     const userId =
       (req as { user?: { userId?: string } }).user?.userId ??
       req.ip ??

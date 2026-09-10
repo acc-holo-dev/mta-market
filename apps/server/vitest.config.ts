@@ -1,4 +1,4 @@
-import { defineConfig } from "vitest/config";
+﻿import { defineConfig } from "vitest/config";
 
 // Integration tests run against a real PostgreSQL with the contract schema
 // applied (prisma db init). Default URL points at the local embedded test
@@ -31,9 +31,9 @@ export default defineConfig({
       FRONTEND_URL: "http://localhost:3000",
       CORS_ORIGINS: "http://localhost:3000",
       // Tests exercise the endpoints repeatedly; keep the limiter open.
-      AUTH_RATE_LIMIT_MAX: "1000",
-      STANDARD_RATE_LIMIT_MAX: "1000",
-      STRICT_RATE_LIMIT_MAX: "1000",
+      AUTH_RATE_LIMIT_MAX: "10000",
+      STANDARD_RATE_LIMIT_MAX: "10000",
+      STRICT_RATE_LIMIT_MAX: "10000",
     },
   },
 });

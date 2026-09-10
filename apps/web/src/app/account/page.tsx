@@ -26,7 +26,7 @@ import { StatusBadge, ErrorText } from "@/components/ui/StatusBadge";
 import { EmptyState, ErrorState, LoadingSpinner } from "@/components/ui/States";
 import { DisputeDialog } from "@/components/disputes/DisputeDialog";
 import { typeLabel, formatDate } from "@/lib/domain";
-import { Scale, Wallet, Pencil, Check, X, Link2, ShoppingBag } from "lucide-react";
+import { Scale, Wallet, Pencil, Check, X, Link2, ShoppingBag, User } from "lucide-react";
 
 const ROLE_LABELS: Record<string, string> = {
   USER: "Покупатель",
@@ -39,7 +39,7 @@ type AccountTab = "overview" | "profile" | "connections" | "balance" | "purchase
 
 export default function AccountPage() {
   const router = useRouter();
-  const { accessToken, isAuthenticated } = useAuthStore();
+  const { accessToken, isAuthenticated, user } = useAuthStore();
   const [tab, setTab] = useState<AccountTab>("profile");
 
   useEffect(() => {
@@ -153,6 +153,12 @@ export default function AccountPage() {
           <CardHeader>
             <CardTitle>Профиль</CardTitle>
             <CardDescription>Данные вашего аккаунта</CardDescription>
+            {user?.username ? (
+              <Link href={`/profile/${user.username}`} className="mt-1 inline-flex items-center gap-1.5 text-sm text-accent-strong hover:underline">
+                <User className="h-4 w-4" />
+                Публичный профиль
+              </Link>
+            ) : null}
           </CardHeader>
           <CardContent>
             {meLoading ? (

@@ -6,7 +6,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/auth";
-import { fetchMe, formatRub } from "@/lib/api-ext";
+import { fetchMe, fetchNotifications, formatRub } from "@/lib/api-ext";
 import { Button } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
 import {
@@ -20,13 +20,25 @@ import {
   ShieldCheck,
   Package,
   LayoutGrid,
+  Server,
+  MessagesSquare,
+  Bell,
 } from "lucide-react";
 
 const NAV_LINKS = [
   { href: "/resources", label: "Маркетплейс", icon: LayoutGrid },
+  { href: "/servers", label: "Серверы", icon: Server },
+  { href: "/community", label: "Сообщество", icon: MessagesSquare },
   { href: "/dashboard", label: "Покупки", icon: Package },
   { href: "/account", label: "Профиль", icon: User },
   { href: "/seller", label: "Мой магазин", icon: Store },
+];
+
+// PLAN-005: guest nav keeps discovery surfaces visible without auth.
+const GUEST_NAV_LINKS = [
+  { href: "/resources", label: "Маркетплейс", icon: LayoutGrid },
+  { href: "/servers", label: "Серверы", icon: Server },
+  { href: "/community", label: "Сообщество", icon: MessagesSquare },
 ];
 
 export function Navbar() {
@@ -42,6 +54,17 @@ export function Navbar() {
     staleTime: 30_000,
     retry: false,
   });
+
+  // PLAN-005 M: unread badge for the notification center.
+  const { data: notifData } = useQuery({
+    queryKey: ["notifications", "badge"],
+    queryFn: () => fetchNotifications("unread"),
+    enabled: accessToken !== null,
+    staleTime: 60_000,
+    retry: false,
+    refetchInterval: 120_000,
+  });
+  const unreadCount = notifData?.unreadCount ?? 0;
 
   // C-003: закрыть drawer при смене маршрута.
   useEffect(() => {
@@ -105,24 +128,41 @@ export function Navbar() {
                   Админ
                 </Link>
               ) : null}
-              {!isAuthenticated() || !user ? (
-                <Link
-                  href="/resources"
-                  className={`rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                    active("/resources")
-                      ? "text-content bg-surface-hover"
-                      : "text-content-secondary hover:text-content hover:bg-surface-hover"
-                  }`}
-                >
-                  Маркетплейс
-                </Link>
-              ) : null}
+              {!isAuthenticated() || !user
+                ? GUEST_NAV_LINKS.map(({ href, label }) => (
+                    <Link
+                      key={href}
+                      href={href}
+                      className={`rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                        active(href)
+                          ? "text-content bg-surface-hover"
+                          : "text-content-secondary hover:text-content hover:bg-surface-hover"
+                      }`}
+                    >
+                      {label}
+                    </Link>
+                  ))
+                : null}
             </div>
 
             {/* Right side */}
             <div className="flex items-center gap-2">
               {isAuthenticated() && user ? (
                 <>
+                  {/* PLAN-005 M-003: notification center entry. */}
+                  <Link
+                    href="/notifications"
+                    className="relative hidden sm:inline-flex h-9 w-9 items-center justify-center rounded-md text-content-secondary hover:text-content hover:bg-surface-hover"
+                    title="Уведомления"
+                    aria-label="Уведомления"
+                  >
+                    <Bell className="h-5 w-5" />
+                    {unreadCount > 0 ? (
+                      <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold text-white">
+                        {unreadCount > 9 ? "9+" : unreadCount}
+                      </span>
+                    ) : null}
+                  </Link>
                   {me ? (
                     <Link
                       href="/account"
@@ -236,6 +276,27 @@ export function Navbar() {
                   <Icon className="h-5 w-5" /> {label}
                 </Link>
               ))}
+              {/* PLAN-005 M: notifications in the mobile drawer. */}
+              {isAuthenticated() && user ? (
+                <Link
+                  href="/notifications"
+                  className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${
+                    pathname.startsWith("/notifications")
+                      ? "bg-surface-hover text-content"
+                      : "text-content-secondary hover:bg-surface-hover hover:text-content"
+                  }`}
+                >
+                  <span className="relative inline-flex">
+                    <Bell className="h-5 w-5" />
+                    {unreadCount > 0 ? (
+                      <span className="absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-accent px-0.5 text-[9px] font-bold text-white">
+                        {unreadCount > 9 ? "9+" : unreadCount}
+                      </span>
+                    ) : null}
+                  </span>
+                  Уведомления
+                </Link>
+              ) : null}
               {isAdmin ? (
                 <Link
                   href="/admin"

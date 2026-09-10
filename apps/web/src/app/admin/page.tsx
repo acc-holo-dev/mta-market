@@ -5,6 +5,7 @@
 
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import {
   fetchAdminStats,
   fetchAdminResources,
@@ -19,16 +20,27 @@ import {
   postDisputeMessage,
   adminYankVersion,
   adminVersionCompatibility,
+  fetchAdminServers,
+  fetchAdminServerDetail,
+  adminServerLifecycle,
+  adminServerVerification,
+  fetchAdminReports,
+  adminResolveReport,
+  adminModerateNews,
+  adminModerateServerReview,
+  adminModerateThread,
   formatRub,
   getErrorMessage,
   type Resource,
   type Dispute,
+  type AdminServerRow,
+  type AdminReport,
 } from "@/lib/api-ext";
 import { useAuthStore } from "@/store/auth";
 import { bootstrapSession } from "@/lib/api";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
+import { Input, Textarea, Select } from "@/components/ui/Input";
 import { Tabs } from "@/components/ui/Tabs";
 import { StatusBadge, statusLabel } from "@/components/ui/StatusBadge";
 import { ResourceCover } from "@/components/ui/ResourceCover";
@@ -36,9 +48,9 @@ import { Gallery } from "@/components/ui/Gallery";
 import { MessageThread } from "@/components/MessageThread";
 import { LoadingSpinner, EmptyState } from "@/components/ui/States";
 import { typeLabel, formatDate } from "@/lib/domain";
-import { Shield, Gavel, Users, Ban, Inbox } from "lucide-react";
+import { Shield, Gavel, Users, Ban, Inbox, Server, Flag, MessageSquare } from "lucide-react";
 
-type Tab = "moderation" | "sellers" | "disputes" | "versions";
+type Tab = "moderation" | "sellers" | "disputes" | "versions" | "servers" | "reports" | "community";
 
 export default function AdminPage() {
   const { user, isAuthenticated } = useAuthStore();
@@ -88,7 +100,7 @@ export default function AdminPage() {
           <Shield className="h-7 w-7 text-accent" /> Панель управления
         </h1>
         <p className="mt-1 text-content-secondary">
-          Модерация ресурсов, продавцы, споры и версии
+          Модерация ресурсов, продавцы, серверы, споры, жалобы и версии
         </p>
       </div>
 
@@ -103,6 +115,9 @@ export default function AdminPage() {
           ["sellers", "Продавцы"],
           ["disputes", "Споры"],
           ["versions", "Версии"],
+          ["servers", "Серверы"],
+          ["reports", "Жалобы"],
+          ["community", "Контент сообщества"],
         ]}
       />
 
@@ -110,6 +125,9 @@ export default function AdminPage() {
       {tab === "sellers" ? <SellersSection /> : null}
       {tab === "disputes" ? <DisputesSection /> : null}
       {tab === "versions" ? <VersionsSection /> : null}
+      {tab === "servers" ? <AdminServersSection /> : null}
+      {tab === "reports" ? <ReportsSection /> : null}
+      {tab === "community" ? <CommunityModerationSection /> : null}
     </div>
   );
 }
@@ -673,6 +691,678 @@ function VersionsSection() {
           </pre>
         ) : null}
         {error ? <p className="text-sm text-bad">{error}</p> : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+// =====================================================================
+// PLAN-005 Q/R: серверы, жалобы и модерация контента сообщества
+// =====================================================================
+
+// ---------- Server-domain chips (общие для новых секций) ----------
+const LIFECYCLE_LABELS: Record<string, string> = {
+  CREATED: "Создан",
+  PENDING_VERIFICATION: "Ожидает проверки",
+  VERIFIED: "Верифицирован",
+  ACTIVE: "Активен",
+  SUSPENDED: "Приостановлен",
+  ARCHIVED: "Архивирован",
+};
+
+const REPORT_TARGET_LABELS: Record<string, string> = {
+  THREAD: "Тема форума",
+  POST: "Сообщение",
+  REVIEW: "Отзыв",
+  NEWS: "Новость",
+  SERVER: "Сервер",
+  PROFILE: "Профиль",
+};
+
+function AdminChip({
+  tone = "muted",
+  children,
+}: {
+  tone?: "ok" | "warn" | "bad" | "muted";
+  children: React.ReactNode;
+}) {
+  const tones = {
+    ok: "border-ok/30 bg-ok/10 text-ok",
+    warn: "border-warn/30 bg-warn/10 text-warn",
+    bad: "border-bad/30 bg-bad/10 text-bad",
+    muted: "border-line bg-surface-hover text-content-muted",
+  } as const;
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-medium ${tones[tone]}`}
+    >
+      {children}
+    </span>
+  );
+}
+
+function LifecycleChip({ lifecycle }: { lifecycle: string }) {
+  const tone =
+    lifecycle === "SUSPENDED"
+      ? "bad"
+      : lifecycle === "VERIFIED" || lifecycle === "ACTIVE"
+        ? "ok"
+        : lifecycle === "PENDING_VERIFICATION"
+          ? "warn"
+          : "muted";
+  return <AdminChip tone={tone}>{LIFECYCLE_LABELS[lifecycle] ?? lifecycle}</AdminChip>;
+}
+
+function VerificationChip({ verification }: { verification: string }) {
+  if (verification === "VERIFIED") return <AdminChip tone="ok">Проверен</AdminChip>;
+  if (verification === "FAILED") return <AdminChip tone="bad">Проверка не пройдена</AdminChip>;
+  if (verification === "PENDING") return <AdminChip tone="warn">Ожидает проверки</AdminChip>;
+  return <AdminChip tone="muted">{verification}</AdminChip>;
+}
+
+function MonitoringChip({ state }: { state: string }) {
+  return (
+    <AdminChip tone={state === "ONLINE" ? "ok" : state === "OFFLINE" ? "bad" : "muted"}>
+      <span
+        className={`h-1.5 w-1.5 rounded-full ${
+          state === "ONLINE" ? "bg-ok" : state === "OFFLINE" ? "bg-bad" : "bg-line-strong"
+        }`}
+        aria-hidden
+      />
+      {state === "ONLINE" ? "Онлайн" : state === "OFFLINE" ? "Оффлайн" : "Нет данных"}
+    </AdminChip>
+  );
+}
+
+// ---------- Серверы (Q): список, проверка, верификация, жизненный цикл ----------
+const SERVER_LIFECYCLE_FILTERS: [string, string][] = [
+  ["all", "Все"],
+  ["CREATED", "Создан"],
+  ["PENDING_VERIFICATION", "Ожидает проверки"],
+  ["VERIFIED", "Верифицирован"],
+  ["ACTIVE", "Активен"],
+  ["SUSPENDED", "Приостановлен"],
+  ["ARCHIVED", "Архивирован"],
+];
+
+function AdminServersSection() {
+  const qc = useQueryClient();
+  const [error, setError] = useState<string | null>(null);
+  const [lifecycle, setLifecycle] = useState("all");
+  const [reasons, setReasons] = useState<Record<string, string>>({});
+  const [detailFor, setDetailFor] = useState<string | null>(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["admin-servers", lifecycle],
+    queryFn: () => fetchAdminServers(lifecycle === "all" ? undefined : lifecycle),
+  });
+
+  const lifecycleMutation = useMutation({
+    mutationFn: ({ id, next, reason }: { id: string; next: string; reason?: string }) =>
+      adminServerLifecycle(id, next, reason),
+    onSuccess: () => {
+      setError(null);
+      qc.invalidateQueries({ queryKey: ["admin-servers"] });
+      qc.invalidateQueries({ queryKey: ["admin-server-detail"] });
+    },
+    onError: (e) => setError(getErrorMessage(e, "Не удалось изменить состояние сервера")),
+  });
+
+  const verificationMutation = useMutation({
+    mutationFn: ({ id, verification, note }: { id: string; verification: string; note?: string }) =>
+      adminServerVerification(id, verification, note),
+    onSuccess: () => {
+      setError(null);
+      qc.invalidateQueries({ queryKey: ["admin-servers"] });
+      qc.invalidateQueries({ queryKey: ["admin-server-detail"] });
+    },
+    onError: (e) => setError(getErrorMessage(e, "Не удалось изменить верификацию сервера")),
+  });
+
+  const list: AdminServerRow[] = data?.data ?? [];
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Server className="h-5 w-5 text-accent" /> Серверы
+        </CardTitle>
+        <CardDescription>Проверка верификации и модерация жизненного цикла</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="max-w-xs">
+          <Select
+            value={lifecycle}
+            onChange={(e) => setLifecycle(e.target.value)}
+            aria-label="Фильтр жизненного цикла сервера"
+          >
+            {SERVER_LIFECYCLE_FILTERS.map(([value, label]) => (
+              <option key={value} value={value}>
+                {value === "all" ? label : LIFECYCLE_LABELS[value] ?? value}
+              </option>
+            ))}
+          </Select>
+        </div>
+        {error ? <p className="text-sm text-bad">{error}</p> : null}
+        {isLoading ? (
+          <LoadingSpinner label="Загрузка серверов..." />
+        ) : list.length === 0 ? (
+          <EmptyState
+            icon={<Server className="h-12 w-12 text-content-muted mx-auto mb-4" />}
+            title="Серверов нет"
+            description="Зарегистрированные серверы появятся здесь"
+          />
+        ) : (
+          list.map((s) => (
+            <div
+              key={s.id}
+              className="p-4 rounded-card border border-line bg-surface-raised space-y-3"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <Link
+                    href={`/servers/${s.slug}`}
+                    className="font-medium hover:text-accent-strong"
+                  >
+                    {s.name}
+                  </Link>
+                  <p className="text-xs text-content-muted">
+                    Владелец: {s.owner?.displayName || s.owner?.username || s.ownerId}
+                  </p>
+                  <p className="text-[11px] font-mono text-content-muted/70">{s.id}</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <LifecycleChip lifecycle={s.lifecycle} />
+                  <VerificationChip verification={s.verification} />
+                  <MonitoringChip state={s.monitoring} />
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-content-secondary">
+                <span>
+                  Игроки:{" "}
+                  {s.playerCount != null
+                    ? `${s.playerCount}${s.maxPlayers != null ? `/${s.maxPlayers}` : ""}`
+                    : "—"}
+                </span>
+                <span>Подписчиков: {s.followerCount ?? 0}</span>
+                <span>Проверен: {s.verifiedAt ? formatDate(s.verifiedAt) : "—"}</span>
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setDetailFor(detailFor === s.id ? null : s.id)}
+                >
+                  {detailFor === s.id ? "Скрыть проверку" : "Проверить"}
+                </Button>
+              </div>
+              <Input
+                value={reasons[s.id] ?? ""}
+                onChange={(e) => setReasons((m) => ({ ...m, [s.id]: e.target.value }))}
+                placeholder="Причина / примечание (используется действиями ниже)"
+                aria-label={`Причина для ${s.name}`}
+              />
+              <div className="flex gap-2 flex-wrap">
+                <Button
+                  size="sm"
+                  disabled={verificationMutation.isPending}
+                  onClick={() =>
+                    verificationMutation.mutate({
+                      id: s.id,
+                      verification: "VERIFIED",
+                      note: reasons[s.id] || undefined,
+                    })
+                  }
+                >
+                  Подтвердить верификацию
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  disabled={verificationMutation.isPending}
+                  onClick={() =>
+                    verificationMutation.mutate({
+                      id: s.id,
+                      verification: "FAILED",
+                      note: reasons[s.id] || "Проверка не пройдена",
+                    })
+                  }
+                >
+                  Отклонить верификацию
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={lifecycleMutation.isPending}
+                  onClick={() =>
+                    lifecycleMutation.mutate({
+                      id: s.id,
+                      next: "SUSPENDED",
+                      reason: reasons[s.id] || undefined,
+                    })
+                  }
+                >
+                  Приостановить
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={lifecycleMutation.isPending}
+                  onClick={() => lifecycleMutation.mutate({ id: s.id, next: "VERIFIED" })}
+                >
+                  Восстановить
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  disabled={lifecycleMutation.isPending}
+                  onClick={() =>
+                    lifecycleMutation.mutate({
+                      id: s.id,
+                      next: "ARCHIVED",
+                      reason: reasons[s.id] || undefined,
+                    })
+                  }
+                >
+                  Архивировать
+                </Button>
+              </div>
+              <p className="text-xs text-content-muted">действие фиксируется в журнале аудита</p>
+              {detailFor === s.id ? <AdminServerDetailPanel serverId={s.id} /> : null}
+            </div>
+          ))
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Раскрытая проверка сервера: приватные поля + владелец + счётчики + новости.
+function AdminServerDetailPanel({ serverId }: { serverId: string }) {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["admin-server-detail", serverId],
+    queryFn: () => fetchAdminServerDetail(serverId),
+  });
+
+  if (isLoading) return <LoadingSpinner label="Загрузка данных сервера..." className="py-6" />;
+  if (error || !data)
+    return (
+      <p className="text-sm text-bad" role="alert">
+        Не удалось загрузить данные сервера.
+      </p>
+    );
+
+  const { server, owner, counts, recentNews } = data;
+
+  return (
+    <div className="rounded-card border border-line bg-surface p-4 space-y-4 text-sm">
+      <div className="space-y-1 text-content-secondary">
+        <p>
+          <span className="text-content-muted">Email владельца:</span> {owner?.email ?? "—"}
+        </p>
+        <p>
+          <span className="text-content-muted">Адрес:</span> {server.host ?? "—"}
+          {server.port != null ? `:${server.port}` : ""}
+        </p>
+        <p>
+          <span className="text-content-muted">Подписчики:</span> {counts.followers} ·{" "}
+          <span className="text-content-muted">Отзывы:</span> {counts.reviews} ·{" "}
+          <span className="text-content-muted">Ресурсы:</span> {counts.resources}
+        </p>
+        <p>
+          <span className="text-content-muted">Приватность:</span>{" "}
+          {server.showStats ? "статистика вкл" : "статистика выкл"} ·{" "}
+          {server.showStaff ? "стафф вкл" : "стафф выкл"} ·{" "}
+          {server.showResources ? "ресурсы вкл" : "ресурсы выкл"} ·{" "}
+          {server.showCommunity ? "сообщество вкл" : "сообщество выкл"} ·{" "}
+          {server.showTechStack ? "стек вкл" : "стек выкл"}
+        </p>
+        {server.verificationNote ? (
+          <p>
+            <span className="text-content-muted">Примечание проверки:</span>{" "}
+            {server.verificationNote}
+          </p>
+        ) : null}
+      </div>
+      <div>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-content-muted">
+          Последние новости
+        </p>
+        {recentNews.length === 0 ? (
+          <p className="text-xs text-content-muted">Новостей нет.</p>
+        ) : (
+          <ul className="space-y-1.5">
+            {recentNews.map((n) => (
+              <li
+                key={n.id}
+                className="flex flex-wrap items-center gap-2 text-xs text-content-secondary"
+              >
+                <span className="font-medium text-content">{n.title}</span>
+                <StatusBadge status={n.status} />
+                {n.publishedAt ? <span>{formatDate(n.publishedAt)}</span> : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------- Жалобы (R) ----------
+function ReportsSection() {
+  const qc = useQueryClient();
+  const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState("OPEN");
+  const [resolutions, setResolutions] = useState<Record<string, string>>({});
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["admin-reports", status],
+    queryFn: () => fetchAdminReports(status),
+  });
+
+  const resolve = useMutation({
+    mutationFn: ({
+      id,
+      decision,
+      resolution,
+    }: {
+      id: string;
+      decision: "RESOLVED" | "DISMISSED";
+      resolution?: string;
+    }) => adminResolveReport(id, decision, resolution),
+    onSuccess: () => {
+      setError(null);
+      qc.invalidateQueries({ queryKey: ["admin-reports"] });
+    },
+    onError: (e) => setError(getErrorMessage(e, "Не удалось обработать жалобу")),
+  });
+
+  const list: AdminReport[] = data?.data ?? [];
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Flag className="h-5 w-5 text-accent" /> Жалобы
+        </CardTitle>
+        <CardDescription>Очередь обращений пользователей</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="max-w-xs">
+          <Select
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+            aria-label="Статус жалоб"
+          >
+            <option value="OPEN">Открытые</option>
+            <option value="RESOLVED">Меры приняты</option>
+            <option value="DISMISSED">Отклонённые</option>
+            <option value="ALL">Все</option>
+          </Select>
+        </div>
+        {error ? <p className="text-sm text-bad">{error}</p> : null}
+        {isLoading ? (
+          <LoadingSpinner label="Загрузка жалоб..." />
+        ) : list.length === 0 ? (
+          <EmptyState
+            icon={<Flag className="h-12 w-12 text-content-muted mx-auto mb-4" />}
+            title="Жалоб нет"
+            description="Новые обращения пользователей появятся здесь"
+          />
+        ) : (
+          list.map((r) => (
+            <div
+              key={r.id}
+              className="p-4 rounded-card border border-line bg-surface-raised space-y-3"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <AdminChip tone="muted">
+                      {REPORT_TARGET_LABELS[r.targetType] ?? r.targetType}
+                    </AdminChip>
+                    <span className="text-xs text-content-muted">
+                      Статус:{" "}
+                      {r.status === "OPEN"
+                        ? "открыта"
+                        : r.status === "RESOLVED"
+                          ? "меры приняты"
+                          : "отклонена"}
+                    </span>
+                  </div>
+                  <p className="mt-1 font-mono text-xs text-content-muted">{r.targetId}</p>
+                  <p className="mt-1 text-sm text-content-secondary">{r.reason}</p>
+                  <p className="mt-1 text-xs text-content-muted">
+                    Автор: {r.reporter?.displayName || r.reporter?.username || "—"} ·{" "}
+                    {formatDate(r.createdAt)}
+                  </p>
+                  {r.resolution ? (
+                    <p className="mt-1 text-xs text-content-secondary">Решение: {r.resolution}</p>
+                  ) : null}
+                </div>
+              </div>
+              {r.status === "OPEN" ? (
+                <>
+                  <Textarea
+                    value={resolutions[r.id] ?? ""}
+                    onChange={(e) => setResolutions((m) => ({ ...m, [r.id]: e.target.value }))}
+                    placeholder="Решение (необязательно)"
+                    aria-label={`Решение по жалобе ${r.id}`}
+                    rows={2}
+                  />
+                  <div className="flex gap-2 flex-wrap">
+                    <Button
+                      size="sm"
+                      disabled={resolve.isPending}
+                      onClick={() =>
+                        resolve.mutate({
+                          id: r.id,
+                          decision: "RESOLVED",
+                          resolution: resolutions[r.id] || undefined,
+                        })
+                      }
+                    >
+                      Меры приняты
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={resolve.isPending}
+                      onClick={() =>
+                        resolve.mutate({
+                          id: r.id,
+                          decision: "DISMISSED",
+                          resolution: resolutions[r.id] || undefined,
+                        })
+                      }
+                    >
+                      Отклонить
+                    </Button>
+                  </div>
+                </>
+              ) : null}
+            </div>
+          ))
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------- Контент сообщества: отзывы / темы / новости (утилитарно) ----------
+function CommunityModerationSection() {
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<string | null>(null);
+
+  const [reviewId, setReviewId] = useState("");
+  const [reviewReason, setReviewReason] = useState("");
+  const [threadId, setThreadId] = useState("");
+  const [threadState, setThreadState] = useState("LOCKED");
+  const [threadPinned, setThreadPinned] = useState(false);
+  const [newsId, setNewsId] = useState("");
+  const [newsReason, setNewsReason] = useState("");
+
+  const reviewModeration = useMutation({
+    mutationFn: ({ status }: { status: "VISIBLE" | "HIDDEN" }) =>
+      adminModerateServerReview(reviewId.trim(), status, reviewReason.trim() || undefined),
+    onSuccess: () => {
+      setError(null);
+      setResult(`Отзыв ${reviewId.trim()} обновлён`);
+    },
+    onError: (e) => {
+      setResult(null);
+      setError(getErrorMessage(e, "Не удалось изменить отзыв"));
+    },
+  });
+
+  const threadModeration = useMutation({
+    mutationFn: () =>
+      adminModerateThread(threadId.trim(), threadState, threadPinned ? true : undefined),
+    onSuccess: () => {
+      setError(null);
+      setResult(`Тема ${threadId.trim()} обновлена`);
+    },
+    onError: (e) => {
+      setResult(null);
+      setError(getErrorMessage(e, "Не удалось изменить тему"));
+    },
+  });
+
+  const newsModeration = useMutation({
+    mutationFn: ({ status }: { status: "DRAFT" | "PUBLISHED" }) =>
+      adminModerateNews(newsId.trim(), status, newsReason.trim() || undefined),
+    onSuccess: () => {
+      setError(null);
+      setResult(`Новость ${newsId.trim()} обновлена`);
+    },
+    onError: (e) => {
+      setResult(null);
+      setError(getErrorMessage(e, "Не удалось изменить новость"));
+    },
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <MessageSquare className="h-5 w-5 text-accent" /> Контент сообщества
+        </CardTitle>
+        <CardDescription>Модерация отзывов, тем форума и новостей серверов</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {error ? <p className="text-sm text-bad">{error}</p> : null}
+        {result ? <p className="text-sm text-ok">{result}</p> : null}
+
+        {/* Скрытие отзывов о серверах */}
+        <div className="p-4 rounded-card border border-line bg-surface-raised space-y-3">
+          <p className="text-sm font-semibold">Отзыв: скрыть / вернуть</p>
+          <Input
+            value={reviewId}
+            onChange={(e) => setReviewId(e.target.value)}
+            placeholder="ID отзыва"
+            aria-label="ID отзыва"
+          />
+          <Input
+            value={reviewReason}
+            onChange={(e) => setReviewReason(e.target.value)}
+            placeholder="Причина (для скрытия)"
+            aria-label="Причина скрытия отзыва"
+          />
+          <div className="flex gap-2 flex-wrap">
+            <Button
+              variant="danger"
+              size="sm"
+              disabled={!reviewId.trim() || reviewModeration.isPending}
+              onClick={() => reviewModeration.mutate({ status: "HIDDEN" })}
+            >
+              Скрыть отзыв
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!reviewId.trim() || reviewModeration.isPending}
+              onClick={() => reviewModeration.mutate({ status: "VISIBLE" })}
+            >
+              Вернуть отзыв
+            </Button>
+          </div>
+        </div>
+
+        {/* Состояние и закрепление темы */}
+        <div className="p-4 rounded-card border border-line bg-surface-raised space-y-3">
+          <p className="text-sm font-semibold">Тема форума: состояние / закрепление</p>
+          <Input
+            value={threadId}
+            onChange={(e) => setThreadId(e.target.value)}
+            placeholder="ID темы"
+            aria-label="ID темы"
+          />
+          <div className="max-w-xs">
+            <Select
+              value={threadState}
+              onChange={(e) => setThreadState(e.target.value)}
+              aria-label="Состояние темы"
+            >
+              <option value="OPEN">Открыта</option>
+              <option value="LOCKED">Закрыта</option>
+              <option value="ARCHIVED">В архиве</option>
+            </Select>
+          </div>
+          <label className="flex items-center gap-2 text-sm text-content-secondary">
+            <input
+              type="checkbox"
+              checked={threadPinned}
+              onChange={(e) => setThreadPinned(e.target.checked)}
+              className="h-4 w-4"
+            />
+            Закрепить тему
+          </label>
+          <Button
+            size="sm"
+            disabled={!threadId.trim() || threadModeration.isPending}
+            onClick={() => threadModeration.mutate()}
+          >
+            Применить к теме
+          </Button>
+        </div>
+
+        {/* Снятие / публикация новости сервера */}
+        <div className="p-4 rounded-card border border-line bg-surface-raised space-y-3">
+          <p className="text-sm font-semibold">Новость сервера: снять / опубликовать</p>
+          <Input
+            value={newsId}
+            onChange={(e) => setNewsId(e.target.value)}
+            placeholder="ID новости"
+            aria-label="ID новости"
+          />
+          <Input
+            value={newsReason}
+            onChange={(e) => setNewsReason(e.target.value)}
+            placeholder="Причина (для снятия)"
+            aria-label="Причина снятия новости"
+          />
+          <div className="flex gap-2 flex-wrap">
+            <Button
+              variant="danger"
+              size="sm"
+              disabled={!newsId.trim() || newsModeration.isPending}
+              onClick={() => newsModeration.mutate({ status: "DRAFT" })}
+            >
+              Снять с публикации
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!newsId.trim() || newsModeration.isPending}
+              onClick={() => newsModeration.mutate({ status: "PUBLISHED" })}
+            >
+              Опубликовать
+            </Button>
+          </div>
+        </div>
+
+        <p className="text-xs text-content-muted">действие фиксируется в журнале аудита</p>
       </CardContent>
     </Card>
   );

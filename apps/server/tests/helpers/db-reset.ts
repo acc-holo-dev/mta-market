@@ -158,6 +158,106 @@ export async function resetTestEntities(): Promise<void> {
     console.warn("[reset] audit logs:", e instanceof Error ? e.message : e);
   }
 
+  // PLAN-005 community/server tables — FK-safe order, children first.
+  // Report: keep only test-reporter rows (global queue hygiene).
+  try {
+    const reports = await db.orm.public.Report.where({}).all();
+    for (const r of reports) {
+      if (r.reporterId.startsWith(TEST_ID_PREFIX)) {
+        await db.orm.public.Report.where({ id: r.id }).delete().catch(() => undefined);
+      }
+    }
+  } catch (e) {
+    console.warn("[reset] reports:", e instanceof Error ? e.message : e);
+  }
+  // Notifications of the test range (recipient deletion cascades anyway, but
+  // the queue should not keep dead references).
+  try {
+    const notifs = await db.orm.public.Notification.where({}).all();
+    for (const n of notifs) {
+      if (n.recipientId.startsWith(TEST_ID_PREFIX)) {
+        await db.orm.public.Notification.where({ id: n.id }).delete().catch(() => undefined);
+      }
+    }
+  } catch (e) {
+    console.warn("[reset] notifications:", e instanceof Error ? e.message : e);
+  }
+  // Forum: reactions -> posts -> threads. Categories are global: remove only
+  // rows the test range created (tracked by slug prefix plan005-).
+  try {
+    const reactions = await db.orm.public.ForumReaction.where({}).all();
+    for (const r of reactions) {
+      if (r.userId.startsWith(TEST_ID_PREFIX)) {
+        await db.orm.public.ForumReaction.where({ id: r.id }).delete().catch(() => undefined);
+      }
+    }
+  } catch (e) {
+    console.warn("[reset] forum reactions:", e instanceof Error ? e.message : e);
+  }
+  try {
+    const posts = await db.orm.public.ForumPost.where({}).all();
+    for (const p of posts) {
+      if (p.authorId.startsWith(TEST_ID_PREFIX)) {
+        await db.orm.public.ForumPost.where({ id: p.id }).delete().catch(() => undefined);
+      }
+    }
+  } catch (e) {
+    console.warn("[reset] forum posts:", e instanceof Error ? e.message : e);
+  }
+  try {
+    const threads = await db.orm.public.ForumThread.where({}).all();
+    for (const t of threads) {
+      if (t.authorId.startsWith(TEST_ID_PREFIX)) {
+        await db.orm.public.ForumThread.where({ id: t.id }).delete().catch(() => undefined);
+      }
+    }
+  } catch (e) {
+    console.warn("[reset] forum threads:", e instanceof Error ? e.message : e);
+  }
+  try {
+    const categories = await db.orm.public.ForumCategory.where({}).all();
+    for (const c of categories) {
+      if (c.slug.startsWith("plan005-")) {
+        await db.orm.public.ForumCategory.where({ id: c.id }).delete().catch(() => undefined);
+      }
+    }
+  } catch (e) {
+    console.warn("[reset] forum categories:", e instanceof Error ? e.message : e);
+  }
+  // Server domain: samples/tokens/reviews/eligibilities/news/updates/resources
+  // cascade with the server row — delete servers owned by the test range.
+  try {
+    const servers = await db.orm.public.Server.where({}).all();
+    for (const s of servers) {
+      if (testUserIds.has(s.ownerId)) {
+        await db.orm.public.Server.where({ id: s.id }).delete().catch(() => undefined);
+      }
+    }
+  } catch (e) {
+    console.warn("[reset] servers:", e instanceof Error ? e.message : e);
+  }
+  // Follows of the test range (server deletion may have already cascaded).
+  try {
+    const follows = await db.orm.public.ServerFollow.where({}).all();
+    for (const f of follows) {
+      if (testUserIds.has(f.userId)) {
+        await db.orm.public.ServerFollow.where({ id: f.id }).delete().catch(() => undefined);
+      }
+    }
+  } catch (e) {
+    console.warn("[reset] server follows:", e instanceof Error ? e.message : e);
+  }
+  try {
+    const memberships = await db.orm.public.ServerMember.where({}).all();
+    for (const m of memberships) {
+      if (testUserIds.has(m.userId)) {
+        await db.orm.public.ServerMember.where({ id: m.id }).delete().catch(() => undefined);
+      }
+    }
+  } catch (e) {
+    console.warn("[reset] server memberships:", e instanceof Error ? e.message : e);
+  }
+
   // 7. Users last (sessions/accounts/reviews cascade)
   for (const uid of testUserIds) {
     await db.orm.public.User.where({ id: uid }).delete().catch(() => undefined);

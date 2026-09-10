@@ -3,6 +3,10 @@ import { enforceEnvironmentValidation } from "./lib/startupValidation";
 import { createApp } from "./app";
 import { logger } from "./lib/logger";
 import { startReconciliationScheduler } from "./jobs/reconciliation";
+import {
+  startServerMonitoringScheduler,
+  stopServerMonitoringScheduler,
+} from "./jobs/serverMonitoring";
 import { redis } from "./lib/redis";
 import { db } from "./prisma/db";
 
@@ -31,10 +35,14 @@ const server = app.listen(PORT, () => {
   // provider events/internal ledger). No-op in test env; stop() handle kept
   // for graceful shutdown.
   const stopReconciliation = startReconciliationScheduler();
+  // PLAN-005 E: server monitoring sweep (stale heartbeats -> UNKNOWN,
+  // expired review tokens). No-op in test env.
+  startServerMonitoringScheduler();
 
   const shutdown = async (signal: string): Promise<void> => {
     logger.info("server_shutdown", { signal });
     stopReconciliation.stop();
+    stopServerMonitoringScheduler();
 
     // J-003: close dependency handles so connections drain cleanly instead
     // of being dropped by process exit (avoids orphaned PG/Redis sockets and

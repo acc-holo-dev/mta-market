@@ -652,3 +652,709 @@ export async function adminVersionCompatibility(id: string) {
   const { data } = await api.get(`/admin/versions/${id}/compatibility`);
   return data;
 }
+
+// =====================================================================
+// PLAN-005: Community & Server Foundation — typed API surface
+// =====================================================================
+
+// ---------- Servers ----------
+export interface ServerCard {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  logoUrl: string | null;
+  bannerUrl: string | null;
+  accentColor: string | null;
+  websiteUrl: string | null;
+  discordUrl: string | null;
+  region: string | null;
+  lifecycle: string;
+  verification: string;
+  monitoring: string;
+  playerCount: number | null;
+  maxPlayers: number | null;
+  lastSeenAt: string | null;
+  verifiedAt: string | null;
+  createdAt: string;
+  followerCount?: number;
+  rating?: number | null;
+}
+
+export interface ServerFull extends ServerCard {
+  showStats: boolean;
+  showCommunity: boolean;
+  showStaff: boolean;
+  showResources: boolean;
+}
+
+export interface ServerDetail {
+  server: ServerCard & { followerCount: number; rating: number | null };
+  caller: { isStaff: boolean; role: string | null };
+  privacy: {
+    showStats: boolean;
+    showStaff: boolean;
+    showResources: boolean;
+    showCommunity: boolean;
+    showTechStack: boolean;
+  };
+}
+
+export interface StaffMember {
+  userId: string;
+  role: string;
+  username: string | null;
+  displayName: string | null;
+  avatar: string | null;
+}
+
+export interface ServerResourceCard {
+  id: string;
+  displayName: string;
+  slug: string | null;
+  coverUrl: string | null;
+  note: string | null;
+}
+
+export async function fetchServers(params: {
+  q?: string;
+  sort?: string;
+  page?: number;
+  limit?: number;
+}) {
+  const { data } = await api.get<Paginated<ServerCard>>("/servers", { params });
+  return data;
+}
+
+export async function fetchServer(slug: string): Promise<ServerDetail> {
+  const { data } = await api.get<ServerDetail>(`/servers/${slug}`);
+  return data;
+}
+
+export async function fetchMyServers() {
+  const { data } = await api.get<{ data: ServerFull[] }>("/servers/my");
+  return data.data;
+}
+
+export interface ServerManage {
+  server: ServerFull & { integrationTokenIssuedAt?: string | null; verificationNote?: string | null };
+  staffRole: string;
+  stats: {
+    followerCount: number;
+    reviewCount: number;
+    rating: number | null;
+    draftNewsCount: number;
+    resourceCount: number;
+  };
+  recentNews: ServerNewsItem[];
+  recentUpdates: ServerUpdateItem[];
+  heartbeat: { staleMs: number; fresh: boolean; lastSeenAt: string | null };
+}
+
+export async function fetchServerManage(slug: string): Promise<ServerManage> {
+  const { data } = await api.get<ServerManage>(`/servers/${slug}/manage`);
+  return data;
+}
+
+export async function createServer(payload: {
+  name: string;
+  description?: string;
+  host?: string | null;
+  port?: number | null;
+  region?: string | null;
+  websiteUrl?: string | null;
+  discordUrl?: string | null;
+}) {
+  const { data } = await api.post<ServerFull>("/servers", payload);
+  return data;
+}
+
+export async function updateServer(slug: string, patch: Record<string, unknown>) {
+  const { data } = await api.patch<ServerFull>(`/servers/${slug}`, patch);
+  return data;
+}
+
+export async function updateServerPrivacy(slug: string, patch: Record<string, boolean>) {
+  const { data } = await api.patch<ServerFull>(`/servers/${slug}/privacy`, patch);
+  return data;
+}
+
+export async function archiveServer(slug: string) {
+  const { data } = await api.delete(`/servers/${slug}`);
+  return data;
+}
+
+export async function issueIntegrationToken(slug: string) {
+  const { data } = await api.post<{ token: string; server: ServerFull }>(
+    `/servers/${slug}/integration-token`
+  );
+  return data;
+}
+
+export async function fetchVerification(slug: string) {
+  const { data } = await api.get<{
+    verification: string;
+    note: string | null;
+    verifiedAt: string | null;
+    issuedAt: string | null;
+    hasToken: boolean;
+  }>(`/servers/${slug}/verification`);
+  return data;
+}
+
+export async function fetchServerStaff(slug: string) {
+  const { data } = await api.get<{ visible: boolean; data: StaffMemberRow[] }>(
+    `/servers/${slug}/staff`
+  );
+  return data;
+}
+
+export interface StaffMemberRow {
+  userId: string;
+  role: string;
+  username: string | null;
+  displayName: string | null;
+  avatar: string | null;
+}
+
+export async function addServerStaff(slug: string, userId: string, role: "ADMIN" | "MODERATOR") {
+  const { data } = await api.post(`/servers/${slug}/staff`, { userId, role });
+  return data;
+}
+
+export async function removeServerStaff(slug: string, userId: string) {
+  const { data } = await api.delete(`/servers/${slug}/staff/${userId}`);
+  return data;
+}
+
+export async function fetchServerResources(slug: string) {
+  const { data } = await api.get<{ enabled: boolean; data: ServerResourceCard[] }>(
+    `/servers/${slug}/resources`
+  );
+  return data;
+}
+
+export async function linkServerResource(
+  slug: string,
+  payload: { resourceId?: string; displayName?: string; note?: string }
+) {
+  const { data } = await api.post(`/servers/${slug}/resources`, payload);
+  return data;
+}
+
+export async function unlinkServerResource(slug: string, rowId: string) {
+  const { data } = await api.delete(`/servers/${slug}/resources/${rowId}`);
+  return data;
+}
+
+export async function followServer(slug: string) {
+  const { data } = await api.post<{ following: boolean }>(`/servers/${slug}/follow`);
+  return data;
+}
+
+export async function unfollowServer(slug: string) {
+  const { data } = await api.delete<{ following: boolean }>(`/servers/${slug}/follow`);
+  return data;
+}
+
+export async function fetchServerStatistics(slug: string, range: string) {
+  const { data } = await api.get<{
+    enabled: boolean;
+    range: { hours: number; label: string };
+    data: {
+      peak: number | null;
+      average: number | null;
+      uptimePct: number | null;
+      sampleCount: number;
+      current: { state: string; players: number | null; maxPlayers: number | null; lastSeenAt: string | null };
+      samples: { t: string; players: number; state: string }[];
+    } | null;
+  }>(`/servers/${slug}/statistics`, { params: { range } });
+  return data;
+}
+
+// ---------- Server news / updates ----------
+export interface ServerNewsItem {
+  id: string;
+  serverId: string;
+  authorId: string;
+  title: string;
+  content: string;
+  coverUrl: string | null;
+  status: string;
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  thread?: { id: string; title: string; replyCount: number } | null;
+}
+
+export interface ServerUpdateItem {
+  id: string;
+  serverId: string;
+  version: string;
+  title: string;
+  changelog: string;
+  publishedAt: string;
+}
+
+export async function fetchServerNews(slug: string, page = 1) {
+  const { data } = await api.get<Paginated<ServerNewsItem>>(`/servers/${slug}/news`, {
+    params: { page },
+  });
+  return data;
+}
+
+export async function fetchServerNewsItem(slug: string, id: string) {
+  const { data } = await api.get<{
+    news: ServerNewsItem;
+    thread: { id: string; title: string; replyCount: number; state: string } | null;
+    author: { username: string | null; displayName: string | null; avatar: string | null } | null;
+    server: { slug: string; name: string };
+  }>(`/servers/${slug}/news/${id}`);
+  return data;
+}
+
+export async function createServerNews(
+  slug: string,
+  payload: { title: string; content: string; coverUrl?: string | null }
+) {
+  const { data } = await api.post<ServerNewsItem>(`/servers/${slug}/news`, payload);
+  return data;
+}
+
+export async function updateServerNews(slug: string, id: string, patch: Record<string, unknown>) {
+  const { data } = await api.patch<ServerNewsItem>(`/servers/${slug}/news/${id}`, patch);
+  return data;
+}
+
+export async function publishServerNews(
+  slug: string,
+  id: string,
+  createDiscussion?: boolean
+) {
+  const { data } = await api.post<{ news: ServerNewsItem; thread: { id: string } | null }>(
+    `/servers/${slug}/news/${id}/publish`,
+    { ...(createDiscussion ? { createDiscussion: true } : {}) }
+  );
+  return data;
+}
+
+export async function deleteServerNews(slug: string, id: string) {
+  const { data } = await api.delete(`/servers/${slug}/news/${id}`);
+  return data;
+}
+
+export async function fetchServerUpdates(slug: string, page = 1) {
+  const { data } = await api.get<Paginated<ServerUpdateItem>>(`/servers/${slug}/updates`, {
+    params: { page },
+  });
+  return data;
+}
+
+export async function createServerUpdate(
+  slug: string,
+  payload: { version: string; title: string; changelog: string; createDiscussion?: boolean }
+) {
+  const { data } = await api.post<ServerUpdateItem>(`/servers/${slug}/updates`, payload);
+  return data;
+}
+
+export async function deleteServerUpdate(slug: string, id: string) {
+  const { data } = await api.delete(`/servers/${slug}/updates/${id}`);
+  return data;
+}
+
+// ---------- Global news feed ----------
+export interface NewsFeedItem {
+  kind: "NEWS" | "UPDATE";
+  id: string;
+  version?: string;
+  title: string;
+  preview: string;
+  coverUrl?: string | null;
+  publishedAt: string;
+  server: { id: string; slug: string; name: string; logoUrl: string | null } | null;
+  author: { username: string | null; displayName: string | null; avatar: string | null } | null;
+}
+
+export async function fetchNewsFeed(kind: "all" | "news" | "updates" = "all", page = 1) {
+  const { data } = await api.get<{ data: NewsFeedItem[] }>("/news", {
+    params: { kind, page },
+  });
+  return data;
+}
+
+// ---------- Server reviews + tokens ----------
+export interface ServerReviewItem {
+  id: string;
+  rating: number;
+  comment: string | null;
+  verifiedInteraction: boolean;
+  createdAt: string;
+  updatedAt?: string;
+  author: { id: string; username: string | null; displayName: string | null; avatar: string | null };
+}
+
+export async function fetchServerReviews(slug: string, page = 1) {
+  const { data } = await api.get<{
+    data: ServerReviewItem[];
+    stats: { total: number; averageRating: number | null; verifiedCount: number };
+    pagination: Pagination;
+  }>(`/servers/${slug}/reviews`, { params: { page } });
+  return data;
+}
+
+export async function fetchReviewEligibility(slug: string) {
+  const { data } = await api.get<{
+    eligible: boolean;
+    reason: string | null;
+    verifiedInteraction: boolean;
+  }>(`/servers/${slug}/reviews/eligibility`);
+  return data;
+}
+
+export async function claimReviewToken(slug: string, token: string) {
+  const { data } = await api.post<{ eligible: boolean }>(`/servers/${slug}/review-token/claim`, {
+    token,
+  });
+  return data;
+}
+
+export async function createServerReview(slug: string, rating: number, comment?: string | null) {
+  const { data } = await api.post<ServerReviewItem>(`/servers/${slug}/reviews`, {
+    rating,
+    comment: comment ?? null,
+  });
+  return data;
+}
+
+export async function deleteServerReview(slug: string) {
+  const { data } = await api.delete(`/servers/${slug}/reviews`);
+  return data;
+}
+
+// ---------- Community / forum ----------
+export interface ForumCategory {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  position: number;
+  threadCount?: number;
+}
+
+export interface ThreadCard {
+  id: string;
+  title: string;
+  state: string;
+  pinned?: boolean;
+  replyCount: number;
+  views?: number;
+  lastPostAt: string | null;
+  createdAt: string;
+  author: { username: string | null; displayName: string | null; avatar: string | null } | null;
+}
+
+export interface CommunityHub {
+  categories: ForumCategory[];
+  latest: ThreadCard[];
+  active: ThreadCard[];
+  pinned: ThreadCard[];
+  recentActivity: {
+    postId: string;
+    threadId: string;
+    threadTitle: string | null;
+    author: { username: string | null; displayName: string | null; avatar: string | null } | null;
+    createdAt: string;
+  }[];
+}
+
+export async function fetchCommunityHub(): Promise<CommunityHub> {
+  const { data } = await api.get<CommunityHub>("/community");
+  return data;
+}
+
+export async function fetchForumCategories() {
+  const { data } = await api.get<{ data: ForumCategory[] }>("/community/categories");
+  return data.data;
+}
+
+export async function fetchCategoryThreads(slug: string, page = 1) {
+  const { data } = await api.get<{
+    category: ForumCategory;
+    data: ThreadCard[];
+    pagination: Pagination;
+  }>(`/community/categories/${slug}/threads`, { params: { page } });
+  return data;
+}
+
+export async function createForumThread(
+  categorySlug: string,
+  payload: { title: string; content: string; serverId?: string }
+) {
+  const { data } = await api.post<{ id: string }>(
+    `/community/categories/${encodeURIComponent(categorySlug)}/threads`,
+    payload
+  );
+  return data;
+}
+
+export interface ForumThreadDetail {
+  thread: ThreadCard & { newsId?: string | null; serverId?: string | null; categoryId: string };
+  category: { id: string; slug: string; name: string } | null;
+  server: { id: string; slug: string; name: string } | null;
+  data: ForumPostItem[];
+  pagination: Pagination;
+}
+
+export interface ForumPostItem {
+  id: string;
+  content: string | null;
+  deleted: boolean;
+  edited: boolean;
+  position: number;
+  createdAt: string;
+  author: { id: string; username: string | null; displayName: string | null; avatar: string | null };
+  reactionCount: number;
+  reactedByMe: string[];
+}
+
+export async function fetchThread(id: string, page = 1) {
+  const { data } = await api.get<ForumThreadDetail>(`/community/threads/${id}`, {
+    params: { page },
+  });
+  return data;
+}
+
+export async function replyToThread(id: string, content: string) {
+  const { data } = await api.post<ForumPostItem>(`/community/threads/${id}/posts`, { content });
+  return data;
+}
+
+export async function editForumPost(id: string, content: string) {
+  const { data } = await api.patch(`/community/posts/${id}`, { content });
+  return data;
+}
+
+export async function deleteForumPost(id: string) {
+  const { data } = await api.delete(`/community/posts/${id}`);
+  return data;
+}
+
+export async function toggleReaction(postId: string, kind = "LIKE") {
+  const { data } = await api.put<{ reacted: boolean; kind: string }>(
+    `/community/posts/${postId}/reactions/${kind}`
+  );
+  return data;
+}
+
+export async function setThreadState(id: string, state?: string, pinned?: boolean) {
+  const { data } = await api.post(`/community/threads/${id}/state`, {
+    ...(state ? { state } : {}),
+    ...(pinned !== undefined ? { pinned } : {}),
+  });
+  return data;
+}
+
+export async function fetchServerCommunityThreads(slug: string, page = 1) {
+  const { data } = await api.get<{ enabled: boolean; data: ThreadCard[]; pagination?: Pagination }>(
+    `/community/servers/${slug}/threads`,
+    { params: { page } }
+  );
+  return data;
+}
+
+export async function fetchServerCommunityMembers(slug: string) {
+  const { data } = await api.get<{
+    enabled: boolean;
+    followerCount: number;
+    data: { userId: string; joinedAt: string; username: string | null; displayName: string | null; avatar: string | null }[];
+  }>(`/community/servers/${slug}/members`);
+  return data;
+}
+
+// ---------- Notifications ----------
+export interface NotificationItem {
+  id: string;
+  type: string;
+  title: string;
+  body: string | null;
+  entityType: string | null;
+  entityId: string | null;
+  readAt: string | null;
+  createdAt: string;
+}
+
+export async function fetchNotifications(filter: "all" | "unread" = "all", page = 1) {
+  const { data } = await api.get<{
+    data: NotificationItem[];
+    unreadCount: number;
+    pagination: Pagination;
+  }>("/notifications", { params: { filter, page } });
+  return data;
+}
+
+export async function markNotificationRead(id: string) {
+  const { data } = await api.post(`/notifications/${id}/read`);
+  return data;
+}
+
+export async function markAllNotificationsRead() {
+  const { data } = await api.post("/notifications/read-all");
+  return data;
+}
+
+// ---------- Reports ----------
+export async function createReport(targetType: string, targetId: string, reason: string) {
+  const { data } = await api.post("/reports", { targetType, targetId, reason });
+  return data;
+}
+
+// ---------- Profiles ----------
+export interface PublicProfile {
+  profile: {
+    username: string;
+    displayName: string;
+    avatar: string | null;
+    memberSince: string;
+  };
+  badges: string[];
+  servers: {
+    id: string;
+    slug: string;
+    name: string;
+    logoUrl: string | null;
+    bannerUrl: string | null;
+    monitoring: string;
+    playerCount: number | null;
+    maxPlayers: number | null;
+    verification: string;
+    followerCount: number;
+  }[];
+  resources: Resource[];
+  forumActivity: { threadCount: number; postCount: number };
+}
+
+export async function fetchProfile(username: string): Promise<PublicProfile> {
+  const { data } = await api.get<PublicProfile>(`/profiles/${username}`);
+  return data;
+}
+
+// ---------- Search ----------
+export interface SearchResults {
+  query: string;
+  resources: { count: number; data: Partial<Resource>[] };
+  servers: { count: number; data: ServerCard[] };
+  threads: { count: number; data: ThreadCard[] };
+}
+
+export async function search(q: string): Promise<SearchResults> {
+  const { data } = await api.get<SearchResults>("/search", { params: { q } });
+  return data;
+}
+
+// ---------- Dashboard community widgets ----------
+export interface DashboardCommunity {
+  ownedServers: {
+    id: string;
+    slug: string;
+    name: string;
+    monitoring: string;
+    playerCount: number | null;
+    maxPlayers: number | null;
+    lifecycle: string;
+    verification: string;
+  }[];
+  following: { slug: string; name: string; monitoring: string }[];
+  followedNews: { id: string; title: string; server: { slug: string; name: string } | null; publishedAt: string }[];
+  updates: { id: string; version: string; title: string; serverSlug: string | null; publishedAt: string }[];
+  discussions: { id: string; title: string; replyCount: number; lastPostAt: string | null; state: string }[];
+  unreadNotifications: number;
+}
+
+export async function fetchDashboardCommunity(): Promise<DashboardCommunity> {
+  const { data } = await api.get<DashboardCommunity>("/dashboard/community");
+  return data;
+}
+
+// ---------- Admin: servers / reports / community moderation ----------
+export interface AdminServerRow extends ServerCard {
+  host: string | null;
+  port: number | null;
+  ownerId: string;
+  showStats: boolean;
+  showStaff: boolean;
+  showResources: boolean;
+  showCommunity: boolean;
+  showTechStack: boolean;
+  verificationNote: string | null;
+  owner?: { id: string; username: string | null; displayName: string | null } | null;
+}
+
+export async function fetchAdminServers(lifecycle?: string, page = 1) {
+  const { data } = await api.get<Paginated<AdminServerRow>>("/admin/servers", {
+    params: { ...(lifecycle ? { lifecycle } : {}), page },
+  });
+  return data;
+}
+
+export async function fetchAdminServerDetail(id: string) {
+  const { data } = await api.get<{
+    server: AdminServerRow;
+    owner: { id: string; username: string; email: string; displayName: string | null } | null;
+    counts: { followers: number; reviews: number; resources: number };
+    recentNews: ServerNewsItem[];
+  }>(`/admin/servers/${id}`);
+  return data;
+}
+
+export async function adminServerLifecycle(id: string, lifecycle: string, reason?: string) {
+  const { data } = await api.patch(`/admin/servers/${id}/status`, { lifecycle, ...(reason ? { reason } : {}) });
+  return data;
+}
+
+export async function adminServerVerification(id: string, verification: string, note?: string) {
+  const { data } = await api.patch(`/admin/servers/${id}/verification`, { verification, ...(note ? { note } : {}) });
+  return data;
+}
+
+export interface AdminReport {
+  id: string;
+  targetType: string;
+  targetId: string;
+  reason: string;
+  status: string;
+  resolution: string | null;
+  createdAt: string;
+  reporter?: { id: string; username: string | null; displayName: string | null } | null;
+}
+
+export async function fetchAdminReports(status: string = "OPEN") {
+  const { data } = await api.get<{ data: AdminReport[] }>("/admin/reports", {
+    params: { status },
+  });
+  return data;
+}
+
+export async function adminResolveReport(id: string, status: "RESOLVED" | "DISMISSED", resolution?: string) {
+  const { data } = await api.post(`/admin/reports/${id}/resolve`, { status, ...(resolution ? { resolution } : {}) });
+  return data;
+}
+
+export async function adminModerateNews(id: string, status: "DRAFT" | "PUBLISHED", reason?: string) {
+  const { data } = await api.patch(`/admin/server-news/${id}`, { status, ...(reason ? { reason } : {}) });
+  return data;
+}
+
+export async function adminModerateServerReview(id: string, status: "VISIBLE" | "HIDDEN", reason?: string) {
+  const { data } = await api.patch(`/admin/server-reviews/${id}`, { status, ...(reason ? { reason } : {}) });
+  return data;
+}
+
+export async function adminModerateThread(id: string, state?: string, pinned?: boolean) {
+  const { data } = await api.patch(`/admin/forum-threads/${id}`, {
+    ...(state ? { state } : {}),
+    ...(pinned !== undefined ? { pinned } : {}),
+  });
+  return data;
+}
