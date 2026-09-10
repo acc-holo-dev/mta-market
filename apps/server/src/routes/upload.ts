@@ -4,11 +4,108 @@ import { authenticate, AuthRequest } from "../lib/auth";
 import { standardRateLimit, strictRateLimit } from "../lib/rateLimit";
 import { upload, getFileUrl, deleteFile } from "../lib/upload";
 import { uploadToS3, S3_ENABLED, getS3PublicUrl } from "../lib/s3";
+import {
+  MEDIA_MAX_BYTES,
+  validateImageBuffer,
+  mediaFilename,
+  sniffImageType,
+} from "../lib/media";
+import multer from "multer";
+import path from "path";
 import crypto from "crypto";
 import fs from "fs";
 import { reqLog } from "../middleware/requestId";
 
 const router: Router = Router();
+
+// PLAN-003 A-005: media uploads get their own multer instance — strict size
+// limit and image-only storage naming (opaque media-<hex><ext> names, so a
+// media upload can never shadow an artifact file).
+const mediaUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, process.env.UPLOAD_DIR || "./uploads"),
+    filename: (_req, _file, cb) => {
+      // Temporary name during validation; renamed to the opaque media- name
+      // after magic-byte validation passes.
+      cb(null, `tmp-${crypto.randomBytes(16).toString("hex")}`);
+    },
+  }),
+  limits: { fileSize: MEDIA_MAX_BYTES },
+});
+
+/**
+ * POST /upload/media — upload a cover/screenshot image (authenticated).
+ * PLAN-003 A-002/A-005: magic-byte sniffed validation, opaque naming,
+ * 5 MB limit. Returns the public URL used by the resource media endpoints.
+ */
+router.post(
+  "/media",
+  authenticate,
+  strictRateLimit,
+  mediaUpload.single("file"),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      if (!req.file) {
+        res.status(400).json({ error: "No file provided" });
+        return;
+      }
+
+      const buffer = fs.readFileSync(req.file.path);
+      const rejection = validateImageBuffer(buffer, req.file.mimetype, req.file.originalname);
+      if (rejection) {
+        deleteFile(req.file.filename);
+        res.status(400).json({ error: rejection });
+        return;
+      }
+
+      const sniffed = sniffImageType(buffer);
+      if (!sniffed) {
+        deleteFile(req.file.filename);
+        res.status(400).json({ error: "Unsupported image format" });
+        return;
+      }
+
+      if (S3_ENABLED) {
+        const fileKey = await uploadToS3({
+          buffer,
+          originalName: req.file.originalname,
+          mimeType: sniffed.mime,
+          folder: "media",
+        });
+        deleteFile(req.file.filename);
+        res.status(201).json({
+          url: getS3PublicUrl(fileKey),
+          mimeType: sniffed.mime,
+          sizeBytes: buffer.length,
+          storage: "s3",
+        });
+        return;
+      }
+
+      // Local storage: atomically rename the validated temp file to the
+      // opaque media name (only validated images get media- names).
+      const name = mediaFilename(sniffed.extension);
+      const target = path.resolve(process.env.UPLOAD_DIR || "./uploads", name);
+      fs.renameSync(req.file.path, target);
+
+      res.status(201).json({
+        url: `/media/${name}`,
+        mimeType: sniffed.mime,
+        sizeBytes: buffer.length,
+        storage: "local",
+      });
+    } catch (error) {
+      reqLog(req).error("media_upload_failed", { error });
+
+      // Cleanup the temp upload file when it still exists.
+      if (req.file) {
+        deleteFile(req.file.filename);
+      }
+
+      res.status(500).json({ error: "Failed to upload media" });
+    }
+  }
+);
 
 // POST /upload/resource - Upload resource file (authenticated)
 router.post(

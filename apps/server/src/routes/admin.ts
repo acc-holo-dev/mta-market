@@ -213,6 +213,95 @@ router.patch(
   }
 );
 
+// PLAN-003 M-001/M-002: полноценный product presentation для модерации —
+// администратор видит ровно то, что увидит покупатель: cover, screenshots,
+// описание, продавца, цену, тип, версии с artifact-информацией и статусом
+// валидации. State machine не меняется (M-003).
+router.get(
+  "/resources/:id",
+  authenticate,
+  adminOnly,
+  validateCuid("id"),
+  standardRateLimit,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const resourceId = req.params.id as string;
+
+      const resource = await db.orm.public.Resource.where({ id: resourceId }).first();
+      if (!resource) {
+        res.status(404).json({ error: "Resource not found" });
+        return;
+      }
+
+      const [seller, profile, versions, media, reviewAgg] = await Promise.all([
+        db.orm.public.User.where({ id: resource.sellerId })
+          .select("username", "displayName", "avatar")
+          .first(),
+        db.orm.public.SellerProfile.where({ userId: resource.sellerId })
+          .select("displayName", "supportInfo")
+          .first(),
+        db.orm.public.ResourceVersion.where({ resourceId: resource.id })
+          .orderBy((v: any) => v.publishedAt.desc())
+          .all(),
+        db.orm.public.ResourceMedia
+          .where({ resourceId: resource.id })
+          .orderBy((m: any) => m.position.asc())
+          .all(),
+        db.orm.public.Review.where({ resourceId: resource.id }).aggregate((a: any) => ({
+          total: a.count(),
+          averageRating: a.avg("rating"),
+        })),
+      ]);
+
+      // Artifact + validation status per version (M-002: что именно публикуем).
+      const versionDetails = await Promise.all(
+        (versions as any[]).map(async (v) => {
+          const [signature, run] = await Promise.all([
+            db.orm.public.ArtifactSignature.where({ versionId: v.id })
+              .select("artifactHash", "manifestHash", "signedAt")
+              .first(),
+            getSandboxRun(v.id),
+          ]);
+          const { fileChecksum: _c, ...rest } = v;
+          return {
+            ...rest,
+            artifactHash: v.fileChecksum ? v.fileChecksum.slice(0, 16) + "…" : null,
+            signed: Boolean(signature),
+            signedAt: signature?.signedAt ?? null,
+            validationStatus: run?.status ?? "PENDING",
+          };
+        })
+      );
+
+      res.json({
+        resource: {
+          ...resource,
+          seller: seller
+            ? {
+                username: seller.username,
+                displayName: profile?.displayName || seller.displayName || seller.username,
+                avatar: seller.avatar,
+              }
+            : null,
+          rating:
+            reviewAgg && Number(reviewAgg.total) > 0
+              ? Math.round(Number(reviewAgg.averageRating) * 10) / 10
+              : null,
+          reviewCount: reviewAgg ? Number(reviewAgg.total) : 0,
+        },
+        cover: resource.coverUrl,
+        screenshots: media
+          .filter((m: any) => m.kind === "SCREENSHOT")
+          .map((m: any) => ({ id: m.id, url: m.url, position: Number(m.position ?? 0) })),
+        versions: versionDetails,
+      });
+    } catch (error) {
+      reqLog(req).error("admin_resource_detail_failed", { error });
+      res.status(500).json({ error: "Failed to fetch resource detail" });
+    }
+  }
+);
+
 // GET /admin/users - List all users
 router.get(
   "/users",

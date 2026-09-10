@@ -9,6 +9,7 @@ import {
   fetchAdminStats,
   fetchAdminResources,
   adminSetResourceStatus,
+  fetchAdminResourceDetail,
   fetchModerationEvents,
   fetchAdminSellers,
   adminSellerAction,
@@ -18,6 +19,7 @@ import {
   postDisputeMessage,
   adminYankVersion,
   adminVersionCompatibility,
+  formatRub,
   getErrorMessage,
   type Resource,
   type Dispute,
@@ -29,6 +31,8 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Tabs } from "@/components/ui/Tabs";
 import { StatusBadge, statusLabel } from "@/components/ui/StatusBadge";
+import { ResourceCover } from "@/components/ui/ResourceCover";
+import { Gallery } from "@/components/ui/Gallery";
 import { MessageThread } from "@/components/MessageThread";
 import { LoadingSpinner, EmptyState } from "@/components/ui/States";
 import { typeLabel, formatDate } from "@/lib/domain";
@@ -142,12 +146,13 @@ function StatsCards() {
   );
 }
 
-// ---------- Moderation queue (I-003/I-004/I-005) ----------
+// ---------- Moderation queue (I-003/I-004/I-005 + PLAN-003 M-001/M-002) ----------
 function ModerationSection() {
   const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const [reasons, setReasons] = useState<Record<string, string>>({});
   const [eventsFor, setEventsFor] = useState<string | null>(null);
+  const [detailFor, setDetailFor] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["admin-resources", "PENDING_REVIEW"],
@@ -162,6 +167,7 @@ function ModerationSection() {
       qc.invalidateQueries({ queryKey: ["admin-resources"] });
       qc.invalidateQueries({ queryKey: ["admin-stats"] });
       qc.invalidateQueries({ queryKey: ["moderation-events"] });
+      setDetailFor(null);
     },
     onError: (e) => setError(getErrorMessage(e, "Не удалось изменить статус")),
   });
@@ -172,7 +178,7 @@ function ModerationSection() {
     <Card>
       <CardHeader>
         <CardTitle>Очередь модерации</CardTitle>
-        <CardDescription>Ресурсы, ожидающие решения</CardDescription>
+        <CardDescription>Полная продуктовая карточка каждого ресурса</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {error ? <p className="text-sm text-bad">{error}</p> : null}
@@ -191,32 +197,38 @@ function ModerationSection() {
               className="p-4 rounded-card border border-line bg-surface-raised space-y-3"
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="font-medium">{r.title}</p>
-                  <p className="text-sm text-content-secondary">
-                    {typeLabel(r.type)}{" "}
-                    <span className="font-mono text-[11px] text-content-muted">
-                      {r.type}
-                    </span>{" "}
-                    · /{r.slug} ·{" "}
-                    {r.price === 0 ? "бесплатно" : "платный"} · отправлен{" "}
-                    {formatDate(r.createdAt)}
-                  </p>
+                <div className="flex items-start gap-3 min-w-0">
+                  {/* M-001/M-002: модератор видит тот же product view, что и покупатель */}
+                  <div className="w-28 flex-shrink-0">
+                    <ResourceCover
+                      coverUrl={r.coverUrl}
+                      type={r.type}
+                      title={r.title}
+                      className="aspect-video rounded-md border border-line"
+                    />
+                  </div>
+                  <div>
+                    <p className="font-medium">{r.title}</p>
+                    <p className="text-sm text-content-secondary">
+                      {typeLabel(r.type)} · /{r.slug} ·{" "}
+                      {r.price === 0 ? "бесплатно" : formatRub(r.price)} · отправлен{" "}
+                      {formatDate(r.createdAt)}
+                    </p>
+                    {r.seller?.displayName || r.seller?.username ? (
+                      <p className="text-xs text-content-muted">
+                        Продавец: {r.seller?.displayName || r.seller?.username}
+                      </p>
+                    ) : null}
+                    <p className="mt-1 text-sm text-content-secondary line-clamp-2 max-w-xl">
+                      {r.description}
+                    </p>
+                  </div>
                 </div>
                 <StatusBadge status={r.status} />
               </div>
-              <Input
-                value={reasons[r.id] ?? ""}
-                onChange={(e) => setReasons((m) => ({ ...m, [r.id]: e.target.value }))}
-                placeholder="Причина (для отклонения)"
-                aria-label={`Причина отклонения для ${r.title}`}
-              />
+
               <div className="flex gap-2 flex-wrap">
-                <Button
-                  size="sm"
-                  disabled={statusMutation.isPending}
-                  onClick={() => statusMutation.mutate({ id: r.id, status: "PUBLISHED" })}
-                >
+                <Button size="sm" disabled={statusMutation.isPending} onClick={() => statusMutation.mutate({ id: r.id, status: "PUBLISHED" })}>
                   Опубликовать
                 </Button>
                 <Button
@@ -233,20 +245,113 @@ function ModerationSection() {
                 >
                   Отклонить
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setEventsFor(eventsFor === r.id ? null : r.id)}
-                >
+                <Button variant="ghost" size="sm" onClick={() => setDetailFor(detailFor === r.id ? null : r.id)}>
+                  {detailFor === r.id ? "Скрыть товар" : "Проверить товар"}
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setEventsFor(eventsFor === r.id ? null : r.id)}>
                   История модерации
                 </Button>
               </div>
+
+              <Input
+                value={reasons[r.id] ?? ""}
+                onChange={(e) => setReasons((m) => ({ ...m, [r.id]: e.target.value }))}
+                placeholder="Причина (для отклонения)"
+                aria-label={`Причина отклонения для ${r.title}`}
+              />
+
+              {detailFor === r.id ? (
+                <ModerationProductView resourceId={r.id} />
+              ) : null}
               {eventsFor === r.id ? <ModerationEvents resourceId={r.id} /> : null}
             </div>
           ))
         )}
       </CardContent>
     </Card>
+  );
+}
+
+// M-001/M-002: почти та же product presentation, которую увидит buyer —
+// cover, screenshots, описание, версии с artifact/validation статусом.
+function ModerationProductView({ resourceId }: { resourceId: string }) {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["admin-resource-detail", resourceId],
+    queryFn: () => fetchAdminResourceDetail(resourceId),
+  });
+
+  if (isLoading) return <LoadingSpinner label="Загрузка карточки товара..." className="py-6" />;
+  if (error || !data)
+    return (
+      <p className="text-sm text-bad" role="alert">
+        Не удалось загрузить карточку товара.
+      </p>
+    );
+
+  const gallery = [
+    ...(data.cover ? [{ id: "cover", url: data.cover, alt: "Обложка ресурса" }] : []),
+    ...data.screenshots.map((s) => ({ id: s.id, url: s.url, alt: "Скриншот ресурса" })),
+  ];
+
+  return (
+    <div className="rounded-card border border-line bg-surface p-4 space-y-5">
+      <p className="text-xs font-semibold uppercase tracking-wide text-content-muted">
+        Товар так, как его увидит покупатель
+      </p>
+
+      <div className="grid md:grid-cols-2 gap-4">
+        <div>
+          {gallery.length > 0 ? (
+            <Gallery images={gallery} aspect="aspect-video" />
+          ) : (
+            <div className="rounded-card border border-dashed border-line p-6 text-center text-sm text-content-muted">
+              Медиа не загружено — покупатель увидит текстовую заглушку.
+            </div>
+          )}
+        </div>
+        <div className="space-y-2 text-sm">
+          <p className="text-lg font-semibold">{data.resource.title}</p>
+          <p className="text-content-secondary">
+            {typeLabel(data.resource.type)} · {data.resource.price === 0 ? "Бесплатно" : formatRub(data.resource.price)}
+          </p>
+          {data.resource.seller ? (
+            <p className="text-content-secondary">
+              Продавец: {data.resource.seller.displayName || data.resource.seller.username}
+            </p>
+          ) : null}
+          <p className="text-content-secondary whitespace-pre-line line-clamp-6">
+            {data.resource.description}
+          </p>
+        </div>
+      </div>
+
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-content-muted mb-2">
+          Версии и артефакты
+        </p>
+        {data.versions.length === 0 ? (
+          <p className="text-sm text-content-muted">Версии не загружены.</p>
+        ) : (
+          <ul className="space-y-2">
+            {data.versions.map((v) => (
+              <li key={v.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm rounded-md border border-line p-2.5">
+                <span className="font-semibold">v{v.version}</span>
+                <StatusBadge status={v.releaseStatus === "PUBLISHED" ? "COMPLETED" : v.releaseStatus === "CANDIDATE" ? "DRAFT" : v.releaseStatus} />
+                <span className="text-xs text-content-secondary">
+                  {(v.fileSize / 1024).toFixed(1)} КБ
+                </span>
+                <span className="text-xs text-content-secondary">
+                  {v.signed ? "подписан" : "без подписи"} · проверка: {v.validationStatus}
+                </span>
+                {v.changelog ? (
+                  <span className="basis-full text-xs text-content-muted">{v.changelog}</span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
   );
 }
 

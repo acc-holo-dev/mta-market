@@ -27,6 +27,7 @@ import { Button } from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Input";
 import { StatusBadge, statusLabel } from "@/components/ui/StatusBadge";
 import { LoadingSpinner, EmptyState, ErrorState } from "@/components/ui/States";
+import { MediaEditorButton } from "@/components/seller/MediaEditorButton";
 import { Store, Package, Wrench, Plus, Wallet, Clock, Send, FileEdit } from "lucide-react";
 import Link from "next/link";
 import { typeLabel, formatDate } from "@/lib/domain";
@@ -38,6 +39,8 @@ export default function SellerPage() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      // accessToken уже в памяти после логина — не делаем лишний /auth/refresh
+      if (isAuthenticated()) return;
       const ok = await bootstrapSession();
       if (!cancelled && !ok) router.push("/auth/login");
     })();
@@ -353,6 +356,10 @@ function MyResourcesSection() {
                 </div>
                 <div className="flex items-center gap-2 flex-wrap justify-end">
                   <StatusBadge status={r.status} />
+                  {/* B-006: медиа можно менять до публикации */}
+                  {r.status === "DRAFT" || r.status === "PENDING_REVIEW" ? (
+                    <MediaEditorButton resource={r} />
+                  ) : null}
                   {r.status === "DRAFT" ? (
                     <Button
                       variant="outline"

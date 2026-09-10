@@ -1,4 +1,4 @@
-// E-003: guided resource creation wizard (4 steps).
+// E-003: guided resource creation wizard (PLAN-003: 5 steps).
 //
 // Flow aligned with the server contract (apps/server/src/routes):
 //   Step 1 — basic info (title, description >= 10 chars, auto-suggested slug).
@@ -10,8 +10,11 @@
 //            POST /resources/:slug/versions with the upload response fields
 //            {version, changelog, fileUrl, fileSize, fileChecksum}. A 422
 //            shows the server's validation result inline. Skippable.
-//   Step 4 — preview + "Завершить": PATCH /resources/:slug {status:
-//            "PENDING_REVIEW"} submits the listing for moderation.
+//   Step 4 — PLAN-003 B-001..B-004: Presentation (cover + screenshots) via
+//            POST /upload/media + resource media endpoints. Optional.
+//   Step 5 — PLAN-003 B-005: product-like preview + "Завершить":
+//            PATCH /resources/:slug {status: "PENDING_REVIEW"} submits the
+//            listing for moderation.
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -35,10 +38,12 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { StatusBadge, ErrorText } from "@/components/ui/StatusBadge";
+import { MediaManager } from "@/components/seller/MediaManager";
+import { ResourceCard } from "@/components/ui/ResourceCard";
 import { ArrowLeft, ArrowRight, Check, FileUp, Rocket } from "lucide-react";
 
 const RESOURCE_TYPES = ["SCRIPT", "MAP", "MODEL", "TEXTURE", "SOUND", "GAMEMODE"] as const;
-const STEPS = ["Основное", "Тип и цена", "Файл и версия", "Проверка"];
+const STEPS = ["Основное", "Тип и цена", "Файл и версия", "Оформление", "Проверка"];
 
 // Server slug rule: ^[a-z0-9-]+$
 const TRANSLIT: Record<string, string> = {
@@ -63,18 +68,20 @@ const VERSION_RE = /^\d+\.\d+\.\d+$/;
 
 export default function NewResourcePage() {
   const router = useRouter();
-  const { accessToken, isAuthenticated } = useAuthStore();
+  const { accessToken, isAuthenticated, user } = useAuthStore();
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      // accessToken уже в памяти после логина — не делаем лишний /auth/refresh
+      if (isAuthenticated()) return;
       const ok = await bootstrapSession();
       if (!cancelled && !ok) router.push("/auth/login");
     })();
     return () => {
       cancelled = true;
     };
-  }, [router]);
+  }, [router, isAuthenticated]);
 
   // Wizard state
   const [step, setStep] = useState(0);
@@ -91,6 +98,9 @@ export default function NewResourcePage() {
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [validationIssues, setValidationIssues] = useState<string[] | null>(null);
+  // PLAN-003 B: media state (server-persisted through MediaManager)
+  const [coverUrl, setCoverUrl] = useState<string | null>(null);
+  const [screenshots, setScreenshots] = useState<{ id: string; url: string; position: number }[]>([]);
 
   const qc = useQueryClient();
   const suggestedSlug = useMemo(() => slugify(title), [title]);
@@ -130,7 +140,7 @@ export default function NewResourcePage() {
     onSuccess: () => {
       setError(null);
       setValidationIssues(null);
-      setStep(3);
+      setStep(3); // Presentation step (PLAN-003 B-001)
     },
     onError: (e) => {
       // 422: server-side artifact validation result
@@ -468,13 +478,73 @@ export default function NewResourcePage() {
           {step === 3 ? (
             <>
               <CardHeader className="p-0">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Rocket className="h-5 w-5 text-blue-600" /> Шаг 4. Проверка и отправка
-                </CardTitle>
+                <CardTitle className="text-lg">Шаг 4. Оформление</CardTitle>
                 <CardDescription>
-                  Проверьте данные и отправьте ресурс на модерацию.
+                  Обложка и скриншоты показывают товар покупателям. Их можно добавить позже в
+                  кабинете продавца — ресурс без обложки получит аккуратную текстовую заглушку.
                 </CardDescription>
               </CardHeader>
+
+              {draft ? (
+                <MediaManager
+                  slug={draft.slug}
+                  initialCover={coverUrl}
+                  initialScreenshots={screenshots}
+                  onChange={({ cover, screenshots: shots }) => {
+                    setCoverUrl(cover);
+                    setScreenshots(shots);
+                  }}
+                />
+              ) : null}
+
+              {error ? <ErrorText message={error} /> : null}
+
+              <div className="flex justify-between">
+                <Button variant="ghost" onClick={() => setStep(2)}>
+                  <ArrowLeft className="mr-2 h-4 w-4" /> Назад
+                </Button>
+                <Button onClick={() => setStep(4)}>
+                  Далее <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </div>
+            </>
+          ) : null}
+
+          {step === 4 ? (
+            <>
+              <CardHeader className="p-0">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Rocket className="h-5 w-5 text-blue-600" /> Шаг 5. Проверка и отправка
+                </CardTitle>
+                <CardDescription>
+                  Так покупатель увидит ваш ресурс на Маркетплейсе.
+                </CardDescription>
+              </CardHeader>
+
+              {/* B-005: preview максимально похож на реальную Resource Card */}
+              <div className="rounded-card border border-line p-4 bg-surface-raised">
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-content-muted">
+                  Так это выглядит в каталоге
+                </p>
+                <div className="max-w-xs">
+                  <ResourceCard
+                    resource={{
+                      id: "preview",
+                      slug: effectiveSlug,
+                      title: title.trim() || "Без названия",
+                      description: description.trim(),
+                      type,
+                      status: "DRAFT",
+                      price: priceKopecks,
+                      createdAt: new Date().toISOString(),
+                      coverUrl,
+                      seller: { username: user?.username ?? null, displayName: user?.displayName ?? null, avatar: user?.avatar ?? null },
+                      rating: null,
+                      reviewCount: 0,
+                    }}
+                  />
+                </div>
+              </div>
 
               <dl className="space-y-2 text-sm">
                 <SummaryRow label="Название" value={title} />
@@ -494,6 +564,11 @@ export default function NewResourcePage() {
                 />
                 <SummaryRow label="Версия" value={upload ? version : "—"} />
                 {changelog.trim() ? <SummaryRow label="Изменения" value={changelog} /> : null}
+                <SummaryRow
+                  label="Обложка"
+                  value={coverUrl ? "Загружена" : "Не задана (текстовая заглушка)"}
+                />
+                <SummaryRow label="Скриншоты" value={String(screenshots.length)} />
               </dl>
 
               <div className="p-3 rounded-md bg-blue-50 dark:bg-blue-900/20 text-sm text-blue-700 dark:text-blue-300">
@@ -504,7 +579,7 @@ export default function NewResourcePage() {
               {error ? <ErrorText message={error} /> : null}
 
               <div className="flex justify-between">
-                <Button variant="ghost" disabled={submitForReview.isPending} onClick={() => setStep(2)}>
+                <Button variant="ghost" disabled={submitForReview.isPending} onClick={() => setStep(3)}>
                   <ArrowLeft className="mr-2 h-4 w-4" /> Назад
                 </Button>
                 <Button

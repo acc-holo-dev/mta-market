@@ -17,10 +17,12 @@ import drmRoutes from "./routes/drm";
 import drmV2Routes from "./routes/drm/v2";
 import purchasesRoutes from "./routes/purchases";
 import uploadRoutes from "./routes/upload";
+import mediaRoutes from "./routes/media";
 import paymentsRoutes from "./routes/payments";
 import adminRoutes from "./routes/admin";
 import servicesRoutes from "./routes/services";
 import sellerRoutes from "./routes/seller";
+import sellersRoutes from "./routes/sellers";
 import disputesRoutes from "./routes/disputes";
 import { standardRateLimit } from "./lib/rateLimit";
 
@@ -132,9 +134,14 @@ export function createApp(): Express {
   app.use("/drm", drmRoutes);
   app.use("/purchases", purchasesRoutes);
   app.use("/upload", uploadRoutes);
+  // PLAN-003 A-002: public media serving (covers/screenshots). Mounted before
+  // the JSON 404 handler; read-only, serves only media-<hex> image names.
+  app.use("/media", mediaRoutes);
   app.use("/payments", paymentsRoutes);
   app.use("/services", servicesRoutes);
   app.use("/seller", sellerRoutes);
+  // PLAN-003 E-001: public seller storefront (читаемый username в URL).
+  app.use("/sellers", sellersRoutes);
   app.use("/disputes", disputesRoutes);
   app.use("/admin", adminRoutes);
 

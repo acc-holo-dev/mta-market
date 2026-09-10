@@ -120,6 +120,10 @@
       "model": "ResourceDependency",
       "namespace": "public"
     },
+    "resourceMedia": {
+      "model": "ResourceMedia",
+      "namespace": "public"
+    },
     "resourceVersion": {
       "model": "ResourceVersion",
       "namespace": "public"
@@ -4907,6 +4911,13 @@
           },
           "Resource": {
             "fields": {
+              "coverUrl": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
               "createdAt": {
                 "nullable": false,
                 "type": {
@@ -4991,6 +5002,21 @@
               }
             },
             "relations": {
+              "media": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "resourceId"
+                  ]
+                },
+                "to": {
+                  "model": "ResourceMedia",
+                  "namespace": "public"
+                }
+              },
               "moderationEvents": {
                 "cardinality": "1:N",
                 "on": {
@@ -5054,6 +5080,9 @@
             },
             "storage": {
               "fields": {
+                "coverUrl": {
+                  "column": "coverUrl"
+                },
                 "createdAt": {
                   "column": "createdAt"
                 },
@@ -5174,6 +5203,113 @@
               },
               "namespaceId": "public",
               "table": "resourceDependency"
+            }
+          },
+          "ResourceMedia": {
+            "fields": {
+              "createdAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "kind": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "mimeType": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "position": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/int4@1",
+                  "kind": "scalar"
+                }
+              },
+              "resourceId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "sizeBytes": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/int4@1",
+                  "kind": "scalar"
+                }
+              },
+              "url": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {
+              "resource": {
+                "cardinality": "N:1",
+                "on": {
+                  "localFields": [
+                    "resourceId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "Resource",
+                  "namespace": "public"
+                }
+              }
+            },
+            "storage": {
+              "fields": {
+                "createdAt": {
+                  "column": "createdAt"
+                },
+                "id": {
+                  "column": "id"
+                },
+                "kind": {
+                  "column": "kind"
+                },
+                "mimeType": {
+                  "column": "mimeType"
+                },
+                "position": {
+                  "column": "position"
+                },
+                "resourceId": {
+                  "column": "resourceId"
+                },
+                "sizeBytes": {
+                  "column": "sizeBytes"
+                },
+                "url": {
+                  "column": "url"
+                }
+              },
+              "namespaceId": "public",
+              "table": "resourceMedia"
             }
           },
           "ResourceVersion": {
@@ -10944,6 +11080,11 @@
                 }
               ],
               "columns": {
+                "coverUrl": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
                 "createdAt": {
                   "codecId": "pg/timestamptz-string@1",
                   "default": {
@@ -11152,6 +11293,102 @@
                   ]
                 }
               ]
+            },
+            "resourceMedia": {
+              "columns": {
+                "createdAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "default": {
+                    "expression": "now()",
+                    "kind": "function"
+                  },
+                  "nativeType": "timestamptz",
+                  "nullable": false
+                },
+                "id": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "kind": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "mimeType": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "position": {
+                  "codecId": "pg/int4@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": 0
+                  },
+                  "nativeType": "int4",
+                  "nullable": false
+                },
+                "resourceId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "sizeBytes": {
+                  "codecId": "pg/int4@1",
+                  "nativeType": "int4",
+                  "nullable": true
+                },
+                "url": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                }
+              },
+              "foreignKeys": [
+                {
+                  "onDelete": "cascade",
+                  "source": {
+                    "columns": [
+                      "resourceId"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "resourceMedia"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "resource"
+                  }
+                }
+              ],
+              "indexes": [
+                {
+                  "columns": [
+                    "resourceId"
+                  ],
+                  "name": "resourceMedia_resourceId_idx_72964925",
+                  "prefix": "resourceMedia_resourceId_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "resourceId",
+                    "kind"
+                  ],
+                  "name": "resourceMedia_resourceId_kind_idx_bf2cb113",
+                  "prefix": "resourceMedia_resourceId_kind_idx",
+                  "unique": false
+                }
+              ],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
+              "uniques": []
             },
             "resourceVersion": {
               "checks": [
@@ -13156,10 +13393,10 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "aefd63a960222650779340cf9b29ee52e7b24ec73b59d10cb37f494167eb1a66"
+    "storageHash": "771428b323a4abfc7b091f7fea5490a2f32c119cec9bfe5f5eb53f63b4227be1"
   },
   "execution": {
-    "executionHash": "114b117d219138b53cf3babea0b643abc467e54efa3004f6f3990bb476bbcd9f",
+    "executionHash": "3f48ec24fd9d6ebb0ea88e419c843db76a803b68adc2466648672bc0dbfdab93",
     "mutations": {
       "defaults": [
         {
@@ -13539,6 +13776,17 @@
             "column": "id",
             "namespace": "public",
             "table": "resourceDependency"
+          }
+        },
+        {
+          "onCreate": {
+            "id": "uuidv4",
+            "kind": "generator"
+          },
+          "ref": {
+            "column": "id",
+            "namespace": "public",
+            "table": "resourceMedia"
           }
         },
         {

@@ -110,17 +110,39 @@ model Resource {
   type        ResourceType
   status      ResourceStatus @default(DRAFT)
   price       Int
+  // PLAN-003 A-002: one main cover per resource. Nullable — existing
+  // resources without media keep working with the typographic fallback.
+  coverUrl    String?
   createdAt   TimestamptzString @default(now())
   updatedAt   temporal.updatedAtString()
 
   seller     User              @relation(fields: [sellerId], references: [id], onDelete: Cascade)
   versions   ResourceVersion[]
   reviews    Review[]
+  media      ResourceMedia[]
   moderationEvents ModerationEvent[]
 
   @@index([sellerId])
   @@index([status])
   @@index([slug])
+}
+
+// PLAN-003 A-003: resource media (screenshots). Cover lives on Resource.coverUrl;
+// this table holds the screenshot collection with a stable manual order.
+// kind: "SCREENSHOT" (extensible without a dedicated enum for now).
+model ResourceMedia {
+  id         String   @id @default(uuid())
+  resourceId String
+  kind       String
+  url        String
+  mimeType   String?
+  sizeBytes  Int?
+  position   Int      @default(0)
+  createdAt  TimestamptzString @default(now())
+
+  resource Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@index([resourceId, kind])
 }
 
 enum ServiceType {

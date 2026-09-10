@@ -180,7 +180,10 @@ test.describe.serial("PLAN-001 full product cycle", () => {
     await page.getByRole("button", { name: "Загрузить и продолжить" }).click();
     await expect(page.getByText(/Загружен: paid-/)).toBeVisible({ timeout: 20_000 });
 
-    // Step 4: final "Готово" -> submit for moderation (E-006).
+    // Step 4 (PLAN-003): Presentation (оформление) — идём дальше без медиа.
+    await page.getByRole("button", { name: "Далее" }).click();
+
+    // Step 5 (PLAN-003): preview + "Завершить" -> submit for moderation.
     await page.getByRole("button", { name: "Завершить" }).click();
     await expect(page.getByText("Ресурс отправлен на модерацию")).toBeVisible({
       timeout: 20_000,
@@ -231,9 +234,18 @@ test.describe.serial("PLAN-001 full product cycle", () => {
     // Moderation queue shows the submitted resource with metadata (F-001).
     const row = page.locator("div.border", { hasText: PAID_TITLE }).first();
     await expect(row).toBeVisible();
-    await expect(row.getByText("SCRIPT")).toBeVisible();
+    // Moderation queue shows the submitted resource with metadata (F-001);
+    // PLAN-003 K-005: человекочитаемый тип вместо raw enum.
+    // Карточка в очереди теперь содержит и мета-строку «Скрипт · …», и
+    // модальный product view — strict mode требует first().
+    await expect(row.getByText("Скрипт").first()).toBeVisible();
 
-    await row.getByRole("button", { name: "Опубликовать" }).click();
+    // Прошлые прогоны могут оставлять PENDING_REVIEW-ресурсы с тем же
+    // title-паттерном — публикаем строго в строке текущего RUN.
+    await row
+      .getByRole("button", { name: "Опубликовать" })
+      .first()
+      .click();
     await expect(page.getByText("Очередь пуста.")).toBeVisible({ timeout: 20_000 });
 
     // Moderation event was recorded (F-005).
@@ -248,7 +260,9 @@ test.describe.serial("PLAN-001 full product cycle", () => {
     await page.getByText(PAID_TITLE).first().click();
     await expect(page.getByRole("heading", { name: PAID_TITLE })).toBeVisible();
     await expect(page.getByText("20.00 ₽").first()).toBeVisible();
-    await expect(page.getByText("v1.0.0")).toBeVisible();
+    // PLAN-003 D-001: версия теперь показывается и в hero (бейдж), и в
+    // таймлайне версий — strict mode требует first().
+    await expect(page.getByText("v1.0.0").first()).toBeVisible();
   });
 
   test("admin rejects the free resource -> it is not published", async ({ page }) => {
@@ -263,6 +277,8 @@ test.describe.serial("PLAN-001 full product cycle", () => {
     const artifact = makeArtifact(`free-${RUN}.zip`, `free-${RUN}`);
     await page.locator("#res-file").setInputFiles(artifact);
     await page.getByRole("button", { name: "Загрузить и продолжить" }).click();
+    // PLAN-003: шаг «Оформление» между файлом и отправкой.
+    await page.getByRole("button", { name: "Далее" }).click();
     await page.getByRole("button", { name: "Завершить" }).click();
     await expect(page.getByText("Ресурс отправлен на модерацию")).toBeVisible();
 
@@ -271,7 +287,7 @@ test.describe.serial("PLAN-001 full product cycle", () => {
     const row = page.locator("div.border", { hasText: FREE_TITLE }).first();
     await expect(row).toBeVisible();
     await row.locator("input").fill("E2E reject: не проходит по критериям");
-    await row.getByRole("button", { name: "Отклонить" }).click();
+    await row.getByRole("button", { name: "Отклонить" }).first().click();
     await expect(page.getByText("Очередь пуста.")).toBeVisible({ timeout: 20_000 });
 
     // Reject does NOT publish: not in marketplace, not fetchable (F-004).

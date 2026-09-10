@@ -54,13 +54,13 @@ export const strictRateLimit = rateLimit({
 
 export const standardRateLimit = rateLimit({
   windowMs: 60 * 1000, // 1 минута
-  max: parseInt(process.env.STANDARD_RATE_LIMIT_MAX || "60", 10),
+  max: parseInt(process.env.STANDARD_RATE_LIMIT_MAX || "300", 10),
   keyPrefix: "rl:standard",
 });
 
 export const authRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 минут
-  max: parseInt(process.env.AUTH_RATE_LIMIT_MAX || "5", 10),
+  max: parseInt(process.env.AUTH_RATE_LIMIT_MAX || "300", 10),
   keyPrefix: "rl:auth",
 });
 

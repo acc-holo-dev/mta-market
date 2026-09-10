@@ -45,6 +45,8 @@ export default function AccountPage() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      // accessToken уже в памяти после логина — не делаем лишний /auth/refresh
+      if (isAuthenticated()) return;
       const ok = await bootstrapSession();
       if (!cancelled && !ok) router.push("/auth/login");
     })();

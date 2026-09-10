@@ -67,11 +67,12 @@ export const paginationSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
-// Query filters
+// Query filters (PLAN-003 T/U: единый resources query contract).
+// type — реальные domain types (G-001/H-002); price — free|paid (H-001);
+// sort — реально реализованные стратегии (I-001..I-004).
 export const resourceFiltersSchema = z.object({
-  type: z.enum(["GAMEMODE", "MAPS", "VEHICLES", "SCRIPTS", "TOOLS", "ASSETS", "OTHER"]).optional(),
-  minPrice: nonNegativeInt.optional(),
-  maxPrice: nonNegativeInt.optional(),
-  search: z.string().max(100).optional(),
-  sort: z.enum(["newest", "popular", "price_asc", "price_desc"]).optional(),
+  q: z.string().max(100).optional(),
+  type: z.enum(["SCRIPT", "MAP", "MODEL", "TEXTURE", "SOUND", "GAMEMODE"]).optional(),
+  price: z.enum(["free", "paid"]).optional(),
+  sort: z.enum(["newest", "rating", "price_asc", "price_desc", "popular"]).optional(),
 });

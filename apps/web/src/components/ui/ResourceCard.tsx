@@ -1,36 +1,29 @@
-// ResourceCard (PLAN-002 E-006): полноценная товарная карточка ресурса.
-// E-007: поле cover в backend пока отсутствует (задокументированный backend
-// gap) — используется типографический cover с типом ресурса, без фейковых
-// картинок.
+// ResourceCard (PLAN-002 E-006 → PLAN-003 C-001..C-005): полноценная товарная
+// карточка. Cover через общий ResourceCover (типографический fallback — C-004),
+// seller identity, тип, цена, рейтинг. Карточка полностью кликабельна (C-005):
+// один Link, keyboard focus, hover — без nested interactive элементов.
 import Link from "next/link";
 import type { Resource } from "@/lib/api-ext";
 import { Price } from "@/components/ui/Price";
 import { Rating } from "@/components/ui/Rating";
+import { ResourceCover } from "@/components/ui/ResourceCover";
 import { typeLabel } from "@/lib/domain";
 
-const TYPE_ABBR: Record<string, string> = {
-  SCRIPT: "SC",
-  MAP: "MP",
-  MODEL: "MD",
-  TEXTURE: "TX",
-  SOUND: "SN",
-  GAMEMODE: "GM",
-};
-
 export function ResourceCard({ resource }: { resource: Resource }) {
-  const abbr = TYPE_ABBR[resource.type] ?? resource.type.slice(0, 2).toUpperCase();
+  const sellerName = resource.seller?.displayName || resource.seller?.username || null;
 
   return (
     <Link
       href={`/resources/${resource.slug}`}
-      className="group block rounded-card border border-line bg-surface overflow-hidden transition-colors hover:border-line-strong hover:bg-surface-raised focus-visible:outline-none"
+      className="group block rounded-card border border-line bg-surface overflow-hidden transition-colors hover:border-line-strong hover:bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+      aria-label={`${resource.title} — ${typeLabel(resource.type)}`}
     >
-      {/* Typographic cover: честная заглушка без фейковых изображений */}
-      <div className="aspect-video bg-gradient-to-br from-accent-soft via-surface-raised to-surface flex items-center justify-center border-b border-line">
-        <span className="text-3xl font-black tracking-widest text-accent/70 select-none">
-          {abbr}
-        </span>
-      </div>
+      <ResourceCover
+        coverUrl={resource.coverUrl}
+        type={resource.type}
+        title={resource.title}
+        className="aspect-video border-b border-line"
+      />
 
       <div className="p-4 space-y-3">
         <div className="flex items-start justify-between gap-2">
@@ -49,12 +42,9 @@ export function ResourceCard({ resource }: { resource: Resource }) {
           <Rating value={resource.rating ?? null} count={resource.reviewCount ?? null} />
         </div>
 
-        {resource.seller ? (
+        {sellerName ? (
           <p className="text-xs text-content-muted truncate">
-            Продавец:{" "}
-            <span className="text-content-secondary">
-              {resource.seller.displayName || resource.seller.username || "—"}
-            </span>
+            Продавец: <span className="text-content-secondary">{sellerName}</span>
           </p>
         ) : null}
       </div>

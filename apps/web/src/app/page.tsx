@@ -1,53 +1,57 @@
-// Homepage (PLAN-002 D-001..D-004): marketplace-oriented, реальные данные API.
+// Homepage (PLAN-002 D-001..D-004 → PLAN-003 J-001..J-006): marketplace-
+// oriented, РЕАЛЬНЫЕ секции через агрегированный /resources/homepage:
+// Новинки (createdAt), Популярное (завершённые покупки), Бесплатные.
+// Каждая секция имеет «Смотреть всё» и ведёт в соответствующий state
+// Маркетплейса (J-005).
 "use client";
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { fetchResources, type Resource } from "@/lib/api-ext";
+import { fetchHomepage, type Resource } from "@/lib/api-ext";
 import { Button } from "@/components/ui/Button";
 import { ResourceCard } from "@/components/ui/ResourceCard";
 import { ResourceCardSkeleton } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/States";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { ArrowRight, Search, ShieldCheck, Sparkles, Store } from "lucide-react";
-import { useMemo } from "react";
 
 export default function HomePage() {
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ["resources", "home", 1],
-    queryFn: () => fetchResources(1, 12),
+    queryKey: ["resources", "homepage"],
+    queryFn: fetchHomepage,
   });
 
-  const resources: Resource[] = data?.data ?? [];
-
-  const newest = resources.slice(0, 4);
-  const popular = useMemo(
-    () =>
-      [...resources]
-        .filter((r) => r.rating != null)
-        .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
-        .slice(0, 4),
-    [resources]
-  );
-  const free = resources.filter((r) => r.price === 0).slice(0, 4);
-
-  const sections: { title: string; description: string; items: Resource[]; href?: string }[] = [
+  // J-001: секция New использует реальный createdAt (server-side ordering).
+  const sections: {
+    title: string;
+    description: string;
+    items: Resource[];
+    href: string;
+  }[] = [
     {
       title: "Новинки",
       description: "Свежие публикации, прошедшие модерацию",
-      items: newest,
+      items: data?.newest ?? [],
+      href: "/resources?sort=newest",
     },
     {
-      title: "Высокий рейтинг",
-      description: "Ресурсы с лучшими оценками покупателей",
-      items: popular,
+      title: "Популярное",
+      description: "Ресурсы, которые реально покупают",
+      items: data?.popular ?? [],
+      href: "/resources?sort=popular",
     },
     {
       title: "Бесплатные ресурсы",
       description: "Попробуйте качественные материалы без оплаты",
-      items: resources.filter((r) => r.price === 0),
+      items: data?.free ?? [],
+      href: "/resources?price=free",
     },
   ];
+
+  const isEmpty =
+    !isLoading &&
+    !error &&
+    (!data || (data.newest.length === 0 && data.popular.length === 0 && data.free.length === 0));
 
   return (
     <div>
@@ -111,7 +115,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Resource sections (D-003): реальные данные через существующий API */}
+      {/* Resource sections (J-001..J-003): реальные product sections */}
       <section className="mx-auto max-w-7xl px-4 py-12 space-y-12">
         {isLoading ? (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
@@ -121,7 +125,7 @@ export default function HomePage() {
           </div>
         ) : error ? (
           <ErrorState error={error} onRetry={() => refetch()} />
-        ) : resources.length === 0 ? (
+        ) : isEmpty ? (
           <div className="text-center py-16">
             <h2 className="text-2xl font-bold">Маркетплейс скоро наполнится</h2>
             <p className="mt-2 text-content-secondary max-w-xl mx-auto">
@@ -145,6 +149,15 @@ export default function HomePage() {
                   {section.items.slice(0, 4).map((r) => (
                     <ResourceCard key={r.id} resource={r} />
                   ))}
+                </div>
+                <div className="mt-5">
+                  <Link
+                    href={section.href}
+                    className="inline-flex items-center gap-1.5 text-sm font-medium text-accent-strong hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
+                  >
+                    Смотреть всё
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
                 </div>
               </div>
             ))

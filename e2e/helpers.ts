@@ -120,6 +120,70 @@ export function makeArtifact(name: string, marker: string) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// PLAN-003: валидная PNG-картинка (1×N горизонтальный градиент) как Playwright
+// file payload для загрузки обложек/скриншотов. Только Node built-ins.
+// ---------------------------------------------------------------------------
+function pngCrc32(buf: Buffer): number {
+  const table = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    table[n] = c >>> 0;
+  }
+  let crc = 0xffffffff;
+  for (const b of buf) crc = (crc >>> 8) ^ table[(crc ^ b) & 0xff];
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function pngChunk(type: string, data: Buffer): Buffer {
+  const len = Buffer.alloc(4);
+  len.writeUInt32BE(data.length, 0);
+  const typeAndData = Buffer.concat([Buffer.from(type, "ascii"), data]);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(pngCrc32(typeAndData), 0);
+  return Buffer.concat([len, typeAndData, crc]);
+}
+
+/** Настоящий PNG (8-bit RGBA) с градиентом — проходит magic-byte валидацию. */
+export function makeMediaPng(seed: string, width = 320, height = 180): { name: string; mimeType: string; buffer: Buffer } {
+  let hash = 2166136261;
+  for (let i = 0; i < seed.length; i++) {
+    hash ^= seed.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  const r0 = (Math.abs(hash) % 160) + 40;
+  const g0 = (Math.abs(hash >> 3) % 160) + 40;
+  const b0 = (Math.abs(hash >> 6) % 160) + 40;
+
+  const raw = Buffer.alloc((width * 4 + 1) * height);
+  let offset = 0;
+  for (let y = 0; y < height; y++) {
+    raw[offset++] = 0; // filter none
+    for (let x = 0; x < width; x++) {
+      raw[offset++] = (r0 + x) % 256;
+      raw[offset++] = (g0 + y) % 256;
+      raw[offset++] = (b0 + ((x + y) >> 1)) % 256;
+      raw[offset++] = 255;
+    }
+  }
+  const zlib = require("zlib") as typeof import("zlib");
+  const idat = zlib.deflateSync(raw, { level: 6 });
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 6; // RGBA
+  const signature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const png = Buffer.concat([
+    signature,
+    pngChunk("IHDR", ihdr),
+    pngChunk("IDAT", idat),
+    pngChunk("IEND", Buffer.alloc(0)),
+  ]);
+  return { name: `${seed}.png`, mimeType: "image/png", buffer: png };
+}
+
 /** Password-login through the API; returns the access token. */
 export async function apiLogin(
   request: APIRequestContext,

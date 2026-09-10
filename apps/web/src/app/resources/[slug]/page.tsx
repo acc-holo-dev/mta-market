@@ -3,7 +3,7 @@
 // hero area с CTA, DRM-блок, читаемая история версий, полноценные отзывы.
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
@@ -27,6 +27,8 @@ import { Input } from "@/components/ui/Input";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Price } from "@/components/ui/Price";
 import { Rating } from "@/components/ui/Rating";
+import { Gallery } from "@/components/ui/Gallery";
+import { Avatar } from "@/components/ui/Avatar";
 import { typeLabel, formatDate } from "@/lib/domain";
 import { Star, ShieldCheck, Package, Store, CheckCircle2, Clock } from "lucide-react";
 
@@ -38,9 +40,13 @@ export default function ResourceDetailPage() {
   const qc = useQueryClient();
 
   // Restore session from refresh cookie on reload (token is memory-only).
-  if (typeof window !== "undefined" && !accessToken) {
-    void bootstrapSession();
-  }
+  // useEffect — иначе React strict-mode дважды монтирует компонент и
+  // bootstrapSession спамит /auth/refresh (это выжигает rate-limit квоту).
+  useEffect(() => {
+    if (!accessToken) {
+      void bootstrapSession();
+    }
+  }, [accessToken]);
 
   const { data: resource, isLoading, error } = useQuery({
     queryKey: ["resource", slug],
@@ -189,11 +195,28 @@ export default function ResourceDetailPage() {
   const sellerName = resource.seller
     ? resource.seller.displayName || resource.seller.username || null
     : null;
+  const sellerUsername = resource.seller?.username ?? null;
+
+  // D-002: галерея — cover + screenshots (реальные данные, без заглушек).
+  const galleryImages = [
+    ...(resource.coverUrl
+      ? [{ id: "cover", url: resource.coverUrl, alt: `Обложка: ${resource.title}` }]
+      : []),
+    ...(resource.screenshots ?? []).map((s) => ({
+      id: s.id,
+      url: s.url,
+      alt: `Скриншот ${resource.title}`,
+    })),
+  ];
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8">
-      {/* Breadcrumbs */}
+      {/* Breadcrumbs (N-001): Главная / Маркетплейс / Ресурс */}
       <nav aria-label="Хлебные крошки" className="mb-6 text-sm text-content-muted">
+        <Link href="/" className="hover:text-accent-strong">
+          Главная
+        </Link>
+        <span className="mx-2">/</span>
         <Link href="/resources" className="hover:text-accent-strong">
           Маркетплейс
         </Link>
@@ -204,19 +227,46 @@ export default function ResourceDetailPage() {
       <div className="grid lg:grid-cols-3 gap-8">
         {/* Main content */}
         <div className="lg:col-span-2 space-y-8">
-          {/* Hero area (F-002) */}
+          {/* Gallery (D-001/D-002): cover + screenshots с лайтбоксом */}
+          {galleryImages.length > 0 ? (
+            <Gallery
+              images={galleryImages}
+              aspect="aspect-video"
+              className={resource.coverUrl ? "" : "hidden"}
+            />
+          ) : null}
+
+          {/* Hero area (D-001) */}
           <div className="rounded-card border border-line bg-gradient-to-br from-accent-soft via-surface-raised to-surface p-8 flex flex-col items-start gap-4">
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <span className="rounded bg-accent-soft px-2.5 py-1 text-xs font-medium text-accent-strong">
                 {typeLabel(resource.type)}
               </span>
+              {latestVersion ? (
+                <span className="rounded bg-surface px-2.5 py-1 text-xs font-medium text-content-secondary border border-line">
+                  v{latestVersion.version}
+                </span>
+              ) : null}
             </div>
             <h1 className="text-3xl md:text-4xl font-bold tracking-tight">{resource.title}</h1>
-            <p className="text-content-secondary leading-relaxed max-w-2xl">
+            <p className="text-content-secondary leading-relaxed max-w-2xl line-clamp-3">
               {resource.description}
             </p>
             <div className="flex flex-wrap items-center gap-4 text-sm">
-              {sellerName ? (
+              {/* D-005: seller identity ведёт в витрину продавца */}
+              {sellerUsername ? (
+                <Link
+                  href={`/sellers/${sellerUsername}`}
+                  className="inline-flex items-center gap-1.5 text-content-secondary hover:text-accent-strong transition-colors"
+                >
+                  <Avatar
+                    src={resource.seller?.avatar ?? null}
+                    name={sellerName ?? resource.seller?.username ?? "?"}
+                    size="sm"
+                  />
+                  <span className="underline-offset-2 group-hover:underline">{sellerName}</span>
+                </Link>
+              ) : sellerName ? (
                 <span className="inline-flex items-center gap-1.5 text-content-secondary">
                   <Store className="h-4 w-4" /> {sellerName}
                 </span>
@@ -498,6 +548,34 @@ export default function ResourceDetailPage() {
               ) : null}
             </CardContent>
           </Card>
+
+          {/* D-005: seller block в сайдбаре */}
+          {sellerUsername && sellerName ? (
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-xs font-semibold uppercase tracking-wide text-content-muted mb-3">
+                  Продавец
+                </p>
+                <Link
+                  href={`/sellers/${sellerUsername}`}
+                  className="flex items-center gap-3 rounded-card p-2 -m-2 hover:bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                >
+                  <Avatar
+                    src={resource.seller?.avatar ?? null}
+                    name={sellerName}
+                    size="md"
+                  />
+                  <div className="min-w-0">
+                    <p className="font-medium truncate">{sellerName}</p>
+                    <p className="text-xs text-content-muted truncate">
+                      @{resource.seller?.username}
+                    </p>
+                  </div>
+                  <Store className="ml-auto h-4 w-4 text-content-muted flex-shrink-0" />
+                </Link>
+              </CardContent>
+            </Card>
+          ) : null}
 
           <Card>
             <CardContent className="pt-6 space-y-3 text-sm">

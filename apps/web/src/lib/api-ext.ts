@@ -36,6 +36,16 @@ export interface Resource {
   seller?: { username?: string | null; displayName?: string | null; avatar?: string | null } | null;
   rating?: number | null;
   reviewCount?: number | null;
+  // PLAN-003 A-002/A-003: media (additive; null/[] for resources without media).
+  coverUrl?: string | null;
+  screenshots?: { id: string; url: string; position: number }[];
+  updatedAt?: string;
+}
+
+export interface Screenshot {
+  id: string;
+  url: string;
+  position: number;
 }
 
 export interface Pagination {
@@ -228,11 +238,63 @@ export function formatRub(kopecks: number): string {
   return `${(kopecks / 100).toFixed(2)} ₽`;
 }
 
+/**
+ * PLAN-003 A-002: публичный URL медиа. Сервер отдаёт server-relative
+ * /media/... (локальный storage) или абсолютный S3 URL. В dev web и api
+ * живут на разных портах — относительный путь резолвится против API base.
+ */
+export function mediaUrl(url: string | null | undefined): string | null {
+  if (!url || typeof url !== "string") return null;
+  if (url.startsWith("/media/")) {
+    const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+    return `${base}${url}`;
+  }
+  return url;
+}
+
 // ---------- Buyer ----------
-export async function fetchResources(page = 1, limit = 12) {
-  const { data } = await api.get<Paginated<Resource>>("/resources", {
-    params: { page, limit },
-  });
+/**
+ * PLAN-003 F/G/H/I/T/U: единый query contract GET /resources.
+ * q — поиск (title/description/продавец), type — реальный enum, price —
+ * free|paid, sort — реализованные стратегии. Без параметров — прежнее
+ * поведение (newest), существующие вызовы совместимы (U-003).
+ */
+export interface ResourceQuery {
+  q?: string;
+  type?: string;
+  price?: "free" | "paid" | "";
+  sort?: string;
+  page?: number;
+  limit?: number;
+}
+
+export function fetchResources(query: ResourceQuery | number = 1, limit?: number) {
+  // Backward-compatible: fetchResources(page, limit) still works.
+  const params: Record<string, string | number> =
+    typeof query === "number"
+      ? { page: query, limit: limit ?? 12 }
+      : {
+          ...(query.q ? { q: query.q } : {}),
+          ...(query.type ? { type: query.type } : {}),
+          ...(query.price ? { price: query.price } : {}),
+          ...(query.sort ? { sort: query.sort } : {}),
+          page: query.page ?? 1,
+          limit: query.limit ?? 12,
+        };
+  return api
+    .get<Paginated<Resource>>("/resources", { params })
+    .then(({ data }) => data);
+}
+
+/** PLAN-003 J-006: агрегированные реальные секции homepage (один запрос). */
+export interface HomepageData {
+  newest: Resource[];
+  popular: Resource[];
+  free: Resource[];
+}
+
+export async function fetchHomepage(): Promise<HomepageData> {
+  const { data } = await api.get<HomepageData>("/resources/homepage");
   return data;
 }
 
@@ -415,7 +477,114 @@ export async function postDisputeMessage(id: string, body: string) {
   return data;
 }
 
-// ---------- Admin ----------
+// ---------- Media (PLAN-003 A/B) ----------
+/**
+ * POST /upload/media — multipart, field "file". Сервер проверяет магические
+ * байты и возвращает публичный URL (/media/... или S3). Прогресс через
+ * axios onUploadProgress не нужен для файлов до 5 МБ, но состояние
+ * uploading/uploaded/failed различается на UI.
+ */
+export interface MediaUploadResult {
+  url: string;
+  mimeType: string;
+  sizeBytes: number;
+  storage: "s3" | "local";
+}
+
+export async function uploadMedia(
+  file: File,
+  onProgress?: (percent: number) => void
+): Promise<MediaUploadResult> {
+  const form = new FormData();
+  form.append("file", file);
+  const { data } = await api.post<MediaUploadResult>("/upload/media", form, {
+    headers: { "Content-Type": "multipart/form-data" },
+    onUploadProgress: (e) => {
+      if (onProgress && e.total) {
+        onProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    },
+  });
+  return data;
+}
+
+export async function setResourceCover(slug: string, url: string | null) {
+  if (url === null) {
+    const { data } = await api.delete<{ coverUrl: string | null }>(`/resources/${slug}/media/cover`);
+    return data;
+  }
+  const { data } = await api.put<{ coverUrl: string }>(`/resources/${slug}/media/cover`, { url });
+  return data;
+}
+
+export async function addResourceScreenshot(slug: string, url: string): Promise<Screenshot> {
+  const { data } = await api.post<Screenshot>(`/resources/${slug}/media/screenshots`, { url });
+  return data;
+}
+
+export async function removeResourceScreenshot(slug: string, mediaId: string) {
+  const { data } = await api.delete(`/resources/${slug}/media/screenshots/${mediaId}`);
+  return data;
+}
+
+export async function reorderResourceScreenshots(slug: string, ids: string[]) {
+  const { data } = await api.put(`/resources/${slug}/media/screenshots/order`, { ids });
+  return data;
+}
+
+/** B-006: текущее медиа-состояние своего ресурса (в т.ч. черновика). */
+export async function fetchResourceMedia(slug: string) {
+  const { data } = await api.get<{
+    coverUrl: string | null;
+    screenshots: Screenshot[];
+    editable: boolean;
+  }>(`/resources/${slug}/media`);
+  return data;
+}
+
+// ---------- Seller storefront (PLAN-003 E) ----------
+export interface SellerStore {
+  seller: {
+    username: string;
+    displayName: string;
+    avatar: string | null;
+    supportInfo: string | null;
+    memberSince: string;
+    resourceCount: number;
+  };
+  resources: Resource[];
+}
+
+export async function fetchSellerStore(username: string): Promise<SellerStore> {
+  const { data } = await api.get<SellerStore>(`/sellers/${encodeURIComponent(username)}`);
+  return data;
+}
+
+// ---------- Admin (PLAN-003 M) ----------
+export interface AdminResourceVersion {
+  id: string;
+  version: string;
+  changelog: string | null;
+  fileSize: number;
+  releaseStatus: string;
+  artifactHash: string | null;
+  signed: boolean;
+  signedAt: string | null;
+  validationStatus: string;
+}
+
+export interface AdminResourceDetail {
+  resource: Resource & { seller: SellerStore["seller"] | null };
+  cover: string | null;
+  screenshots: Screenshot[];
+  versions: AdminResourceVersion[];
+}
+
+export async function fetchAdminResourceDetail(id: string): Promise<AdminResourceDetail> {
+  const { data } = await api.get<AdminResourceDetail>(`/admin/resources/${id}`);
+  return data;
+}
+
 export async function fetchAdminStats() {
   const { data } = await api.get<{
     users: { total: number; active: number; banned: number };
