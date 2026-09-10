@@ -11,18 +11,18 @@ import { validateCuid } from "../middleware/validateCuid";
 import { getClientIP } from "../lib/yookassaWebhook";
 import { sendPurchaseEmail } from "../lib/email";
 import { completeResourceOrderItem, markServicePurchasePaid, CommerceError } from "../lib/commerce";
+import { affectedCount } from "../lib/ledger";
 import { paymentProviders, type IPaymentProvider } from "../lib/paymentProvider";
 // E-002: side-effect import registers the YooKassa implementation.
 import "../lib/providers/payment-yookassa";
 import {
   assertTransition,
-  canTransition,
   type PaymentState,
 } from "../lib/paymentStateMachine";
 import { createRefund } from "../lib/refunds";
 import { PaymentRefundError } from "../lib/paymentErrors";
 import { reqLog } from "../middleware/requestId";
-import { metrics, METRIC_HELP, incPaymentSuccess } from "../lib/metrics";
+import { incPaymentSuccess } from "../lib/metrics";
 import type { YooKassaWebhook } from "../lib/yookassa";
 
 const router: Router = Router();
@@ -257,13 +257,61 @@ router.post("/webhook", async (req: Request, res: Response) => {
       });
     }
 
-    if (eventType !== "payment.succeeded") {
+    if (eventType !== "payment.succeeded" && eventType !== "payment.canceled") {
       await db.orm.public.PaymentProviderEvent.where({ id: eventRecord.id }).update({
         status: "PROCESSED",
         processedAt: new Date().toISOString(),
       });
       res.status(200).json({ message: "Event acknowledged" });
       return;
+    }
+
+    // PLAN-004 D-004 (audit GAP-1): real cancellation lifecycle. A
+    // `payment.canceled` event closes the local PENDING payment/purchase so
+    // it does not hang forever, and — critically — when the provider reports
+    // a *succeeded* payment while the local state is already CANCELED (user
+    // canceled at the provider after capture, or a race with
+    // /payments/cancel), provider truth wins: the transition is repaired to
+    // SUCCEEDED instead of throwing forever on an illegal transition.
+    const localPayment = await db.orm.public.Payment.where({
+      providerPaymentId: object.id,
+    }).first();
+    if (eventType === "payment.canceled") {
+      if (localPayment && localPayment.status === "PENDING") {
+        await transitionPaymentTo(object.id, "CANCELED");
+        await db.orm.public.Payment.where({ providerPaymentId: object.id }).update({
+          status: "CANCELED",
+        });
+      }
+      const cancelOrderRef = object.metadata?.order_id;
+      if (cancelOrderRef) {
+        // CAS: only a still-PENDING purchase is closed; a completed one is
+        // money already captured (handled by the succeeded flow / refund).
+        // PurchaseStatus has no CANCELED — FAILED is the terminal "no
+        // entitlement" state (the provider-side cancel is reflected on the
+        // Payment row, which does have CANCELED).
+        await db.orm.public.Purchase.where({ id: cancelOrderRef, status: "PENDING" }).update({
+          status: "FAILED",
+          completedAt: new Date().toISOString(),
+        });
+      }
+      await db.orm.public.PaymentProviderEvent.where({ id: eventRecord.id }).update({
+        status: "PROCESSED",
+        processedAt: new Date().toISOString(),
+      });
+      res.status(200).json({ message: "Event acknowledged" });
+      return;
+    }
+    if (localPayment && localPayment.status === "CANCELED") {
+      // Provider says SUCCEEDED after a local cancel: repair the state
+      // (provider truth wins) and fall through to the normal succeeded flow
+      // below — the buyer paid, the entitlement must be granted.
+      await db.orm.public.Payment.where({ providerPaymentId: object.id }).update({
+        status: "PENDING",
+      });
+      reqLog(req).warn("payment_canceled_then_succeeded_repaired", {
+        provider_payment_id: object.id,
+      });
     }
 
     const orderId = object.metadata?.order_id;
@@ -368,6 +416,23 @@ router.post("/webhook", async (req: Request, res: Response) => {
         });
         res.status(409).json({ error: "Purchase has no checkout order item" });
         return;
+      }
+
+      // PLAN-004 D-004 (audit GAP-1): provider truth wins. If a
+      // payment.canceled event was processed first (out-of-order delivery)
+      // and closed this purchase as FAILED, a now-confirmed captured payment
+      // reopens it for completion instead of throwing an illegal-transition
+      // 500 forever with money captured but no entitlement.
+      if (purchase.status === "FAILED") {
+        const repaired = await db.orm.public.Purchase
+          .where({ id: purchase.id, status: "FAILED" })
+          .updateAndCount({ status: "PENDING", completedAt: null });
+        if (affectedCount(repaired) === 1) {
+          reqLog(req).warn("purchase_canceled_then_succeeded_repaired", {
+            purchase_id: purchase.id,
+            provider_payment_id: object.id,
+          });
+        }
       }
 
       const completion = await completeResourceOrderItem(purchase.orderItemId);

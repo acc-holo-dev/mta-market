@@ -45,6 +45,12 @@ export interface UploadToS3Options {
   originalName: string;
   mimeType: string;
   folder?: string;
+  /**
+   * PLAN-004 B-001: explicit object key override. Media uploads pass the
+   * opaque `media/<media-<hex>.<ext>>` key so the database reference stays
+   * the controlled public path (`/media/<name>`) regardless of storage.
+   */
+  key?: string;
 }
 
 export async function uploadToS3(options: UploadToS3Options): Promise<string> {
@@ -52,21 +58,32 @@ export async function uploadToS3(options: UploadToS3Options): Promise<string> {
     throw new Error("S3 is not enabled");
   }
 
-  const { buffer, originalName, mimeType, folder = "resources" } = options;
+  const { buffer, originalName, mimeType, folder = "resources", key } = options;
+
+  if (key) {
+    const command = new PutObjectCommand({
+      Bucket: S3_BUCKET,
+      Key: key,
+      Body: buffer,
+      ContentType: mimeType,
+    });
+    await s3Client.send(command);
+    return key;
+  }
 
   const ext = path.extname(originalName);
-  const key = `${folder}/${crypto.randomBytes(16).toString("hex")}${ext}`;
+  const generatedKey = `${folder}/${crypto.randomBytes(16).toString("hex")}${ext}`;
 
   const command = new PutObjectCommand({
     Bucket: S3_BUCKET,
-    Key: key,
+    Key: generatedKey,
     Body: buffer,
     ContentType: mimeType,
   });
 
   await s3Client.send(command);
 
-  return key;
+  return generatedKey;
 }
 
 export async function deleteFromS3(key: string): Promise<void> {
@@ -124,18 +141,6 @@ export async function getS3DownloadUrl(key: string, expiresIn?: number): Promise
   });
 
   return await getSignedUrl(s3Client, command, { expiresIn: safeTtl });
-}
-
-/**
- * DEPRECATED: Public URLs are only acceptable for non-sensitive assets
- * (e.g., public preview images). NEVER use for paid artifacts.
- */
-export function getS3PublicUrl(key: string): string {
-  if (S3_ENDPOINT) {
-    // Cloudflare R2 or custom endpoint
-    return `${S3_ENDPOINT}/${S3_BUCKET}/${key}`;
-  }
-  return `https://${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com/${key}`;
 }
 
 export { S3_ENABLED, SIGNED_URL_TTL };

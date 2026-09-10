@@ -11,7 +11,6 @@
 //
 // F-005: free orders create commerce/audit records but never money movement
 // — zero-amount settlements post nothing.
-import crypto from "crypto";
 import { db } from "../prisma/db";
 import { logger } from "./logger";
 
@@ -181,7 +180,13 @@ async function postSettlementLedger(input: {
     return null;
   }
 
-  const transactionId = `settle:${crypto.randomUUID()}`;
+  // PLAN-004 D-006/E-003 (audit GAP-2): the settlement transaction id is
+  // deterministic (one ledger settlement per purchase/service line, ever).
+  // A crash between purchase completion and settlement previously left a
+  // permanent gap: the webhook retry hit `alreadyCompleted` and settlement
+  // never ran. With a stable id the retry can safely re-run
+  // settlePurchaseRevenue — an idempotent repair pass.
+  const transactionId = `settle:${input.memo}`;
   const entries: LedgerEntryInput[] = [
     {
       account: { code: LEDGER_ACCOUNT_CODES.PLATFORM_CASH, kind: "PLATFORM_CASH" },
@@ -248,15 +253,18 @@ export async function recordSellerRevenue(options: RecordSellerRevenueOptions): 
     });
   }
 
-  const newBalance = balance.availableAmount + amount;
+  // PLAN-004 E-003 (audit GAP-4): REFUND_FROM_SELLER must DECREASE the
+  // cached availableAmount — the double-entry side DEBITs seller_available,
+  // so the cache previously ran in the opposite direction and drifted from
+  // the ledger.
+  const availableDelta = type === "REFUND_FROM_SELLER" ? -amount : amount;
+  const totalEarnedDelta =
+    type === "SELLER_REVENUE" ? amount : type === "REFUND_FROM_SELLER" ? -amount : 0;
+  const newBalance = balance.availableAmount + availableDelta;
 
   await db.orm.public.SellerBalance.where({ userId: sellerId }).update({
     availableAmount: newBalance,
-    ...(type === "SELLER_REVENUE"
-      ? { totalEarned: balance.totalEarned + amount }
-      : type === "REFUND_FROM_SELLER"
-        ? { totalEarned: balance.totalEarned - amount }
-        : {}),
+    ...(totalEarnedDelta !== 0 ? { totalEarned: balance.totalEarned + totalEarnedDelta } : {}),
   });
 
   await db.orm.public.FinancialTransaction.create({

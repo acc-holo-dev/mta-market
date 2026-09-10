@@ -3,6 +3,16 @@
 
 const PRODUCTION = process.env.NODE_ENV === "production";
 
+/** True when the value is base64 decoding to exactly 32 bytes (AES-256 key). */
+function isValidBase32ByteKey(value: string): boolean {
+  try {
+    const buf = Buffer.from(value, "base64");
+    return buf.length === 32;
+  } catch {
+    return false;
+  }
+}
+
 interface ValidationResult {
   valid: boolean;
   errors: string[];
@@ -65,6 +75,18 @@ export function validateEnvironment(): ValidationResult {
       errors.push(
         "DRM_SERVER_PRIVATE_KEY is required in production. Generate with: pnpm --filter @mta-market/server drm:keygen"
       );
+    }
+
+    // PLAN-004 A-002 (audit): DRM_MASTER_KEY wraps per-version DEKs (envelope
+    // encryption, G-005). Without it every version upload/DEK release throws
+    // EncryptionNotConfiguredError at runtime — fail fast instead. It must
+    // decode to exactly 32 bytes (AES-256) base64.
+    if (!process.env.DRM_MASTER_KEY) {
+      errors.push(
+        "DRM_MASTER_KEY is required in production (envelope encryption of artifact DEKs). Generate with: openssl rand -base64 32"
+      );
+    } else if (!isValidBase32ByteKey(process.env.DRM_MASTER_KEY)) {
+      errors.push("DRM_MASTER_KEY must be base64 encoding of exactly 32 bytes (AES-256).");
     }
 
     // TASK A-012/B-002: artifact signing key is production-critical —

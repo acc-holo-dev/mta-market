@@ -52,6 +52,13 @@ COPY --from=deps --chown=nodejs:nodejs /app/apps/server/node_modules ./node_modu
 # Compiled server imports Prisma runtime from dist/prisma
 COPY --from=builder --chown=nodejs:nodejs /app/apps/server/dist/prisma ./dist/prisma
 
+# PLAN-004 L-002 (audit P0): the uploads volume mounts at /app/uploads. When
+# the mount point does not exist, Docker creates it root-owned and the
+# non-root process (uid 1001) cannot write — every upload fails EACCES.
+# Pre-create the directory owned by the runtime user (also prunes any
+# root-owned files COPY . . may have baked in from a dev checkout).
+RUN mkdir -p /app/uploads && chown -R nodejs:nodejs /app/uploads
+
 USER nodejs
 
 EXPOSE 3001

@@ -70,6 +70,20 @@ describe("A-012: production secret validation (unit)", () => {
     });
   });
 
+  it("fails when DRM_MASTER_KEY is missing (PLAN-004 A-002: DEK envelope encryption)", async () => {
+    await withEnv({ NODE_ENV: "production", DRM_MASTER_KEY: undefined }, async () => {
+      const result = await validateAsProduction();
+      expect(result.errors.some((e) => e.includes("DRM_MASTER_KEY"))).toBe(true);
+    });
+  });
+
+  it("fails when DRM_MASTER_KEY is not 32 bytes of base64", async () => {
+    await withEnv({ NODE_ENV: "production", DRM_MASTER_KEY: "dG9vLXNob3J0" }, async () => {
+      const result = await validateAsProduction();
+      expect(result.errors.some((e) => e.includes("DRM_MASTER_KEY must be base64"))).toBe(true);
+    });
+  });
+
   it("fails when S3 is disabled in production (local storage not secure)", async () => {
     await withEnv({ NODE_ENV: "production", S3_ENABLED: "false" }, async () => {
       const result = await validateAsProduction();
@@ -87,6 +101,7 @@ describe("A-012: production secret validation (unit)", () => {
         DISCORD_CLIENT_SECRET: "secret",
         DISCORD_REDIRECT_URI: "https://market.example.com/auth/callback",
         DRM_SERVER_PRIVATE_KEY: "k",
+        DRM_MASTER_KEY: Buffer.alloc(32, 7).toString("base64"),
         ARTIFACT_SIGNING_PRIVATE_KEY: "k",
         S3_ENABLED: "true",
         S3_BUCKET: "bucket",
@@ -115,14 +130,21 @@ describe("A-012: acceptance — missing secret exits non-zero", () => {
         DISCORD_CLIENT_SECRET: "secret",
         DISCORD_REDIRECT_URI: "https://market.example.com/auth/callback",
         DRM_SERVER_PRIVATE_KEY: "k",
+        DRM_MASTER_KEY: Buffer.alloc(32, 7).toString("base64"),
         ARTIFACT_SIGNING_PRIVATE_KEY: "k",
         S3_ENABLED: "true",
         S3_BUCKET: "bucket",
         S3_ACCESS_KEY: "ak",
         S3_SECRET_KEY: "sk",
+        DRM_MASTER_KEY: Buffer.alloc(32, 7).toString("base64"),
         // JWT_SECRET intentionally missing
       };
-      delete env.JWT_SECRET;
+      // PLAN-004 A-002: an explicit empty value cannot be overridden by
+      // dotenv (apps/server/.env carries a dev JWT_SECRET), so the child
+      // deterministically fails validation instead of booting on the dev
+      // secret. Previously deleting the var let dotenv fill it in, making
+      // the acceptance racy (server started, timeout-SIGTERM exited 0).
+      env.JWT_SECRET = "";
 
       const result = spawnSync(process.execPath, ["node_modules/tsx/dist/cli.mjs", "src/index.ts"], {
         cwd: serverDir,

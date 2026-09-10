@@ -595,7 +595,7 @@ describe.skipIf(!dbAvailable)("N-007: DRM security additions", () => {
 });
 
 describe.skipIf(!dbAvailable)("N-005: payment abuse resistance", () => {
-  it("out-of-order webhooks: canceled first is acknowledged without effect, then succeeded completes", async () => {
+  it("out-of-order webhooks: canceled closes the pending purchase (GAP-1), late succeeded repairs and completes", async () => {
     setYookassaEnabled(true);
     try {
       const checkout = await call("post", "/purchases", buyerToken, { resourceSlug: paidSlug });
@@ -603,7 +603,10 @@ describe.skipIf(!dbAvailable)("N-005: payment abuse resistance", () => {
       expect(checkout.body.status).toBe("pending");
       const purchaseId = checkout.body.purchaseId as string;
 
-      // 1. payment.canceled arrives first: acknowledged, no business effect.
+      // 1. payment.canceled arrives first: acknowledged, and the purchase
+      //    must NOT hang as PENDING forever (PLAN-004 GAP-1 — the old
+      //    behavior leaked stale PENDING rows; FAILED is the terminal
+      //    no-entitlement state).
       const canceled = await postWebhook({
         type: "notification",
         event: "payment.canceled",
@@ -617,10 +620,11 @@ describe.skipIf(!dbAvailable)("N-005: payment abuse resistance", () => {
       });
       expect(canceled.status).toBe(200);
       let row = await db.orm.public.Purchase.where({ id: purchaseId }).first();
-      expect(row!.status).toBe("PENDING");
+      expect(row!.status).toBe("FAILED");
       expect(await db.orm.public.License.where({ purchaseId }).first()).toBeNull();
 
-      // 2. the late payment.succeeded delivery completes the purchase.
+      // 2. the late payment.succeeded delivery completes the purchase
+      //    (provider truth wins: money was actually captured).
       const succeeded = await postWebhook({
         type: "notification",
         event: "payment.succeeded",

@@ -17,7 +17,11 @@ apps/server/.agents/
 apps/server/.claude/
 apps/server/.cursor/
 apps/server/.devin/
-apps/server/migrations/
+# PLAN-004 C-003 (audit G-03): migration snapshots MUST be versioned — the
+# committed refs/db.json points at a snapshot hash; ignoring this directory
+# left a dangling ref on fresh clones (MIGRATION.SNAPSHOT_MISSING) and broke
+# schema reproducibility.
+# apps/server/migrations/
 
 # Playwright
 test-results/

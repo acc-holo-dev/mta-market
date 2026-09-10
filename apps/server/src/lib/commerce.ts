@@ -476,6 +476,18 @@ export async function completeResourceOrderItem(orderItemId: string): Promise<Co
       purchase_id: purchase.id,
       final_price: purchase.finalPrice,
     });
+  } else {
+    // PLAN-004 D-006/E-003 (audit GAP-2): repair the settlement crash window.
+    // If the process died between purchase completion and ledger settlement,
+    // a webhook retry lands here with `alreadyCompleted` — previously the
+    // settlement never ran and the gap was only a WARNING log. Settlement is
+    // now idempotent (deterministic ledger transaction id
+    // `settle:purchase:<id>`), so re-running it is always safe.
+    await settlePurchaseRevenue(purchase);
+    logger.warn("resource_order_item_settlement_repaired", {
+      order_id: item.orderId,
+      purchase_id: purchase.id,
+    });
   }
 
   return {

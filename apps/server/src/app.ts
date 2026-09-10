@@ -7,7 +7,7 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 import { requestIdMiddleware } from "./middleware/requestId";
 import { observabilityMiddleware } from "./middleware/observability";
-import { metrics, METRIC_HELP } from "./lib/metrics";
+import { metrics } from "./lib/metrics";
 import { db } from "./prisma/db";
 import authRoutes from "./routes/auth";
 import resourcesRoutes from "./routes/resources";
@@ -25,6 +25,7 @@ import sellerRoutes from "./routes/seller";
 import sellersRoutes from "./routes/sellers";
 import disputesRoutes from "./routes/disputes";
 import { standardRateLimit } from "./lib/rateLimit";
+import { reqLog } from "./middleware/requestId";
 
 /**
  * Allowed browser origins for cross-origin credentialed requests.
@@ -144,6 +145,24 @@ export function createApp(): Express {
   app.use("/sellers", sellersRoutes);
   app.use("/disputes", disputesRoutes);
   app.use("/admin", adminRoutes);
+
+  // PLAN-004 J-003 (audit): global error handler — in Express 4 a rejected
+  // async handler would otherwise become an unhandledRejection and crash the
+  // process. Must be registered after all routes (4 args make it an error
+  // middleware).
+  app.use(
+    (
+      error: unknown,
+      req: express.Request,
+      res: express.Response,
+      _next: express.NextFunction
+    ) => {
+      reqLog(req).error("unhandled_route_error", { error });
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Internal server error" });
+      }
+    }
+  );
 
   // Explicit JSON 404 for unknown routes (TASK A-005 relies on this for
   // disabled test endpoints in production-like environments).

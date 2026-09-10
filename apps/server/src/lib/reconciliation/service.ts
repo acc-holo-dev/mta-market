@@ -322,9 +322,12 @@ function toProviderTransaction(remote: YooKassaPayment): ProviderTransaction {
   // Amounts are stored in kopecks internally; YooKassa returns decimal rubles.
   const amountKopecks = Math.round(parseFloat(remote.amount.value) * 100);
   // Provider status -> internal PaymentStatus vocabulary.
+  // PLAN-004 D-004 (audit GAP-9): must match paymentStateMachine's
+  // fromYooKassaStatus exactly — 'canceled' is CANCELED there, so mapping it
+  // to FAILED here produced false STATUS_MISMATCH alerts on every report.
   const statusMap: Record<string, string> = {
     succeeded: 'SUCCEEDED',
-    canceled: 'FAILED',
+    canceled: 'CANCELED',
     pending: 'PENDING',
     waiting_for_capture: 'PENDING'
   };

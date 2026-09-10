@@ -15,6 +15,7 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import { UPLOAD_DIR } from "./upload";
+import { S3_ENABLED, deleteFromS3 } from "./s3";
 
 export const MEDIA_MAX_BYTES = 5 * 1024 * 1024; // 5 MB per image
 export const MAX_SCREENSHOTS_PER_RESOURCE = 8;
@@ -109,6 +110,11 @@ export function mediaFilename(extension: string): string {
 
 const MEDIA_NAME_RE = /^media-[0-9a-f]{64}\.(png|jpg|jpeg|webp|gif)$/;
 
+/** True when `name` is a bare opaque media filename (no path, no traversal). */
+export function isMediaName(name: string): boolean {
+  return MEDIA_NAME_RE.test(name);
+}
+
 /**
  * Resolve a public media URL (/media/<name>) to a path inside UPLOAD_DIR.
  * Only bare `media-<hex>.<ext>` names are accepted — any traversal sequence,
@@ -168,5 +174,15 @@ export function deleteLocalMediaByName(name: string | null | undefined): void {
 /** Extract the local media name from any stored URL, for cleanup. */
 export function cleanupMediaUrl(url: string | null | undefined): void {
   if (!url) return;
-  deleteLocalMediaByName(localMediaNameFromUrl(url));
+  const name = localMediaNameFromUrl(url);
+  if (!name) return;
+  deleteLocalMediaByName(name);
+
+  // PLAN-004 B-001/B-006: in S3 mode the media object lives under the
+  // `media/` prefix in the bucket — delete it too (best-effort, async).
+  if (S3_ENABLED) {
+    void deleteFromS3(`media/${name}`).catch(() => {
+      // best-effort: a leftover object is handled by storage lifecycle (B-007)
+    });
+  }
 }

@@ -2,8 +2,8 @@
 import { Router, Response } from "express";
 import { authenticate, AuthRequest } from "../lib/auth";
 import { standardRateLimit, strictRateLimit } from "../lib/rateLimit";
-import { upload, getFileUrl, deleteFile } from "../lib/upload";
-import { uploadToS3, S3_ENABLED, getS3PublicUrl } from "../lib/s3";
+import { upload, deleteFile } from "../lib/upload";
+import { uploadToS3, S3_ENABLED } from "../lib/s3";
 import {
   MEDIA_MAX_BYTES,
   validateImageBuffer,
@@ -32,6 +32,32 @@ const mediaUpload = multer({
   }),
   limits: { fileSize: MEDIA_MAX_BYTES },
 });
+
+/**
+ * PLAN-004 B-001: store validated media bytes under the unified contract —
+ * opaque `media-<hex>` name, object under `media/` in S3 mode, local file
+ * renamed in place in local mode. Returns the bare media filename; callers
+ * respond with the controlled public URL `/media/<name>`.
+ */
+async function storeMediaObject(
+  buffer: Buffer,
+  file: Express.Multer.File,
+  sniffed: { mime: string; extension: string }
+): Promise<string> {
+  const name = mediaFilename(sniffed.extension);
+  if (S3_ENABLED) {
+    await uploadToS3({
+      buffer,
+      originalName: file.originalname,
+      mimeType: sniffed.mime,
+      key: `media/${name}`,
+    });
+    return name;
+  }
+  const target = path.resolve(process.env.UPLOAD_DIR || "./uploads", name);
+  fs.renameSync(file.path, target);
+  return name;
+}
 
 /**
  * POST /upload/media — upload a cover/screenshot image (authenticated).
@@ -65,34 +91,18 @@ router.post(
         return;
       }
 
-      if (S3_ENABLED) {
-        const fileKey = await uploadToS3({
-          buffer,
-          originalName: req.file.originalname,
-          mimeType: sniffed.mime,
-          folder: "media",
-        });
-        deleteFile(req.file.filename);
-        res.status(201).json({
-          url: getS3PublicUrl(fileKey),
-          mimeType: sniffed.mime,
-          sizeBytes: buffer.length,
-          storage: "s3",
-        });
-        return;
-      }
-
-      // Local storage: atomically rename the validated temp file to the
-      // opaque media name (only validated images get media- names).
-      const name = mediaFilename(sniffed.extension);
-      const target = path.resolve(process.env.UPLOAD_DIR || "./uploads", name);
-      fs.renameSync(req.file.path, target);
+      // PLAN-004 B-001: unified media storage contract. The stored URL is
+      // the controlled public delivery path `/media/<name>` in every storage
+      // mode. Absolute S3 URLs are never returned (they broke the resource
+      // media contract and bypassed the media route's name policy).
+      const name = await storeMediaObject(buffer, req.file, sniffed);
+      deleteFile(req.file.filename);
 
       res.status(201).json({
         url: `/media/${name}`,
         mimeType: sniffed.mime,
         sizeBytes: buffer.length,
-        storage: "local",
+        storage: S3_ENABLED ? "s3" : "local",
       });
     } catch (error) {
       reqLog(req).error("media_upload_failed", { error });
@@ -171,11 +181,14 @@ router.post(
 );
 
 // POST /upload/avatar - Upload user avatar (authenticated)
+// PLAN-004 B-001: unified media storage contract — same magic-byte validated
+// pipeline as /upload/media (opaque media-<hex> name, /media/<name> delivery
+// URL in every storage mode). The avatar itself is still not persisted here.
 router.post(
   "/avatar",
   authenticate,
   standardRateLimit,
-  upload.single("avatar"),
+  mediaUpload.single("avatar"),
   async (req: AuthRequest, res: Response) => {
     try {
       if (!req.file) {
@@ -183,28 +196,22 @@ router.post(
         return;
       }
 
-      // Validate image type
-      if (!req.file.mimetype.startsWith("image/")) {
+      const buffer = fs.readFileSync(req.file.path);
+      const rejection = validateImageBuffer(buffer, req.file.mimetype, req.file.originalname);
+      if (rejection) {
         deleteFile(req.file.filename);
-        res.status(400).json({ error: "File must be an image" });
+        res.status(400).json({ error: rejection });
+        return;
+      }
+      const sniffed = sniffImageType(buffer);
+      if (!sniffed) {
+        deleteFile(req.file.filename);
+        res.status(400).json({ error: "Unsupported image format" });
         return;
       }
 
-      let avatarUrl: string;
-
-      if (S3_ENABLED) {
-        const buffer = fs.readFileSync(req.file.path);
-        const fileKey = await uploadToS3({
-          buffer,
-          originalName: req.file.originalname,
-          mimeType: req.file.mimetype,
-          folder: "avatars",
-        });
-        avatarUrl = getS3PublicUrl(fileKey);
-        deleteFile(req.file.filename);
-      } else {
-        avatarUrl = getFileUrl(req.file.filename);
-      }
+      const name = await storeMediaObject(buffer, req.file, sniffed);
+      deleteFile(req.file.filename);
 
       // TODO: Update user avatar in database
       // await db.orm.public.User
@@ -212,7 +219,7 @@ router.post(
       //   .update({ avatar: avatarUrl });
 
       res.status(201).json({
-        avatarUrl,
+        avatarUrl: `/media/${name}`,
         storage: S3_ENABLED ? "s3" : "local",
       });
     } catch (error) {
@@ -228,11 +235,15 @@ router.post(
 );
 
 // POST /upload/screenshot - Upload resource screenshot (authenticated)
+// PLAN-004 B-001: legacy alias of the validated media pipeline (the resource
+// media endpoints only accept /media/<name> references, so an absolute URL
+// here was unusable in S3 mode and bypassed magic-byte validation in local
+// mode).
 router.post(
   "/screenshot",
   authenticate,
   standardRateLimit,
-  upload.single("screenshot"),
+  mediaUpload.single("screenshot"),
   async (req: AuthRequest, res: Response) => {
     try {
       if (!req.file) {
@@ -240,31 +251,25 @@ router.post(
         return;
       }
 
-      // Validate image type
-      if (!req.file.mimetype.startsWith("image/")) {
+      const buffer = fs.readFileSync(req.file.path);
+      const rejection = validateImageBuffer(buffer, req.file.mimetype, req.file.originalname);
+      if (rejection) {
         deleteFile(req.file.filename);
-        res.status(400).json({ error: "File must be an image" });
+        res.status(400).json({ error: rejection });
+        return;
+      }
+      const sniffed = sniffImageType(buffer);
+      if (!sniffed) {
+        deleteFile(req.file.filename);
+        res.status(400).json({ error: "Unsupported image format" });
         return;
       }
 
-      let screenshotUrl: string;
-
-      if (S3_ENABLED) {
-        const buffer = fs.readFileSync(req.file.path);
-        const fileKey = await uploadToS3({
-          buffer,
-          originalName: req.file.originalname,
-          mimeType: req.file.mimetype,
-          folder: "screenshots",
-        });
-        screenshotUrl = getS3PublicUrl(fileKey);
-        deleteFile(req.file.filename);
-      } else {
-        screenshotUrl = getFileUrl(req.file.filename);
-      }
+      const name = await storeMediaObject(buffer, req.file, sniffed);
+      deleteFile(req.file.filename);
 
       res.status(201).json({
-        screenshotUrl,
+        screenshotUrl: `/media/${name}`,
         storage: S3_ENABLED ? "s3" : "local",
       });
     } catch (error) {

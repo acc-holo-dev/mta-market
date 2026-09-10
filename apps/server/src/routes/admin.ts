@@ -370,6 +370,14 @@ router.patch(
         return;
       }
 
+      // PLAN-004 G-007 (audit GAP-12): validate against the UserStatus enum
+      // instead of writing arbitrary strings to the DB.
+      const ALLOWED_STATUSES = ["ACTIVE", "SUSPENDED", "BANNED"] as const;
+      if (!ALLOWED_STATUSES.includes(status)) {
+        res.status(400).json({ error: `Invalid status. Allowed: ${ALLOWED_STATUSES.join(", ")}` });
+        return;
+      }
+
       const user = await db.orm.public.User.where({ id: userId }).first();
 
       if (!user) {
@@ -410,6 +418,13 @@ router.patch(
 
       if (!role) {
         res.status(400).json({ error: "Role is required" });
+        return;
+      }
+
+      // PLAN-004 G-007 (audit GAP-12): validate against the UserRole enum.
+      const ALLOWED_ROLES = ["USER", "ADMIN", "MODERATOR"] as const;
+      if (!ALLOWED_ROLES.includes(role)) {
+        res.status(400).json({ error: `Invalid role. Allowed: ${ALLOWED_ROLES.join(", ")}` });
         return;
       }
 

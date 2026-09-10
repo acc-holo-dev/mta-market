@@ -76,8 +76,14 @@ jobs:
         with:
           version: 9
       - run: pnpm install --frozen-lockfile
-      - name: Dependency audit (high/critical)
-        run: pnpm audit --prod --audit-level high || true
+      # PLAN-004 G-002/K-002 (audit GAP-02): the security gate must actually
+      # block. Policy: production dependencies with HIGH or CRITICAL
+      # vulnerabilities fail the pipeline. Approved exceptions are pinned in
+      # .github/audit-exceptions.txt (one `module advisory-reason` per line,
+      # with a review date); matching advisories are reported as waived and
+      # must be re-reviewed when their date passes.
+      - name: Dependency audit (high/critical gate)
+        run: bash scripts/audit-gate.sh
 
   # Lint and Type Check
   lint:
@@ -176,10 +182,13 @@ jobs:
           NEXT_PUBLIC_API_URL: http://localhost:3001
 
   # Build and Push Docker Images (only on main branch)
+  # PLAN-004 K-001 (audit GAP-03): image publication is gated on tests,
+  # security scan and lint — a red test or a leaked secret must never ship
+  # an image.
   docker:
     name: Build & Push Docker Images
     runs-on: ubuntu-latest
-    needs: [build-backend, build-frontend]
+    needs: [test, security, lint, build-backend, build-frontend]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     permissions:
       contents: read
@@ -204,7 +213,9 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}
           tags: |
-            type=sha
+            # PLAN-004 K-003: full-length SHA tag — unambiguous commit→image
+            # provenance for deploys and rollback.
+            type=sha,format=long
             type=ref,event=branch
             type=semver,pattern={{version}}
             type=raw,value=latest,enable={{is_default_branch}}
@@ -226,7 +237,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}
           tags: |
-            type=sha
+            type=sha,format=long
             type=ref,event=branch
             type=semver,pattern={{version}}
             type=raw,value=latest,enable={{is_default_branch}}

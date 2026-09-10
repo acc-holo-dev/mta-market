@@ -37,7 +37,9 @@ services:
 
   # Backend API
   backend:
-    image: ghcr.io/${GITHUB_REPOSITORY}/backend:latest
+    # PLAN-004 K-004: IMAGE_TAG pins the exact deployed version (CI SHA tag).
+    # :latest is only a local default — deploys must pass an immutable tag.
+    image: ghcr.io/${GITHUB_REPOSITORY}/backend:${IMAGE_TAG:-latest}
     container_name: mta-market-backend
     restart: always
     environment:
@@ -53,10 +55,16 @@ services:
       DISCORD_REDIRECT_URI: ${DISCORD_REDIRECT_URI}
       # TASK A-012: DRM signing key is a required production secret
       DRM_SERVER_PRIVATE_KEY: ${DRM_SERVER_PRIVATE_KEY}
+      # PLAN-004 A-002 (audit P0-2): master key for DEK envelope encryption —
+      # without it artifact upload/DEK release fails at runtime
+      DRM_MASTER_KEY: ${DRM_MASTER_KEY}
       # TASK A-012/B-002: artifact signing key is a required production secret
       ARTIFACT_SIGNING_PRIVATE_KEY: ${ARTIFACT_SIGNING_PRIVATE_KEY}
       BASE_URL: ${BASE_URL}
       FRONTEND_URL: ${FRONTEND_URL}
+      # PLAN-004 B-002: controlled public media delivery (CDN/object URL base,
+      # no trailing slash). Empty = stream media from the bucket via backend.
+      MEDIA_PUBLIC_BASE_URL: ${MEDIA_PUBLIC_BASE_URL:-}
       UPLOAD_DIR: ./uploads
       S3_ENABLED: ${S3_ENABLED:-true}
       S3_BUCKET: ${S3_BUCKET}
@@ -74,6 +82,23 @@ services:
       SMTP_USER: ${SMTP_USER}
       SMTP_PASS: ${SMTP_PASS}
       EMAIL_FROM: ${EMAIL_FROM}
+      # PLAN-004 A-003: production rate limits must be explicit — dev/E2E
+      # values (AUTH/STANDARD 2000, LOGIN 500, REFRESH 400) must never leak
+      # into production. See .env.example for guidance.
+      AUTH_RATE_LIMIT_MAX: ${AUTH_RATE_LIMIT_MAX:-100}
+      STANDARD_RATE_LIMIT_MAX: ${STANDARD_RATE_LIMIT_MAX:-300}
+      STRICT_RATE_LIMIT_MAX: ${STRICT_RATE_LIMIT_MAX:-10}
+      LOGIN_RATE_LIMIT_MAX: ${LOGIN_RATE_LIMIT_MAX:-10}
+      REFRESH_RATE_LIMIT_MAX: ${REFRESH_RATE_LIMIT_MAX:-30}
+      # PLAN-004 A-004/M-002: topology + Redis outage semantics.
+      TRUST_PROXY: ${TRUST_PROXY:-true}
+      REDIS_ENABLE_OFFLINE_QUEUE: ${REDIS_ENABLE_OFFLINE_QUEUE:-false}
+      # PLAN-004 I-001: JSON logs in production.
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      LOG_LEVEL: ${LOG_LEVEL:-log}
+      # PLAN-004 G-005/A-005: CORS allowlist and refresh-cookie policy.
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      COOKIE_SAMESITE: ${COOKIE_SAMESITE:-lax}
     volumes:
       - uploads_data:/app/uploads
     networks:
@@ -84,14 +109,18 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ['CMD', 'node', '-e', "require('http').get('http://localhost:3001/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      # PLAN-004 L-004 (audit): /ready actually checks the DB dependency;
+      # the old /health probe was static and reported healthy with a dead DB.
+      test: ['CMD', 'node', '-e', "require('http').get('http://localhost:3001/ready', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 30s
 
   # Frontend Web
   frontend:
-    image: ghcr.io/${GITHUB_REPOSITORY}/frontend:latest
+    # PLAN-004 K-004: IMAGE_TAG pins the exact deployed version (CI SHA tag).
+    image: ghcr.io/${GITHUB_REPOSITORY}/frontend:${IMAGE_TAG:-latest}
     container_name: mta-market-frontend
     restart: always
     environment:

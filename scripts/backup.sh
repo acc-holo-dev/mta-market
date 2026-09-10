@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# MTA Market Backup Script (PLAN O-003)
+# MTA Market Backup Script (PLAN O-003 / PLAN-004 C-004, Q-001)
 # Usage: ./scripts/backup.sh
-# Backs up the database and the uploads directory, and (optionally, encrypted)
-# the environment file.
+# Backs up the PostgreSQL database, the uploads/object-storage data, and
+# (optionally, encrypted) the environment file.
 #
-# Policy (see mta-market-document/05-operations/backup.md):
+# Policy (see docs/operations/backup-restore.md):
 # - RPO 24h / RTO 4h; retention 30 days (override: BACKUP_RETENTION_DAYS);
 # - .env is NEVER stored unencrypted: it is AES-256 encrypted with
 #   BACKUP_ENCRYPTION_KEY (openssl enc). Without the key, the .env backup is
@@ -29,20 +29,37 @@ add_checksum() {
   ( cd "$BACKUP_DIR" && sha256sum "$(basename "$1")" >> "$MANIFEST" )
 }
 
-# Backup PostgreSQL database
+# Backup PostgreSQL database (user/db overridable; matches compose defaults)
 echo "📦 Backing up database..."
 DB_FILE="$BACKUP_DIR/db_backup_$DATE.sql"
-docker-compose -f "$COMPOSE_FILE" exec -T postgres pg_dump -U mtamarket mtamarket > "$DB_FILE"
+docker compose -f "$COMPOSE_FILE" exec -T postgres \
+  pg_dump -U "${POSTGRES_USER:-mtamarket}" "${POSTGRES_DB:-mtamarket}" > "$DB_FILE"
 echo "✅ Database backed up to $DB_FILE"
 add_checksum "$DB_FILE"
 
-# Backup uploads directory
-if [ -d "./uploads" ]; then
-  echo "📦 Backing up uploads..."
+# Backup uploads.
+# PLAN-004 Q-003 (audit L-002b): in production the uploads live in the named
+# Docker volume `uploads_data`, not in a host ./uploads directory — the old
+# host-path backup silently backed up nothing. Read the volume via a helper
+# container; fall back to the host path for non-Docker (dev) layouts.
+UPLOADS_VOLUME="${UPLOADS_VOLUME:-mta-market-site_uploads_data}"
+if docker volume inspect "$UPLOADS_VOLUME" >/dev/null 2>&1; then
+  echo "📦 Backing up uploads from Docker volume $UPLOADS_VOLUME..."
+  UPLOADS_FILE="$BACKUP_DIR/uploads_backup_$DATE.tar.gz"
+  docker run --rm \
+    -v "$UPLOADS_VOLUME":/src:ro \
+    -v "$(cd "$BACKUP_DIR" && pwd)":/out \
+    alpine tar -czf "/out/$(basename "$UPLOADS_FILE")" -C /src .
+  echo "✅ Uploads backed up to $UPLOADS_FILE"
+  add_checksum "$UPLOADS_FILE"
+elif [ -d "./uploads" ]; then
+  echo "📦 Backing up uploads (host path)..."
   UPLOADS_FILE="$BACKUP_DIR/uploads_backup_$DATE.tar.gz"
   tar -czf "$UPLOADS_FILE" ./uploads
   echo "✅ Uploads backed up to $UPLOADS_FILE"
   add_checksum "$UPLOADS_FILE"
+else
+  echo "⚠️  SKIPPED uploads backup: no Docker volume $UPLOADS_VOLUME and no ./uploads." >&2
 fi
 
 # Backup environment file - ENCRYPTED ONLY (PLAN O-003/Q-004)
@@ -60,12 +77,13 @@ if [ -f ".env" ]; then
   fi
 fi
 
-# Restore hint (verification procedure - see 05-operations/backup.md)
+# Restore hint (full procedure: docs/operations/backup-restore.md)
 cat <<HINT
 
 ✅ Backup complete. Verify before trusting:
    cd $BACKUP_DIR && sha256sum -c <(grep "$(date +%Y%m%d)" SHA256SUMS)
-Restore: docker-compose -f $COMPOSE_FILE exec -T postgres psql -U mtamarket mtamarket < db_backup_<date>.sql
+Restore drill (staging clone first — C-005):
+   docs/operations/backup-restore.md
 HINT
 
 # Remove backups older than the retention window

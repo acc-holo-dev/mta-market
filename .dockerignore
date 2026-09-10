@@ -8,8 +8,15 @@ dist
 out
 
 # Environment
-.env
-.env*.local
+# PLAN-004 G-001 (audit GAP-07): patterns must match at ANY depth — the old
+# root-anchored `.env` left apps/server/.env (real signing keys in dev) and
+# apps/web/.env.local in the build context, where COPY . . baked them into
+# builder layers (and GHA cache).
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+.keys
 
 # Logs
 logs

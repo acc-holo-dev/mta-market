@@ -49,12 +49,6 @@ export const upload = multer({
   },
 });
 
-// Helper to get file URL
-export function getFileUrl(filename: string): string {
-  const baseUrl = process.env.BASE_URL || "http://localhost:3001";
-  return `${baseUrl}/uploads/${filename}`;
-}
-
 /**
  * Resolve a stored file reference to an absolute path inside UPLOAD_DIR.
  * TASK A-009: local paid artifacts are never served statically; the download
