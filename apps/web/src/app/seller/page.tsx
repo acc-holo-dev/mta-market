@@ -1,3 +1,5 @@
+// Seller Studio (PLAN-002 H-001..H-006): «Мой магазин» — дашборд, управление
+// ресурсами с наглядными состояниями, услуги и заказы.
 "use client";
 
 import { useEffect, useState } from "react";
@@ -22,11 +24,12 @@ import {
 } from "@/lib/api-ext";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
-import { StatusBadge } from "@/components/ui/StatusBadge";
+import { Input, Select } from "@/components/ui/Input";
+import { StatusBadge, statusLabel } from "@/components/ui/StatusBadge";
 import { LoadingSpinner, EmptyState, ErrorState } from "@/components/ui/States";
-import { Store, Package, Wrench, Plus } from "lucide-react";
+import { Store, Package, Wrench, Plus, Wallet, Clock, Send, FileEdit } from "lucide-react";
 import Link from "next/link";
+import { typeLabel, formatDate } from "@/lib/domain";
 
 export default function SellerPage() {
   const router = useRouter();
@@ -59,15 +62,15 @@ export default function SellerPage() {
 
   if (profileLoading) {
     return (
-      <div className="container mx-auto px-4 py-12">
-        <LoadingSpinner label="Загрузка профиля продавца..." />
+      <div className="mx-auto max-w-6xl px-4 py-12">
+        <LoadingSpinner label="Загрузка магазина..." />
       </div>
     );
   }
 
   if (profileError) {
     return (
-      <div className="container mx-auto px-4 py-12">
+      <div className="mx-auto max-w-6xl px-4 py-12">
         <ErrorState error={profileError} onRetry={() => refetchProfile()} />
       </div>
     );
@@ -84,7 +87,7 @@ export default function SellerPage() {
     return (
       <Notice
         title="Заявка на рассмотрении"
-        text="Ваша заявка на статус продавца отправлена. Ожидайте решения модерации."
+        text="Ваша заявка на статус продавца отправлена. Ожидайте решения модерации — обычно это занимает немного времени."
         badge="PENDING"
       />
     );
@@ -93,7 +96,7 @@ export default function SellerPage() {
   if (status !== "APPROVED") {
     return (
       <Notice
-        title={`Статус продавца: ${status}`}
+        title={`Статус продавца: ${statusLabel(status ?? "")}`}
         text="В настоящее время вы не можете публиковать ресурсы и услуги."
         badge={status}
       />
@@ -121,22 +124,25 @@ function ApplyForm({ rejected }: { rejected?: boolean }) {
   });
 
   return (
-    <div className="container mx-auto px-4 py-12 max-w-xl">
+    <div className="mx-auto max-w-xl px-4 py-12">
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Store className="h-6 w-6 text-blue-600" /> Стать продавцом
+            <Store className="h-6 w-6 text-accent" /> Стать продавцом
           </CardTitle>
           <CardDescription>
             {rejected
               ? "Ваша предыдущая заявка была отклонена. Вы можете подать новую."
-              : "Заполните заявку, чтобы получить возможность публиковать ресурсы и услуги."}
+              : "Откройте свой магазин: публикуйте ресурсы и услуги для игроков MTA:SA."}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
-            <label className="text-sm text-slate-600 dark:text-slate-400">Отображаемое имя</label>
+            <label htmlFor="seller-name" className="text-sm text-content-secondary">
+              Название магазина
+            </label>
             <Input
+              id="seller-name"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="Например: CoolScripts"
@@ -144,17 +150,18 @@ function ApplyForm({ rejected }: { rejected?: boolean }) {
             />
           </div>
           <div>
-            <label className="text-sm text-slate-600 dark:text-slate-400">
+            <label htmlFor="seller-support" className="text-sm text-content-secondary">
               Контакт / поддержка (Discord, сайт...)
             </label>
             <Input
+              id="seller-support"
               value={supportInfo}
               onChange={(e) => setSupportInfo(e.target.value)}
               placeholder="discord.gg/..."
               className="mt-1"
             />
           </div>
-          {error ? <p className="text-sm text-red-600 dark:text-red-400">{error}</p> : null}
+          {error ? <p className="text-sm text-bad">{error}</p> : null}
           <Button disabled={mutation.isPending} onClick={() => mutation.mutate()}>
             {mutation.isPending ? "Отправка..." : "Отправить заявку"}
           </Button>
@@ -167,25 +174,25 @@ function ApplyForm({ rejected }: { rejected?: boolean }) {
 // ---------- Status notices ----------
 function Notice({ title, text, badge }: { title: string; text: string; badge?: string }) {
   return (
-    <div className="container mx-auto px-4 py-12 max-w-xl">
+    <div className="mx-auto max-w-xl px-4 py-12">
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center justify-between">
+          <CardTitle className="flex items-center justify-between gap-2">
             <span className="flex items-center gap-2">
-              <Store className="h-6 w-6 text-blue-600" /> {title}
+              <Store className="h-6 w-6 text-accent" /> {title}
             </span>
             {badge ? <StatusBadge status={badge} /> : null}
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-slate-600 dark:text-slate-400">{text}</p>
+          <p className="text-sm text-content-secondary">{text}</p>
         </CardContent>
       </Card>
     </div>
   );
 }
 
-// ---------- Approved seller dashboard ----------
+// ---------- Approved seller dashboard (H-002) ----------
 function SellerDashboard() {
   const { user } = useAuthStore();
 
@@ -211,46 +218,39 @@ function SellerDashboard() {
     (p) => p.status === "COMPLETED"
   ).length;
 
+  const resources = myResources ?? [];
+  const published = resources.filter((r) => r.status === "PUBLISHED").length;
+  const pending = resources.filter(
+    (r) => r.status === "PENDING_REVIEW" || r.status === "UNDER_REVIEW"
+  ).length;
+  const drafts = resources.filter((r) => r.status === "DRAFT").length;
+
   return (
-    <div className="container mx-auto px-4 py-12">
-      <div className="mb-8">
-        <h1 className="text-4xl font-bold mb-2 flex items-center gap-3">
-          <Store className="h-8 w-8 text-blue-600" /> Кабинет продавца
-        </h1>
-        <p className="text-lg text-slate-600 dark:text-slate-400">
-          {user?.displayName || user?.username}
-        </p>
+    <div className="mx-auto max-w-6xl px-4 py-10">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+            <Store className="h-7 w-7 text-accent" /> Мой магазин
+          </h1>
+          <p className="mt-1 text-content-secondary">
+            <span className="sr-only">Кабинет продавца — </span>
+            {user?.displayName || user?.username}
+          </p>
+        </div>
+        <Link href="/seller/new">
+          <Button>
+            <Plus className="mr-2 h-4 w-4" /> Новый ресурс
+          </Button>
+        </Link>
       </div>
 
-      <div className="grid md:grid-cols-3 gap-6 mb-8">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Package className="h-4 w-4" /> Мои ресурсы
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{myResources?.length ?? 0}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Wrench className="h-4 w-4" /> Мои услуги
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{myServices?.length ?? 0}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Проданных копий</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{soldCount}</div>
-          </CardContent>
-        </Card>
+      {/* H-002: dashboard stats */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-10">
+        <Stat icon={Package} label="Ресурсов" value={resources.length} />
+        <Stat icon={Send} label="Опубликованных" value={published} />
+        <Stat icon={Clock} label="На модерации" value={pending} />
+        <Stat icon={FileEdit} label="Черновиков" value={drafts} />
+        <Stat icon={Wallet} label="Продано копий" value={soldCount} />
       </div>
 
       <div className="space-y-8">
@@ -262,7 +262,27 @@ function SellerDashboard() {
   );
 }
 
-// ---------- My resources ----------
+function Stat({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: number;
+}) {
+  return (
+    <Card>
+      <CardContent className="pt-6">
+        <Icon className="h-4 w-4 text-content-muted mb-2" />
+        <p className="text-2xl font-bold">{value}</p>
+        <p className="text-xs text-content-secondary">{label}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------- My resources (H-003) ----------
 function MyResourcesSection() {
   const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
@@ -294,18 +314,14 @@ function MyResourcesSection() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Package className="h-5 w-5 text-blue-600" /> Мои ресурсы
+          <Package className="h-5 w-5 text-accent" /> Мои ресурсы
         </CardTitle>
-        <CardDescription>Черновики, отправка на модерацию и статусы публикации</CardDescription>
+        <CardDescription>
+          Черновики, отправка на модерацию и статусы публикации
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        <Link href="/seller/new">
-          <Button size="sm">
-            <Plus className="mr-1 h-4 w-4" /> Новый ресурс (мастер)
-          </Button>
-        </Link>
-
-        {error ? <p className="text-sm text-red-600 dark:text-red-400">{error}</p> : null}
+        {error ? <p className="text-sm text-bad">{error}</p> : null}
 
         {isLoading ? (
           <LoadingSpinner label="Загрузка ресурсов..." />
@@ -316,12 +332,23 @@ function MyResourcesSection() {
             {(myResources ?? []).map((r) => (
               <div
                 key={r.id}
-                className="flex items-start justify-between gap-4 p-3 border border-slate-200 dark:border-slate-700 rounded-lg"
+                className="flex flex-wrap items-start justify-between gap-3 p-4 rounded-card border border-line bg-surface-raised"
               >
                 <div>
-                  <p className="font-medium">{r.title}</p>
-                  <p className="text-sm text-slate-500">
-                    {r.type} · {r.price === 0 ? "Бесплатно" : formatRub(r.price)} · /{r.slug}
+                  <p className="font-medium">
+                    {r.title}
+                    {r.status === "PUBLISHED" ? (
+                      <Link
+                        href={`/resources/${r.slug}`}
+                        className="ml-2 text-xs text-accent-strong hover:underline"
+                      >
+                        открыть страницу →
+                      </Link>
+                    ) : null}
+                  </p>
+                  <p className="text-sm text-content-secondary">
+                    {typeLabel(r.type)} · {r.price === 0 ? "Бесплатно" : formatRub(r.price)} ·
+                    создан {formatDate(r.createdAt)}
                   </p>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap justify-end">
@@ -330,9 +357,12 @@ function MyResourcesSection() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => statusMutation.mutate({ slug: r.slug, status: "PENDING_REVIEW" })}
+                      onClick={() =>
+                        statusMutation.mutate({ slug: r.slug, status: "PENDING_REVIEW" })
+                      }
                       disabled={statusMutation.isPending}
                     >
+                      <Send className="mr-1.5 h-3.5 w-3.5" />
                       На модерацию
                     </Button>
                   ) : r.status === "PENDING_REVIEW" || r.status === "PUBLISHED" ? (
@@ -350,8 +380,16 @@ function MyResourcesSection() {
             ))}
             {myResources && myResources.length === 0 ? (
               <EmptyState
+                icon={<Package className="h-12 w-12 text-content-muted mx-auto mb-4" />}
                 title="У вас пока нет ресурсов"
-                description="Создайте первый ресурс через мастер"
+                description="Создайте первый ресурс через мастер — он проведёт вас от описания до публикации"
+                action={
+                  <Link href="/seller/new">
+                    <Button variant="primary" size="sm">
+                      <Plus className="mr-1.5 h-4 w-4" /> Создать ресурс
+                    </Button>
+                  </Link>
+                }
               />
             ) : null}
           </div>
@@ -366,7 +404,7 @@ function MyServicesSection() {
   const qc = useQueryClient();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [type, setType] = useState("CUSTOM_SCRIPT");
+  const [type, setType] = useState("CUSTOM_DEVELOPMENT");
   const [priceRub, setPriceRub] = useState("");
   const [deliveryDays, setDeliveryDays] = useState("3");
   const [requirements, setRequirements] = useState("");
@@ -407,25 +445,35 @@ function MyServicesSection() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Wrench className="h-5 w-5 text-blue-600" /> Мои услуги
+          <Wrench className="h-5 w-5 text-accent" /> Мои услуги
         </CardTitle>
         <CardDescription>Услуги с фиксированным сроком выполнения</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        <div className="p-4 border border-slate-200 dark:border-slate-700 rounded-lg space-y-3">
+        <div className="p-4 rounded-card border border-line bg-surface-raised space-y-3">
           <p className="text-sm font-medium">Новая услуга</p>
-          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Название" />
+          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Название" aria-label="Название услуги" />
           <Input
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Описание: что входит в услугу"
+            aria-label="Описание услуги"
           />
           <div className="grid md:grid-cols-4 gap-3">
-            <Input value={type} onChange={(e) => setType(e.target.value)} placeholder="Тип" />
+            <Select value={type} onChange={(e) => setType(e.target.value)} aria-label="Тип услуги">
+              <option value="CUSTOM_DEVELOPMENT">Разработка</option>
+              <option value="CONFIGURATION">Настройка сервера</option>
+              <option value="SUPPORT">Поддержка</option>
+              <option value="CONSULTATION">Консультация</option>
+              <option value="OTHER">Другое</option>
+            </Select>
             <Input
               value={priceRub}
               onChange={(e) => setPriceRub(e.target.value)}
               placeholder="Цена, ₽"
+              type="number"
+              min={0}
+              aria-label="Цена, ₽"
             />
             <Input
               value={deliveryDays}
@@ -433,11 +481,13 @@ function MyServicesSection() {
               placeholder="Дней на выполнение"
               type="number"
               min={1}
+              aria-label="Дней на выполнение"
             />
             <Input
               value={requirements}
               onChange={(e) => setRequirements(e.target.value)}
               placeholder="Требования к заказчику"
+              aria-label="Требования к заказчику"
             />
           </div>
           <Button
@@ -447,7 +497,7 @@ function MyServicesSection() {
           >
             Создать услугу
           </Button>
-          {error ? <p className="text-sm text-red-600 dark:text-red-400">{error}</p> : null}
+          {error ? <p className="text-sm text-bad">{error}</p> : null}
         </div>
 
         {servicesLoading ? (
@@ -459,11 +509,11 @@ function MyServicesSection() {
             {(myServices ?? []).map((s) => (
               <div
                 key={s.id}
-                className="flex items-start justify-between gap-4 p-3 border border-slate-200 dark:border-slate-700 rounded-lg"
+                className="flex flex-wrap items-start justify-between gap-3 p-4 rounded-card border border-line bg-surface-raised"
               >
                 <div>
                   <p className="font-medium">{s.title}</p>
-                  <p className="text-sm text-slate-500">
+                  <p className="text-sm text-content-secondary">
                     {formatRub(s.price)} · {s.deliveryDays} дн. · /{s.slug}
                   </p>
                 </div>
@@ -510,28 +560,31 @@ function SellerOrdersSection() {
         <CardDescription>Доставка и закрытие заказов</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {error ? <p className="text-sm text-red-600 dark:text-red-400">{error}</p> : null}
+        {error ? <p className="text-sm text-bad">{error}</p> : null}
         {isLoading ? (
           <LoadingSpinner label="Загрузка заказов..." />
         ) : loadError ? (
           <ErrorState error={loadError} onRetry={() => refetch()} />
         ) : orders.length === 0 ? (
-          <EmptyState title="Заказов пока нет" description="Заказы на ваши услуги появятся здесь" />
+          <EmptyState
+            title="Заказов пока нет"
+            description="Заказы на ваши услуги появятся здесь"
+          />
         ) : (
           orders.map((o) => (
             <div
               key={o.id}
-              className="p-4 border border-slate-200 dark:border-slate-700 rounded-lg space-y-3"
+              className="p-4 rounded-card border border-line bg-surface-raised space-y-3"
             >
-              <div className="flex items-start justify-between gap-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="font-medium">{o.service.title}</p>
-                  <p className="text-sm text-slate-500">
-                    {formatRub(o.finalPrice)} ·{" "}
-                    {new Date(o.createdAt).toLocaleDateString("ru-RU")} · #{o.id.slice(0, 8)}
+                  <p className="text-sm text-content-secondary">
+                    {formatRub(o.finalPrice)} · {formatDate(o.createdAt)} · #
+                    {o.id.slice(0, 8)}
                   </p>
                   {o.buyerNotes ? (
-                    <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+                    <p className="text-sm text-content-secondary mt-1">
                       Заметки покупателя: {o.buyerNotes}
                     </p>
                   ) : null}
@@ -540,20 +593,20 @@ function SellerOrdersSection() {
               </div>
 
               {/* Status timeline */}
-              <div className="flex items-center gap-1 text-xs">
+              <div className="flex items-center gap-1 text-xs flex-wrap">
                 {ORDER_STEPS.map((step, i) => {
                   const idx = ORDER_STEPS.indexOf(o.status);
                   const reached = idx >= 0 && i <= idx;
                   return (
                     <span
                       key={step}
-                      className={`px-2 py-0.5 rounded ${
+                      className={`px-2 py-1 rounded ${
                         reached
-                          ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300"
-                          : "bg-slate-100 text-slate-400 dark:bg-slate-800"
+                          ? "bg-accent-soft text-accent-strong"
+                          : "bg-surface text-content-muted"
                       }`}
                     >
-                      {step}
+                      {statusLabel(step)}
                     </span>
                   );
                 })}

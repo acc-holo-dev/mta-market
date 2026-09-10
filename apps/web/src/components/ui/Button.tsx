@@ -1,4 +1,4 @@
-// Button component
+// Button component (PLAN-002 B-003/B-004: единый вид во всём приложении).
 import React from "react";
 import { cn } from "@/lib/utils";
 
@@ -11,21 +11,20 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ variant = "primary", size = "md", className, children, ...props }, ref) => {
     const baseStyles =
-      "inline-flex items-center justify-center rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none";
+      "inline-flex items-center justify-center rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50 disabled:pointer-events-none";
 
     const variants = {
-      primary: "bg-blue-600 text-white hover:bg-blue-700 focus-visible:ring-blue-500",
-      secondary: "bg-slate-700 text-white hover:bg-slate-800 focus-visible:ring-slate-500",
-      outline:
-        "border border-slate-300 bg-transparent hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800",
-      ghost: "hover:bg-slate-100 dark:hover:bg-slate-800",
-      danger: "bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-500",
+      primary: "bg-accent text-white hover:bg-accent-strong",
+      secondary: "bg-surface-raised border border-line text-content hover:bg-surface-hover",
+      outline: "border border-line-strong bg-transparent text-content hover:bg-surface-hover",
+      ghost: "text-content-secondary hover:bg-surface-hover hover:text-content",
+      danger: "bg-bad text-white hover:brightness-110",
     };
 
     const sizes = {
       sm: "h-8 px-3 text-sm",
-      md: "h-10 px-4 text-base",
-      lg: "h-12 px-6 text-lg",
+      md: "h-10 px-4 text-sm",
+      lg: "h-12 px-6 text-base",
     };
 
     return (

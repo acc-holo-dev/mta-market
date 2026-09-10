@@ -21,6 +21,32 @@ import { reqLog } from "../middleware/requestId";
 
 const router: Router = Router();
 
+// PLAN-002 E-006/E-007: карточка товара и product page должны показывать
+// продавца и рейтинг. Минимальная аддитивная поддержка UI (без новой media
+// subsystem): к каждому ресурсу добавляются seller {username, displayName,
+// avatar}, rating и reviewCount. Additive fields — существующий контракт
+// не меняется.
+async function enrichResourceCard(resource: any): Promise<any> {
+  const [seller, reviewAgg] = await Promise.all([
+    db.orm.public.User.where({ id: resource.sellerId }).first(),
+    db.orm.public.Review.where({ resourceId: resource.id }).aggregate((agg: any) => ({
+      total: agg.count(),
+      averageRating: agg.avg("rating"),
+    })),
+  ]);
+  return {
+    ...resource,
+    seller: seller
+      ? { username: seller.username, displayName: seller.displayName, avatar: seller.avatar }
+      : null,
+    rating:
+      reviewAgg && Number(reviewAgg.total) > 0
+        ? Math.round(Number(reviewAgg.averageRating) * 10) / 10
+        : null,
+    reviewCount: reviewAgg ? Number(reviewAgg.total) : 0,
+  };
+}
+
 // GET /resources - List all published resources
 router.get(
   "/",
@@ -47,8 +73,10 @@ router.get(
       );
       const total = Number(countResult.total);
 
+      const enriched = await Promise.all(resources.map((r: any) => enrichResourceCard(r)));
+
       res.json({
-        data: resources,
+        data: enriched,
         pagination: {
           page,
           limit,
@@ -94,7 +122,7 @@ router.get("/:slug", standardRateLimit, async (req, res: Response) => {
       return;
     }
 
-    res.json(resource);
+    res.json(await enrichResourceCard(resource));
   } catch (error) {
     reqLog(req).error("resource_fetch_failed", { error });
     res.status(500).json({ error: "Failed to fetch resource" });

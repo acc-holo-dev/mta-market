@@ -32,6 +32,10 @@ export interface Resource {
   status: string;
   price: number; // kopecks; 0 = FREE
   createdAt: string;
+  // PLAN-002 E-006/E-007: additive fields from the server (card + product page).
+  seller?: { username?: string | null; displayName?: string | null; avatar?: string | null } | null;
+  rating?: number | null;
+  reviewCount?: number | null;
 }
 
 export interface Pagination {

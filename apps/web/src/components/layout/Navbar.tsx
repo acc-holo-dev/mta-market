@@ -1,18 +1,38 @@
-// Navbar component (PLAN-001 J-001 + K-001 terminology)
+// Navbar (PLAN-002 C-001/C-002/C-003): продуктовая навигация + mobile drawer.
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/auth";
 import { fetchMe, formatRub } from "@/lib/api-ext";
 import { Button } from "@/components/ui/Button";
-import { ShoppingBag, User, LogOut, Settings, Wallet } from "lucide-react";
+import { Avatar } from "@/components/ui/Avatar";
+import {
+  ShoppingBag,
+  User,
+  LogOut,
+  Wallet,
+  Store,
+  Menu,
+  X,
+  ShieldCheck,
+  Package,
+  LayoutGrid,
+} from "lucide-react";
 
-const linkClass =
-  "text-sm font-medium text-slate-700 hover:text-blue-600 dark:text-slate-300 dark:hover:text-blue-400";
+const NAV_LINKS = [
+  { href: "/resources", label: "Маркетплейс", icon: LayoutGrid },
+  { href: "/dashboard", label: "Покупки", icon: Package },
+  { href: "/account", label: "Профиль", icon: User },
+  { href: "/seller", label: "Мой магазин", icon: Store },
+];
 
 export function Navbar() {
   const { user, accessToken, isAuthenticated, clearAuth } = useAuthStore();
+  const pathname = usePathname();
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   // C-004: balance travels with the profile; show it inline when signed in.
   const { data: me } = useQuery({
@@ -23,87 +43,236 @@ export function Navbar() {
     retry: false,
   });
 
+  // C-003: закрыть drawer при смене маршрута.
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    document.body.style.overflow = mobileOpen ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [mobileOpen]);
+
   const handleLogout = () => {
+    setMobileOpen(false);
     clearAuth();
     window.location.href = "/";
   };
 
+  const isAdmin = user?.role === "ADMIN" || user?.role === "MODERATOR";
+  const active = (href: string) =>
+    href === "/resources" ? pathname === "/" || pathname.startsWith("/resources") : pathname.startsWith(href);
+
   return (
-    <nav className="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-      <div className="container mx-auto px-4">
-        <div className="flex h-16 items-center justify-between">
-          {/* Logo */}
-          <Link href="/" className="flex items-center space-x-2">
-            <ShoppingBag className="h-6 w-6 text-blue-600" />
-            <span className="text-xl font-bold">MTA Market</span>
-          </Link>
-
-          {/* Navigation Links */}
-          <div className="hidden md:flex items-center space-x-6">
-            <Link href="/" className={linkClass}>
-              Маркетплейс
+    <header className="sticky top-0 z-40 border-b border-line bg-background/90 backdrop-blur">
+      <nav aria-label="Основная навигация">
+        <div className="mx-auto max-w-7xl px-4">
+          <div className="flex h-16 items-center justify-between gap-4">
+            {/* Logo */}
+            <Link href="/" className="flex items-center gap-2 flex-shrink-0">
+              <ShoppingBag className="h-6 w-6 text-accent" />
+              <span className="text-lg font-bold tracking-tight">MTA Market</span>
             </Link>
-            {isAuthenticated() && user ? (
-              <>
-                <Link href="/account" className={linkClass}>
-                  Профиль
-                </Link>
-                <Link href="/dashboard" className={linkClass}>
-                  Покупки
-                </Link>
-                <Link href="/seller" className={linkClass}>
-                  Продавец
-                </Link>
-                {user.role === "ADMIN" || user.role === "MODERATOR" ? (
-                  <Link href="/admin" className={linkClass}>
-                    Админ
-                  </Link>
-                ) : null}
-              </>
-            ) : null}
-          </div>
 
-          {/* Auth Section */}
-          <div className="flex items-center space-x-4">
-            {isAuthenticated() && user ? (
-              <>
-                {me ? (
-                  <span
-                    className="hidden sm:inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 dark:text-slate-300"
-                    title="Ваш баланс"
+            {/* Desktop links (C-001) */}
+            <div className="hidden md:flex items-center gap-1">
+              {isAuthenticated() &&
+                user &&
+                NAV_LINKS.map(({ href, label }) => (
+                  <Link
+                    key={href}
+                    href={href}
+                    className={`rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                      active(href)
+                        ? "text-content bg-surface-hover"
+                        : "text-content-secondary hover:text-content hover:bg-surface-hover"
+                    }`}
                   >
-                    <Wallet className="h-4 w-4 text-green-600 dark:text-green-400" />
-                    {formatRub(me.balance.available)}
-                  </span>
-                ) : null}
-                <Link href="/account">
-                  <Button variant="ghost" size="sm">
-                    <User className="mr-2 h-4 w-4" />
-                    {user.displayName || user.username}
-                  </Button>
+                    {label}
+                  </Link>
+                ))}
+              {isAuthenticated() && user && isAdmin ? (
+                <Link
+                  href="/admin"
+                  className={`rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                    pathname.startsWith("/admin")
+                      ? "text-content bg-surface-hover"
+                      : "text-content-secondary hover:text-content hover:bg-surface-hover"
+                  }`}
+                >
+                  Админ
                 </Link>
-                <Button variant="outline" size="sm" onClick={handleLogout}>
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Выход
-                </Button>
-              </>
-            ) : (
-              <>
-                <Link href="/auth/login">
-                  <Button variant="ghost" size="sm">
-                    Войти
-                  </Button>
+              ) : null}
+              {!isAuthenticated() || !user ? (
+                <Link
+                  href="/resources"
+                  className={`rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                    active("/resources")
+                      ? "text-content bg-surface-hover"
+                      : "text-content-secondary hover:text-content hover:bg-surface-hover"
+                  }`}
+                >
+                  Маркетплейс
                 </Link>
-                <Link href="/auth/register">
-                  <Button variant="primary" size="sm">
-                    Регистрация
+              ) : null}
+            </div>
+
+            {/* Right side */}
+            <div className="flex items-center gap-2">
+              {isAuthenticated() && user ? (
+                <>
+                  {me ? (
+                    <Link
+                      href="/account"
+                      className="hidden sm:inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-content hover:bg-surface-hover"
+                      title="Ваш баланс"
+                    >
+                      <Wallet className="h-4 w-4 text-ok" />
+                      {formatRub(me.balance.available)}
+                    </Link>
+                  ) : null}
+                  <Link
+                    href="/account"
+                    className="hidden md:flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-content hover:bg-surface-hover"
+                  >
+                    <Avatar src={me?.avatar ?? user.avatar ?? null} name={user.displayName || user.username} size="sm" />
+                    <span className="max-w-[10rem] truncate">
+                      {user.displayName || user.username}
+                    </span>
+                  </Link>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleLogout}
+                    className="hidden md:inline-flex"
+                  >
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Выход
                   </Button>
-                </Link>
-              </>
-            )}
+                  {/* Mobile burger (C-002) */}
+                  <button
+                    type="button"
+                    onClick={() => setMobileOpen(true)}
+                    className="md:hidden inline-flex h-10 w-10 items-center justify-center rounded-md text-content hover:bg-surface-hover"
+                    aria-label="Открыть меню"
+                    aria-expanded={mobileOpen}
+                  >
+                    <Menu className="h-5 w-5" />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Link href="/auth/login" className="hidden sm:inline-flex">
+                    <Button variant="ghost" size="sm">
+                      Войти
+                    </Button>
+                  </Link>
+                  <Link href="/auth/register">
+                    <Button variant="primary" size="sm">
+                      Регистрация
+                    </Button>
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => setMobileOpen(true)}
+                    className="md:hidden inline-flex h-10 w-10 items-center justify-center rounded-md text-content hover:bg-surface-hover"
+                    aria-label="Открыть меню"
+                  >
+                    <Menu className="h-5 w-5" />
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         </div>
-      </div>
-    </nav>
+      </nav>
+
+      {/* Mobile drawer (C-002) */}
+      {mobileOpen ? (
+        <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true" aria-label="Меню">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setMobileOpen(false)} />
+          <div className="absolute inset-y-0 right-0 w-80 max-w-full bg-surface border-l border-line p-4 overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <span className="flex items-center gap-2 font-bold">
+                <ShoppingBag className="h-5 w-5 text-accent" /> MTA Market
+              </span>
+              <button
+                type="button"
+                onClick={() => setMobileOpen(false)}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-md text-content-secondary hover:bg-surface-hover"
+                aria-label="Закрыть меню"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {isAuthenticated() && user ? (
+              <div className="flex items-center gap-3 p-3 rounded-card bg-surface-raised mb-4">
+                <Avatar src={me?.avatar ?? user.avatar ?? null} name={user.displayName || user.username} />
+                <div className="min-w-0">
+                  <p className="font-medium truncate">{user.displayName || user.username}</p>
+                  {me ? (
+                    <p className="text-sm text-content-secondary flex items-center gap-1">
+                      <Wallet className="h-3.5 w-3.5 text-ok" /> {formatRub(me.balance.available)}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+
+            <div className="space-y-1">
+              {NAV_LINKS.map(({ href, label, icon: Icon }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${
+                    active(href)
+                      ? "bg-surface-hover text-content"
+                      : "text-content-secondary hover:bg-surface-hover hover:text-content"
+                  }`}
+                >
+                  <Icon className="h-5 w-5" /> {label}
+                </Link>
+              ))}
+              {isAdmin ? (
+                <Link
+                  href="/admin"
+                  className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${
+                    pathname.startsWith("/admin")
+                      ? "bg-surface-hover text-content"
+                      : "text-content-secondary hover:bg-surface-hover hover:text-content"
+                  }`}
+                >
+                  <ShieldCheck className="h-5 w-5" /> Админ
+                </Link>
+              ) : null}
+            </div>
+
+            <div className="mt-6 pt-4 border-t border-line space-y-2">
+              {isAuthenticated() ? (
+                <Button variant="outline" className="w-full" onClick={handleLogout}>
+                  <LogOut className="mr-2 h-4 w-4" /> Выйти
+                </Button>
+              ) : (
+                <>
+                  <Link href="/auth/login" className="block">
+                    <Button variant="outline" className="w-full">
+                      Войти
+                    </Button>
+                  </Link>
+                  <Link href="/auth/register" className="block">
+                    <Button variant="primary" className="w-full">
+                      Регистрация
+                    </Button>
+                  </Link>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </header>
   );
 }

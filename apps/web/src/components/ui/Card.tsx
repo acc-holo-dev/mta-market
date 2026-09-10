@@ -1,4 +1,4 @@
-// Card component
+// Card component (PLAN-002 B-002/B-004: единая surface-карточка).
 import React from "react";
 import { cn } from "@/lib/utils";
 
@@ -11,10 +11,7 @@ export const Card = React.forwardRef<HTMLDivElement, CardProps>(
     return (
       <div
         ref={ref}
-        className={cn(
-          "rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900",
-          className
-        )}
+        className={cn("rounded-card border border-line bg-surface shadow-sm", className)}
         {...props}
       >
         {children}
@@ -44,7 +41,7 @@ export const CardTitle = React.forwardRef<
   return (
     <h3
       ref={ref}
-      className={cn("text-2xl font-semibold leading-none tracking-tight", className)}
+      className={cn("text-xl font-semibold leading-tight tracking-tight text-content", className)}
       {...props}
     >
       {children}
@@ -59,7 +56,7 @@ export const CardDescription = React.forwardRef<
   React.HTMLAttributes<HTMLParagraphElement>
 >(({ className, children, ...props }, ref) => {
   return (
-    <p ref={ref} className={cn("text-sm text-slate-500 dark:text-slate-400", className)} {...props}>
+    <p ref={ref} className={cn("text-sm text-content-secondary", className)} {...props}>
       {children}
     </p>
   );

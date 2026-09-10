@@ -1,8 +1,12 @@
+// Resource Detail (PLAN-002 F-001..F-006): полноценная product page.
+// Вся логика покупки/отзывов из PLAN-001 сохранена, presentation перестроена:
+// hero area с CTA, DRM-блок, читаемая история версий, полноценные отзывы.
 "use client";
 
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   fetchResource,
   fetchResourceVersions,
@@ -21,7 +25,10 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { Star, Package, ShieldCheck } from "lucide-react";
+import { Price } from "@/components/ui/Price";
+import { Rating } from "@/components/ui/Rating";
+import { typeLabel, formatDate } from "@/lib/domain";
+import { Star, ShieldCheck, Package, Store, CheckCircle2, Clock } from "lucide-react";
 
 export default function ResourceDetailPage() {
   const params = useParams();
@@ -50,7 +57,7 @@ export default function ResourceDetailPage() {
     queryFn: () => fetchResourceReviews(slug, 1, 20),
   });
 
-  // Ownership: needed for the review form (must have a COMPLETED purchase).
+  // Ownership: needed for the "already acquired" state and the review form.
   const { data: myPurchases } = useQuery({
     queryKey: ["purchases", "my", slug],
     queryFn: fetchMyPurchases,
@@ -136,7 +143,7 @@ export default function ResourceDetailPage() {
   const reviewMutation = useMutation({
     mutationFn: () => postReview(slug, rating, comment),
     onSuccess: () => {
-      setReviewMsg("Отзыв отправлен");
+      setReviewMsg("Отзыв отправлен. Спасибо!");
       setComment("");
       setReviewErr(null);
       qc.invalidateQueries({ queryKey: ["resource-reviews", slug] });
@@ -149,125 +156,168 @@ export default function ResourceDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="container mx-auto px-4 py-12">
-        <Card className="animate-pulse">
-          <CardHeader>
-            <div className="h-8 bg-slate-200 dark:bg-slate-700 rounded w-1/2"></div>
-            <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-3/4 mt-2"></div>
-          </CardHeader>
-          <CardContent>
-            <div className="h-40 bg-slate-200 dark:bg-slate-700 rounded"></div>
-          </CardContent>
-        </Card>
+      <div className="mx-auto max-w-7xl px-4 py-12">
+        <div className="animate-pulse space-y-4">
+          <div className="h-40 rounded-card bg-surface-hover" />
+          <div className="h-8 w-1/2 rounded bg-surface-hover" />
+          <div className="h-24 rounded-card bg-surface-hover" />
+        </div>
       </div>
     );
   }
 
   if (error || !resource) {
     return (
-      <div className="container mx-auto px-4 py-12">
-        <Card className="bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800">
-          <CardHeader>
-            <CardTitle className="text-red-600 dark:text-red-400">Ресурс не найден</CardTitle>
-            <CardDescription>Возможно, он был удалён или ещё не опубликован.</CardDescription>
-          </CardHeader>
+      <div className="mx-auto max-w-7xl px-4 py-16">
+        <Card className="mx-auto max-w-lg text-center">
+          <CardContent className="py-10 space-y-4">
+            <Package className="h-10 w-10 text-content-muted mx-auto" />
+            <h1 className="text-xl font-semibold">Ресурс не найден</h1>
+            <p className="text-sm text-content-secondary">
+              Возможно, он был удалён или ещё не опубликован.
+            </p>
+            <Link href="/resources">
+              <Button variant="outline">Вернуться в Маркетплейс</Button>
+            </Link>
+          </CardContent>
         </Card>
       </div>
     );
   }
 
+  const latestVersion = versions && versions.length > 0 ? versions[0] : null;
+  const sellerName = resource.seller
+    ? resource.seller.displayName || resource.seller.username || null
+    : null;
+
   return (
-    <div className="container mx-auto px-4 py-12">
+    <div className="mx-auto max-w-7xl px-4 py-8">
+      {/* Breadcrumbs */}
+      <nav aria-label="Хлебные крошки" className="mb-6 text-sm text-content-muted">
+        <Link href="/resources" className="hover:text-accent-strong">
+          Маркетплейс
+        </Link>
+        <span className="mx-2">/</span>
+        <span className="text-content-secondary">{resource.title}</span>
+      </nav>
+
       <div className="grid lg:grid-cols-3 gap-8">
-        {/* Main Content */}
-        <div className="lg:col-span-2 space-y-6">
+        {/* Main content */}
+        <div className="lg:col-span-2 space-y-8">
+          {/* Hero area (F-002) */}
+          <div className="rounded-card border border-line bg-gradient-to-br from-accent-soft via-surface-raised to-surface p-8 flex flex-col items-start gap-4">
+            <div className="flex items-center gap-3">
+              <span className="rounded bg-accent-soft px-2.5 py-1 text-xs font-medium text-accent-strong">
+                {typeLabel(resource.type)}
+              </span>
+            </div>
+            <h1 className="text-3xl md:text-4xl font-bold tracking-tight">{resource.title}</h1>
+            <p className="text-content-secondary leading-relaxed max-w-2xl">
+              {resource.description}
+            </p>
+            <div className="flex flex-wrap items-center gap-4 text-sm">
+              {sellerName ? (
+                <span className="inline-flex items-center gap-1.5 text-content-secondary">
+                  <Store className="h-4 w-4" /> {sellerName}
+                </span>
+              ) : null}
+              <Rating
+                value={resource.rating ?? reviewsData?.stats.averageRating ?? null}
+                count={resource.reviewCount ?? reviewsData?.stats.total ?? null}
+                size="md"
+              />
+              <span className="text-content-muted">Опубликовано {formatDate(resource.createdAt)}</span>
+            </div>
+          </div>
+
+          {/* DRM info */}
+          <div className="flex items-start gap-3 p-4 rounded-card border border-line bg-surface">
+            <ShieldCheck className="h-6 w-6 text-ok flex-shrink-0" />
+            <div>
+              <h2 className="font-semibold">Лицензия с DRM-защитой</h2>
+              <p className="text-sm text-content-secondary">
+                После подтверждения оплаты вы получаете персональную лицензию, привязанную к вашему
+                серверу. Загрузка ресурса доступна из раздела покупок.
+              </p>
+            </div>
+          </div>
+
+          {/* Description (F-003) */}
           <Card>
             <CardHeader>
-              <div className="flex items-start justify-between">
-                <div className="space-y-2">
-                  <CardTitle className="text-3xl">{resource.title}</CardTitle>
-                  <CardDescription className="text-base">{resource.description}</CardDescription>
-                </div>
-                <span className="text-sm px-3 py-1 bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400 rounded">
-                  {resource.type}
-                </span>
-              </div>
+              <CardTitle>Описание</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="flex items-start gap-3 p-4 bg-slate-50 dark:bg-slate-800 rounded-lg">
-                <ShieldCheck className="h-6 w-6 text-green-600 dark:text-green-400 flex-shrink-0" />
-                <div>
-                  <h4 className="font-semibold">DRM защита</h4>
-                  <p className="text-sm text-slate-600 dark:text-slate-400">
-                    Лицензия привязывается к серверу
-                  </p>
-                </div>
-              </div>
+            <CardContent>
+              <p className="text-content-secondary whitespace-pre-line leading-relaxed">
+                {resource.description}
+              </p>
             </CardContent>
           </Card>
 
-          {/* Versions */}
+          {/* Versions (F-006) */}
           <Card>
             <CardHeader>
-              <CardTitle>Версии</CardTitle>
-              <CardDescription>История версий ресурса</CardDescription>
+              <CardTitle>История версий</CardTitle>
             </CardHeader>
             <CardContent>
               {!versions || versions.length === 0 ? (
-                <p className="text-sm text-slate-500">Версии пока не опубликованы.</p>
+                <p className="text-sm text-content-muted">Версии пока не опубликованы.</p>
               ) : (
-                <ul className="space-y-3">
-                  {versions.map((v) => (
-                    <li
-                      key={v.id}
-                      className="flex items-start justify-between p-3 border border-slate-200 dark:border-slate-700 rounded-lg"
-                    >
-                      <div>
+                <ol className="relative space-y-6 border-l border-line pl-6">
+                  {versions.map((v, i) => (
+                    <li key={v.id} className="relative">
+                      <span
+                        className={`absolute -left-[1.9rem] top-1 h-3 w-3 rounded-full border-2 ${
+                          i === 0 ? "bg-accent border-accent" : "bg-surface border-line-strong"
+                        }`}
+                      />
+                      <div className="flex items-center gap-3">
                         <span className="font-semibold">v{v.version}</span>
-                        {v.changelog ? (
-                          <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-                            {v.changelog}
-                          </p>
+                        {i === 0 ? (
+                          <span className="rounded bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent-strong">
+                            Актуальная
+                          </span>
                         ) : null}
+                        <span className="text-xs text-content-muted">{formatDate(v.createdAt)}</span>
                       </div>
-                      <span className="text-xs text-slate-500">
-                        {new Date(v.createdAt).toLocaleDateString("ru-RU")}
-                      </span>
+                      {v.changelog ? (
+                        <p className="text-sm text-content-secondary mt-1">{v.changelog}</p>
+                      ) : null}
                     </li>
                   ))}
-                </ul>
+                </ol>
               )}
             </CardContent>
           </Card>
 
-          {/* Reviews */}
+          {/* Reviews (F-005) */}
           <Card>
             <CardHeader>
               <CardTitle>Отзывы</CardTitle>
               <CardDescription>
                 {reviewsData?.stats?.total
-                  ? `Средняя оценка: ${reviewsData.stats.averageRating?.toFixed(1) ?? "—"} (${reviewsData.stats.total})`
+                  ? `Средняя оценка: ${reviewsData.stats.averageRating?.toFixed(1) ?? "—"} · ${reviewsData.stats.total} отзывов`
                   : "Пока нет отзывов"}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {accessToken && owned ? (
-                <div className="p-4 border border-slate-200 dark:border-slate-700 rounded-lg space-y-3">
+                <div className="p-4 rounded-card border border-line bg-surface-raised space-y-3">
                   <p className="text-sm font-medium">Оставить отзыв</p>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
                     {[1, 2, 3, 4, 5].map((n) => (
                       <button
                         key={n}
                         type="button"
                         onClick={() => setRating(n)}
                         aria-label={`Оценка ${n}`}
-                        className="p-0.5"
+                        className="p-1 rounded hover:bg-surface-hover"
                       >
                         <Star
                           className={`h-6 w-6 ${
                             n <= rating
-                              ? "text-yellow-500 fill-yellow-500"
-                              : "text-slate-300 dark:text-slate-600"
+                              ? "text-amber-400 fill-amber-400"
+                              : "text-line-strong"
                           }`}
                         />
                       </button>
@@ -285,25 +335,28 @@ export default function ResourceDetailPage() {
                   >
                     Отправить отзыв
                   </Button>
-                  {reviewMsg ? (
-                    <p className="text-sm text-green-600 dark:text-green-400">{reviewMsg}</p>
-                  ) : null}
+                  {reviewMsg ? <p className="text-sm text-ok">{reviewMsg}</p> : null}
                   {reviewErr ? (
-                    <p className="text-sm text-red-600 dark:text-red-400">{reviewErr}</p>
+                    <p className="text-sm text-bad" role="alert">
+                      {reviewErr}
+                    </p>
                   ) : null}
                 </div>
               ) : (
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-content-muted">
                   Войдите и приобретите ресурс, чтобы оставить отзыв.
                 </p>
               )}
 
+              {reviewsData && reviewsData.data.length === 0 ? (
+                <p className="text-sm text-content-muted">
+                  Отзывов пока нет — станьте первым покупателем, который поделится мнением.
+                </p>
+              ) : null}
+
               {reviewsData?.data.map((r) => (
-                <div
-                  key={r.id}
-                  className="p-4 border border-slate-200 dark:border-slate-700 rounded-lg"
-                >
-                  <div className="flex items-center gap-2">
+                <div key={r.id} className="p-4 rounded-card border border-line space-y-2">
+                  <div className="flex items-center gap-3">
                     <span className="font-medium text-sm">
                       {r.user?.displayName || r.user?.username || "Пользователь"}
                     </span>
@@ -312,112 +365,122 @@ export default function ResourceDetailPage() {
                         <Star
                           key={n}
                           className={`h-4 w-4 ${
-                            n <= r.rating
-                              ? "text-yellow-500 fill-yellow-500"
-                              : "text-slate-300 dark:text-slate-600"
+                            n <= r.rating ? "text-amber-400 fill-amber-400" : "text-line-strong"
                           }`}
                         />
                       ))}
                     </span>
-                    <span className="text-xs text-slate-500 ml-auto">
-                      {new Date(r.createdAt).toLocaleDateString("ru-RU")}
+                    <span className="text-xs text-content-muted ml-auto">
+                      {formatDate(r.createdAt)}
                     </span>
                   </div>
-                  {r.comment ? (
-                    <p className="text-sm text-slate-600 dark:text-slate-400 mt-2">{r.comment}</p>
-                  ) : null}
+                  {r.comment ? <p className="text-sm text-content-secondary">{r.comment}</p> : null}
                 </div>
               ))}
             </CardContent>
           </Card>
         </div>
 
-        {/* Sidebar: checkout */}
-        <div className="space-y-6">
+        {/* Sidebar: purchase area (F-004) */}
+        <div className="space-y-6 lg:sticky lg:top-24 self-start">
           <Card>
             <CardHeader>
-              <CardTitle>{resource.price === 0 ? "Получить бесплатно" : "Купить ресурс"}</CardTitle>
+              <CardTitle>
+                {owned
+                  ? "Уже приобретено"
+                  : resource.price === 0
+                    ? "Получить бесплатно"
+                    : "Купить ресурс"}
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="text-center py-4">
-                <div className="text-4xl font-bold">
-                  {resource.price === 0 ? (
-                    <span className="text-green-600 dark:text-green-400">Бесплатно</span>
-                  ) : (
-                    <>{formatRub(resource.price)}</>
-                  )}
-                </div>
+              <div className="py-2">
+                <Price kopecks={resource.price} size="lg" />
                 {resource.price > 0 && (
-                  <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-                    Единоразовая покупка
-                  </p>
+                  <p className="text-sm text-content-secondary mt-1">Единоразовая покупка</p>
                 )}
               </div>
 
-              {resource.price > 0 ? (
-                <div>
-                  <label className="text-sm text-slate-600 dark:text-slate-400">
-                    Промокод (если есть)
-                  </label>
-                  <Input
-                    value={discountCode}
-                    onChange={(e) => setDiscountCode(e.target.value)}
-                    placeholder="Код скидки"
-                    className="mt-1"
-                  />
+              {owned ? (
+                <div className="p-4 rounded-card bg-accent-soft space-y-2">
+                  <p className="flex items-center gap-2 text-sm font-medium text-accent-strong">
+                    <CheckCircle2 className="h-4 w-4" /> Ресурс уже в ваших покупках
+                  </p>
+                  <Link href="/dashboard">
+                    <Button variant="outline" size="sm" className="w-full">
+                      Открыть мои покупки
+                    </Button>
+                  </Link>
                 </div>
-              ) : null}
+              ) : (
+                <>
+                  {resource.price > 0 ? (
+                    <div>
+                      <label htmlFor="discount" className="text-sm text-content-secondary">
+                        Промокод (если есть)
+                      </label>
+                      <Input
+                        id="discount"
+                        value={discountCode}
+                        onChange={(e) => setDiscountCode(e.target.value)}
+                        placeholder="Код скидки"
+                        className="mt-1"
+                      />
+                    </div>
+                  ) : null}
 
-              <Button
-                variant="primary"
-                size="lg"
-                className="w-full"
-                disabled={busy}
-                onClick={handleBuy}
-              >
-                {busy ? "Оформление..." : resource.price === 0 ? "Получить" : "Купить сейчас"}
-              </Button>
-              {resource.price > 0 && (
-                <p className="text-xs text-slate-500 dark:text-slate-400 text-center">
-                  Безопасная оплата через ЮKassa
-                </p>
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    className="w-full"
+                    disabled={busy}
+                    onClick={handleBuy}
+                  >
+                    {busy
+                      ? "Оформление..."
+                      : resource.price === 0
+                        ? "Получить"
+                        : "Купить сейчас"}
+                  </Button>
+                  {resource.price > 0 && (
+                    <p className="text-xs text-content-muted text-center">
+                      Безопасная оплата через ЮKassa
+                    </p>
+                  )}
+                </>
               )}
 
               {checkoutError ? (
-                <p className="text-sm text-red-600 dark:text-red-400" role="alert">
+                <p className="text-sm text-bad" role="alert">
                   {checkoutError}
                 </p>
               ) : null}
 
               {checkoutResult?.kind === "completed" ? (
-                <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg space-y-2">
+                <div className="p-4 rounded-card border border-ok/30 bg-ok/10 space-y-2">
                   <StatusBadge status="COMPLETED">Покупка завершена</StatusBadge>
-                  <p className="text-sm text-slate-600 dark:text-slate-400">
-                    Лицензия выдана. Смотрите раздел{" "}
-                    <a href="/account" className="text-blue-600 dark:text-blue-400 underline">
+                  <p className="text-sm text-content-secondary">
+                    Лицензия выдана. Покупки и загрузки доступны в разделе{" "}
+                    <Link href="/dashboard" className="text-accent-strong underline">
                       Мои покупки
-                    </a>
+                    </Link>
                     .
                   </p>
                 </div>
               ) : null}
 
               {checkoutResult?.kind === "pending" ? (
-                <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg space-y-2">
+                <div className="p-4 rounded-card border border-warn/30 bg-warn/10 space-y-2">
                   {checkoutResult.discount ? (
-                    <div className="text-sm space-y-1">
-                      <p>
-                        <span className="line-through text-slate-500 mr-2">
-                          {formatRub(checkoutResult.originalAmount)}
-                        </span>
-                        <span className="font-bold text-green-600 dark:text-green-400">
-                          {formatRub(checkoutResult.amount)}
-                        </span>
-                        <span className="ml-2 text-xs bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 px-2 py-0.5 rounded">
-                          −{checkoutResult.discount.percentage}%
-                        </span>
-                      </p>
-                    </div>
+                    <p className="text-sm">
+                      <span className="line-through text-content-muted mr-2">
+                        {formatRub(checkoutResult.originalAmount)}
+                      </span>
+                      <span className="font-bold text-ok">{formatRub(checkoutResult.amount)}</span>
+                      <span className="ml-2 text-xs bg-ok/20 text-ok px-2 py-0.5 rounded">
+                        −{checkoutResult.discount.percentage}%
+                      </span>
+                    </p>
                   ) : (
                     <p className="text-sm">
                       К оплате: <span className="font-bold">{formatRub(checkoutResult.amount)}</span>
@@ -425,12 +488,10 @@ export default function ResourceDetailPage() {
                   )}
                   <StatusBadge status="PENDING_PAYMENT">Ожидает оплаты</StatusBadge>
                   {checkoutResult.devMessage ? (
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      {checkoutResult.devMessage}
-                    </p>
+                    <p className="text-xs text-content-secondary">{checkoutResult.devMessage}</p>
                   ) : (
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      Перенаправление на платёжную систему...
+                    <p className="text-xs text-content-secondary flex items-center gap-1">
+                      <Clock className="h-3.5 w-3.5" /> Перенаправление на платёжную систему...
                     </p>
                   )}
                 </div>
@@ -439,11 +500,19 @@ export default function ResourceDetailPage() {
           </Card>
 
           <Card>
-            <CardContent className="pt-6 flex items-center gap-3">
-              <Package className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-              <p className="text-sm text-slate-600 dark:text-slate-400">
-                Покупки и лицензии доступны в личном кабинете.
-              </p>
+            <CardContent className="pt-6 space-y-3 text-sm">
+              <div className="flex items-start gap-3">
+                <ShieldCheck className="h-5 w-5 text-accent flex-shrink-0" />
+                <p className="text-content-secondary">
+                  Лицензия выдаётся автоматически и привязывается к вашему серверу.
+                </p>
+              </div>
+              <div className="flex items-start gap-3">
+                <Package className="h-5 w-5 text-accent flex-shrink-0" />
+                <p className="text-content-secondary">
+                  Покупки и загрузки доступны в личном кабинете.
+                </p>
+              </div>
             </CardContent>
           </Card>
         </div>

@@ -1,3 +1,6 @@
+// Admin (PLAN-002 I-001..I-006): control center — дашборд со статистикой,
+// очередь модерации, заявки продавцов, споры, отзыв версий.
+// Существующий backend/admin функционал сохранён, presentation переработана.
 "use client";
 
 import { useEffect, useState } from "react";
@@ -24,14 +27,17 @@ import { bootstrapSession } from "@/lib/api";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { StatusBadge } from "@/components/ui/StatusBadge";
+import { Tabs } from "@/components/ui/Tabs";
+import { StatusBadge, statusLabel } from "@/components/ui/StatusBadge";
 import { MessageThread } from "@/components/MessageThread";
-import { Shield, Gavel, Users, Ban } from "lucide-react";
+import { LoadingSpinner, EmptyState } from "@/components/ui/States";
+import { typeLabel, formatDate } from "@/lib/domain";
+import { Shield, Gavel, Users, Ban, Inbox } from "lucide-react";
 
 type Tab = "moderation" | "sellers" | "disputes" | "versions";
 
 export default function AdminPage() {
-  const { user, accessToken, isAuthenticated } = useAuthStore();
+  const { user, isAuthenticated } = useAuthStore();
   const [tab, setTab] = useState<Tab>("moderation");
   const [booted, setBooted] = useState(false);
 
@@ -51,54 +57,50 @@ export default function AdminPage() {
 
   if (!booted) {
     return (
-      <div className="container mx-auto px-4 py-12">
-        <p className="text-sm text-slate-500">Загрузка...</p>
+      <div className="mx-auto max-w-6xl px-4 py-12">
+        <LoadingSpinner label="Загрузка админ-панели..." />
       </div>
     );
   }
 
   if (!isAuthenticated() || !user || (user.role !== "ADMIN" && user.role !== "MODERATOR")) {
     return (
-      <div className="container mx-auto px-4 py-12">
-        <Card className="bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800">
-          <CardHeader>
-            <CardTitle className="text-red-600 dark:text-red-400">Доступ запрещён</CardTitle>
+      <div className="mx-auto max-w-6xl px-4 py-16">
+        <Card className="mx-auto max-w-md text-center">
+          <CardContent className="py-10 space-y-3">
+            <Shield className="h-10 w-10 text-bad mx-auto" />
+            <CardTitle className="text-bad">Доступ запрещён</CardTitle>
             <CardDescription>Раздел доступен только администраторам и модераторам.</CardDescription>
-          </CardHeader>
+          </CardContent>
         </Card>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto px-4 py-12">
+    <div className="mx-auto max-w-6xl px-4 py-10">
       <div className="mb-8">
-        <h1 className="text-4xl font-bold mb-2 flex items-center gap-3">
-          <Shield className="h-8 w-8 text-blue-600" /> Админ-панель
+        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+          <Shield className="h-7 w-7 text-accent" /> Панель управления
         </h1>
+        <p className="mt-1 text-content-secondary">
+          Модерация ресурсов, продавцы, споры и версии
+        </p>
       </div>
 
       <StatsCards />
 
-      <div className="flex gap-2 mb-6 flex-wrap">
-        {(
-          [
-            ["moderation", "Модерация ресурсов"],
-            ["sellers", "Продавцы"],
-            ["disputes", "Споры"],
-            ["versions", "Версии (yank)"],
-          ] as [Tab, string][]
-        ).map(([key, label]) => (
-          <Button
-            key={key}
-            variant={tab === key ? "primary" : "outline"}
-            size="sm"
-            onClick={() => setTab(key)}
-          >
-            {label}
-          </Button>
-        ))}
-      </div>
+      <Tabs
+        className="my-6"
+        value={tab}
+        onChange={setTab}
+        tabs={[
+          ["moderation", "Модерация ресурсов"],
+          ["sellers", "Продавцы"],
+          ["disputes", "Споры"],
+          ["versions", "Версии"],
+        ]}
+      />
 
       {tab === "moderation" ? <ModerationSection /> : null}
       {tab === "sellers" ? <SellersSection /> : null}
@@ -108,17 +110,17 @@ export default function AdminPage() {
   );
 }
 
-// ---------- Stats ----------
+// ---------- Dashboard (I-002) ----------
 function StatsCards() {
   const { data } = useQuery({ queryKey: ["admin-stats"], queryFn: fetchAdminStats });
 
-  const cards: { label: string; value: string | number }[] = [
+  const cards: { label: string; value: string | number; accent?: boolean }[] = [
     { label: "Пользователи", value: data?.users.total ?? "—" },
     { label: "Активные", value: data?.users.active ?? "—" },
     { label: "Забанены", value: data?.users.banned ?? "—" },
     { label: "Ресурсы", value: data?.resources.total ?? "—" },
     { label: "Опубликованы", value: data?.resources.published ?? "—" },
-    { label: "На модерации", value: data?.resources.pendingReview ?? "—" },
+    { label: "На модерации", value: data?.resources.pendingReview ?? "—", accent: true },
     { label: "Отзывы", value: data?.reviews.total ?? "—" },
     {
       label: "Средняя оценка",
@@ -127,14 +129,12 @@ function StatsCards() {
   ];
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
       {cards.map((c) => (
-        <Card key={c.label}>
-          <CardHeader className="pb-1">
-            <CardTitle className="text-xs font-medium text-slate-500">{c.label}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{c.value}</div>
+        <Card key={c.label} className={c.accent ? "border-accent/40" : undefined}>
+          <CardContent className="pt-6">
+            <p className="text-xs font-medium text-content-secondary">{c.label}</p>
+            <div className="text-2xl font-bold mt-1">{c.value}</div>
           </CardContent>
         </Card>
       ))}
@@ -142,7 +142,7 @@ function StatsCards() {
   );
 }
 
-// ---------- Moderation queue ----------
+// ---------- Moderation queue (I-003/I-004/I-005) ----------
 function ModerationSection() {
   const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
@@ -172,26 +172,35 @@ function ModerationSection() {
     <Card>
       <CardHeader>
         <CardTitle>Очередь модерации</CardTitle>
-        <CardDescription>Ресурсы со статусом PENDING_REVIEW</CardDescription>
+        <CardDescription>Ресурсы, ожидающие решения</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {error ? <p className="text-sm text-red-600 dark:text-red-400">{error}</p> : null}
+        {error ? <p className="text-sm text-bad">{error}</p> : null}
         {isLoading ? (
-          <p className="text-sm text-slate-500">Загрузка...</p>
+          <LoadingSpinner label="Загрузка очереди..." />
         ) : list.length === 0 ? (
-          <p className="text-sm text-slate-500">Очередь пуста.</p>
+          <EmptyState
+            icon={<Inbox className="h-12 w-12 text-content-muted mx-auto mb-4" />}
+            title="Очередь пуста."
+            description="Все отправленные ресурсы обработаны"
+          />
         ) : (
           list.map((r) => (
             <div
               key={r.id}
-              className="p-4 border border-slate-200 dark:border-slate-700 rounded-lg space-y-3"
+              className="p-4 rounded-card border border-line bg-surface-raised space-y-3"
             >
-              <div className="flex items-start justify-between gap-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="font-medium">{r.title}</p>
-                  <p className="text-sm text-slate-500">
-                    {r.type} · /{r.slug} ·{" "}
-                    {new Date(r.createdAt).toLocaleDateString("ru-RU")}
+                  <p className="text-sm text-content-secondary">
+                    {typeLabel(r.type)}{" "}
+                    <span className="font-mono text-[11px] text-content-muted">
+                      {r.type}
+                    </span>{" "}
+                    · /{r.slug} ·{" "}
+                    {r.price === 0 ? "бесплатно" : "платный"} · отправлен{" "}
+                    {formatDate(r.createdAt)}
                   </p>
                 </div>
                 <StatusBadge status={r.status} />
@@ -200,14 +209,13 @@ function ModerationSection() {
                 value={reasons[r.id] ?? ""}
                 onChange={(e) => setReasons((m) => ({ ...m, [r.id]: e.target.value }))}
                 placeholder="Причина (для отклонения)"
+                aria-label={`Причина отклонения для ${r.title}`}
               />
               <div className="flex gap-2 flex-wrap">
                 <Button
                   size="sm"
                   disabled={statusMutation.isPending}
-                  onClick={() =>
-                    statusMutation.mutate({ id: r.id, status: "PUBLISHED" })
-                  }
+                  onClick={() => statusMutation.mutate({ id: r.id, status: "PUBLISHED" })}
                 >
                   Опубликовать
                 </Button>
@@ -225,7 +233,11 @@ function ModerationSection() {
                 >
                   Отклонить
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => setEventsFor(eventsFor === r.id ? null : r.id)}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setEventsFor(eventsFor === r.id ? null : r.id)}
+                >
                   История модерации
                 </Button>
               </div>
@@ -244,20 +256,28 @@ function ModerationEvents({ resourceId }: { resourceId: string }) {
     queryFn: () => fetchModerationEvents(resourceId),
   });
 
-  if (isLoading) return <p className="text-sm text-slate-500">Загрузка истории...</p>;
+  if (isLoading) return <LoadingSpinner label="Загрузка истории..." className="py-6" />;
 
-  const list = Array.isArray(data) ? data : ((data as { data?: unknown[] })?.data ?? []);
+  const list = (Array.isArray(data) ? data : ((data as { data?: unknown[] })?.data ?? [])) as {
+    fromStatus?: string;
+    toStatus?: string;
+    reason?: string | null;
+    createdAt?: string;
+    actorId?: string;
+  }[];
 
   return (
-    <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
-      <p className="text-xs font-medium mb-2">События модерации</p>
+    <div className="p-3 rounded-md bg-surface text-sm">
+      <p className="text-xs font-medium mb-2 text-content-secondary">События модерации</p>
       {list.length === 0 ? (
-        <p className="text-xs text-slate-500">Событий нет.</p>
+        <p className="text-xs text-content-muted">Событий нет.</p>
       ) : (
-        <ul className="text-xs text-slate-600 dark:text-slate-400 space-y-1">
+        <ul className="space-y-1.5">
           {list.map((ev, i) => (
-            <li key={i} className="font-mono break-all">
-              {JSON.stringify(ev)}
+            <li key={i} className="text-xs text-content-secondary">
+              {ev.createdAt ? formatDate(ev.createdAt) : "—"}:{" "}
+              <StatusBadge status={ev.toStatus ?? "UNKNOWN"} />{" "}
+              {ev.reason ? <span className="text-content-muted">— {ev.reason}</span> : null}
             </li>
           ))}
         </ul>
@@ -266,7 +286,7 @@ function ModerationEvents({ resourceId }: { resourceId: string }) {
   );
 }
 
-// ---------- Seller approvals ----------
+// ---------- Seller approvals (I-006) ----------
 interface SellerRow {
   id: string;
   userId: string;
@@ -302,33 +322,37 @@ function SellersSection() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Users className="h-5 w-5 text-blue-600" /> Заявки продавцов
+          <Users className="h-5 w-5 text-accent" /> Заявки продавцов
         </CardTitle>
-        <CardDescription>Ожидают одобрения (PENDING)</CardDescription>
+        <CardDescription>Ожидают одобрения</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {error ? <p className="text-sm text-red-600 dark:text-red-400">{error}</p> : null}
+        {error ? <p className="text-sm text-bad">{error}</p> : null}
         {isLoading ? (
-          <p className="text-sm text-slate-500">Загрузка...</p>
+          <LoadingSpinner label="Загрузка заявок..." />
         ) : list.length === 0 ? (
-          <p className="text-sm text-slate-500">Нет заявок.</p>
+          <EmptyState
+            icon={<Users className="h-12 w-12 text-content-muted mx-auto mb-4" />}
+            title="Нет заявок"
+            description="Новые заявки на статус продавца появятся здесь"
+          />
         ) : (
           <>
             <Input
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               placeholder="Причина отклонения (необязательно)"
+              aria-label="Причина отклонения"
             />
             {list.map((s) => (
               <div
                 key={s.id}
-                className="flex items-start justify-between gap-4 p-3 border border-slate-200 dark:border-slate-700 rounded-lg"
+                className="flex flex-wrap items-start justify-between gap-3 p-4 rounded-card border border-line bg-surface-raised"
               >
                 <div>
                   <p className="font-medium">{s.displayName || s.user?.username || s.userId}</p>
-                  <p className="text-xs text-slate-500">
-                    {s.user?.email ?? s.userId} · {s.status}
-                  </p>
+                  <p className="text-xs text-content-muted">{s.user?.email ?? s.userId}</p>
+                  <p className="text-[11px] font-mono text-content-muted/70">{s.userId}</p>
                 </div>
                 <div className="flex gap-2">
                   <Button
@@ -357,6 +381,14 @@ function SellersSection() {
 }
 
 // ---------- Disputes ----------
+const DISPUTE_TRANSITIONS: [string, string][] = [
+  ["UNDER_REVIEW", "На рассмотрении"],
+  ["RESOLVED_BUYER", "Решён в пользу покупателя"],
+  ["RESOLVED_SELLER", "Решён в пользу продавца"],
+  ["PARTIAL_REFUND", "Частичный возврат"],
+  ["CLOSED", "Закрыт"],
+];
+
 function DisputesSection() {
   const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
@@ -378,42 +410,45 @@ function DisputesSection() {
   });
 
   const list: Dispute[] = data?.data ?? [];
-  const TRANSITIONS = ["UNDER_REVIEW", "RESOLVED_BUYER", "RESOLVED_SELLER", "PARTIAL_REFUND", "CLOSED"];
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Gavel className="h-5 w-5 text-blue-600" /> Споры
+          <Gavel className="h-5 w-5 text-accent" /> Споры
         </CardTitle>
         <CardDescription>Все споры и переходы статусов</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {error ? <p className="text-sm text-red-600 dark:text-red-400">{error}</p> : null}
+        {error ? <p className="text-sm text-bad">{error}</p> : null}
         {isLoading ? (
-          <p className="text-sm text-slate-500">Загрузка...</p>
+          <LoadingSpinner label="Загрузка споров..." />
         ) : list.length === 0 ? (
-          <p className="text-sm text-slate-500">Споров нет.</p>
+          <EmptyState
+            icon={<Gavel className="h-12 w-12 text-content-muted mx-auto mb-4" />}
+            title="Споров нет"
+            description="Открытые споры покупателей появятся здесь"
+          />
         ) : (
           list.map((d) => (
             <div
               key={d.id}
-              className="p-4 border border-slate-200 dark:border-slate-700 rounded-lg space-y-3"
+              className="p-4 rounded-card border border-line bg-surface-raised space-y-3"
             >
-              <div className="flex items-start justify-between gap-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="font-medium">
-                    Спор #{d.id.slice(0, 8)} · {d.targetType}
+                    Спор #{d.id.slice(0, 8)} · {d.targetType === "PURCHASE" ? "Покупка" : "Услуга"}
                   </p>
-                  <p className="text-sm text-slate-500">
+                  <p className="text-xs text-content-muted">
                     {new Date(d.createdAt).toLocaleString("ru-RU")}
                   </p>
-                  <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">{d.reason}</p>
+                  <p className="text-sm text-content-secondary mt-1">{d.reason}</p>
                 </div>
                 <StatusBadge status={d.status} />
               </div>
               <div className="flex gap-2 flex-wrap">
-                {TRANSITIONS.filter((t) => t !== d.status).map((t) => (
+                {DISPUTE_TRANSITIONS.filter(([t]) => t !== d.status).map(([t, label]) => (
                   <Button
                     key={t}
                     variant="outline"
@@ -421,7 +456,7 @@ function DisputesSection() {
                     disabled={transition.isPending}
                     onClick={() => transition.mutate({ id: d.id, status: t })}
                   >
-                    {t}
+                    {label}
                   </Button>
                 ))}
                 <Button variant="ghost" size="sm" onClick={() => setOpen(open === d.id ? null : d.id)}>
@@ -443,11 +478,11 @@ function AdminDisputeMessages({ disputeId }: { disputeId: string }) {
     queryFn: () => fetchDispute(disputeId),
   });
 
-  if (isLoading) return <p className="text-sm text-slate-500">Загрузка переписки...</p>;
-  if (!data) return <p className="text-sm text-red-600">Не удалось загрузить переписку.</p>;
+  if (isLoading) return <LoadingSpinner label="Загрузка переписки..." className="py-6" />;
+  if (!data) return <p className="text-sm text-bad">Не удалось загрузить переписку.</p>;
 
   return (
-    <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
+    <div className="p-3 rounded-md bg-surface">
       <MessageThread
         messageIdPrefix="dispute"
         messages={data.messages}
@@ -489,10 +524,10 @@ function VersionsSection() {
   });
 
   return (
-    <Card>
+    <Card className="max-w-2xl">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Ban className="h-5 w-5 text-red-600" /> Отзыв версии (yank)
+          <Ban className="h-5 w-5 text-bad" /> Отзыв версии (yank)
         </CardTitle>
         <CardDescription>Укажите ID версии и причину</CardDescription>
       </CardHeader>
@@ -501,8 +536,14 @@ function VersionsSection() {
           value={versionId}
           onChange={(e) => setVersionId(e.target.value)}
           placeholder="ID версии"
+          aria-label="ID версии"
         />
-        <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Причина отзыва" />
+        <Input
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder="Причина отзыва"
+          aria-label="Причина отзыва"
+        />
         <div className="flex gap-2">
           <Button
             variant="danger"
@@ -521,8 +562,12 @@ function VersionsSection() {
             Проверить совместимость
           </Button>
         </div>
-        {result ? <pre className="text-xs bg-slate-100 dark:bg-slate-800 p-3 rounded overflow-x-auto">{result}</pre> : null}
-        {error ? <p className="text-sm text-red-600 dark:text-red-400">{error}</p> : null}
+        {result ? (
+          <pre className="text-xs bg-surface-raised border border-line p-3 rounded-md overflow-x-auto text-content-secondary">
+            {result}
+          </pre>
+        ) : null}
+        {error ? <p className="text-sm text-bad">{error}</p> : null}
       </CardContent>
     </Card>
   );
