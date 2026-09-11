@@ -9,6 +9,12 @@ import { isResourceStatus, isTransitionAllowed, type ResourceStatus } from "../l
 import { hasValidSignature } from "../lib/artifact/signing";
 import { getSandboxRun } from "../lib/sandbox/service";
 import { bustActivityCache } from "../lib/activity";
+import {
+  creatorFollowerIds,
+  resourceFollowerIds,
+  buyerIds,
+  deliverFollowNotifications,
+} from "../lib/follows";
 import { reqLog } from "../middleware/requestId";
 import { validateResourceDependencies } from "../lib/artifact/dependencies";
 import { recordAudit } from "../lib/audit";
@@ -184,13 +190,54 @@ router.patch(
               .update({ releaseStatus: "PUBLISHED" });
             // PLAN-006: RESOURCE_UPDATE activity item.
             await bustActivityCache();
+            // PLAN-008 D-002: buyers (§26 — purchase already creates the
+            // relationship), resource followers and creator followers, with
+            // recipient dedup (one notification per user).
+            const recipients = Array.from(
+              new Set([
+                ...(await buyerIds(resource.id)),
+                ...(await resourceFollowerIds(resource.id)),
+                ...(await creatorFollowerIds(resource.sellerId)),
+              ])
+            );
+            await deliverFollowNotifications(
+              recipients,
+              (recipientId) => ({
+                recipientId,
+                type: "RESOURCE_UPDATE" as const,
+                title: `${resource.title} — новая версия ${version.version}`,
+                body: version.changelog ? version.changelog.slice(0, 200) : undefined,
+                entityType: "resource",
+                entityId: resource.id,
+              }),
+              { excludeActorId: req.user!.userId }
+            );
           }
         }
       }
 
+      const creatorName =
+        (await db.orm.public.User.where({ id: resource.sellerId }).select("displayName", "username").first()) ??
+        ({ displayName: null, username: null } as any);
+      const creatorLabel = creatorName.displayName || creatorName.username || "Создатель";
+
       // PLAN-006: RESOURCE_RELEASE is a high-value activity item.
       if (status === "PUBLISHED" && resource.status !== "PUBLISHED") {
         await bustActivityCache();
+        // PLAN-008 D-001: notify the creator's followers about the release.
+        const followerIds = await creatorFollowerIds(resource.sellerId);
+        await deliverFollowNotifications(
+          followerIds,
+          (recipientId) => ({
+            recipientId,
+            type: "CREATOR_RESOURCE" as const,
+            title: `Новинка от ${creatorName}: ${resource.title}`,
+            body: resource.description.slice(0, 200),
+            entityType: "resource",
+            entityId: resource.id,
+          }),
+          { excludeActorId: req.user!.userId }
+        );
       }
       // Send notification if published
       if (status === "PUBLISHED" && resource.status !== "PUBLISHED") {

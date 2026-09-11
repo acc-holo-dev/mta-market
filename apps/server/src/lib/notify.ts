@@ -9,7 +9,11 @@ export type NotificationType =
   | "SERVER_UPDATE"
   | "FORUM_REPLY"
   | "REVIEW_EVENT"
-  | "MODERATION";
+  | "MODERATION"
+  // PLAN-008: Follow Expansion (Creator + Resource).
+  | "CREATOR_RESOURCE"
+  | "CREATOR_ARTICLE"
+  | "RESOURCE_UPDATE";
 
 export interface NotificationInput {
   recipientId: string;

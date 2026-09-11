@@ -120,6 +120,58 @@ router.get("/now", authenticate, standardRateLimit, async (req: AuthRequest, res
       : [];
     const purchasedResourceById = new Map(purchasedResources.map((r: any) => [r.id, r]));
 
+    // PLAN-008: updates on followed creators' resources and followed
+    // resources since the last visit (D-004 rows in the summary).
+    const creatorFollows = await db.orm.public.SellerFollow
+      .where({ followerId: userId })
+      .limit(50)
+      .all();
+    const followedCreatorIds = Array.from(
+      new Set(creatorFollows.map((f: any) => f.sellerUserId as string))
+    );
+    const followedCreatorResources = followedCreatorIds.length
+      ? await db.orm.public.Resource
+          .where((r: any) => r.sellerId.in(followedCreatorIds))
+          .where({ status: "PUBLISHED" })
+          .select("id", "slug", "title")
+          .all()
+      : [];
+    const followedCreatorResourceIds = followedCreatorResources.map((r: any) => r.id as string);
+    const creatorUpdates = followedCreatorResourceIds.length
+      ? await db.orm.public.ResourceVersion
+          .where((v: any) => v.resourceId.in(followedCreatorResourceIds))
+          .where({ releaseStatus: "PUBLISHED" })
+          .where((v: any) => v.publishedAt.gte(since))
+          .orderBy((v: any) => v.publishedAt.desc())
+          .limit(20)
+          .all()
+      : [];
+    const creatorResourceById = new Map(followedCreatorResources.map((r: any) => [r.id, r]));
+
+    const resourceFollows = await db.orm.public.ResourceFollow
+      .where({ userId })
+      .limit(50)
+      .all();
+    const followedResourceIds = Array.from(
+      new Set(resourceFollows.map((f: any) => f.resourceId as string))
+    );
+    const followedResources = followedResourceIds.length
+      ? await db.orm.public.Resource
+          .where((r: any) => r.id.in(followedResourceIds))
+          .select("id", "slug", "title")
+          .all()
+      : [];
+    const resourceUpdates = followedResourceIds.length
+      ? await db.orm.public.ResourceVersion
+          .where((v: any) => v.resourceId.in(followedResourceIds))
+          .where({ releaseStatus: "PUBLISHED" })
+          .where((v: any) => v.publishedAt.gte(since))
+          .orderBy((v: any) => v.publishedAt.desc())
+          .limit(20)
+          .all()
+      : [];
+    const followedResourceById = new Map(followedResources.map((r: any) => [r.id, r]));
+
     const unread = await unreadNotificationCount(userId);
 
     const payload = {
@@ -165,6 +217,24 @@ router.get("/now", authenticate, standardRateLimit, async (req: AuthRequest, res
           version: v.version,
           publishedAt: v.publishedAt,
           resource: purchasedResourceById.get(v.resourceId) ?? null,
+        })),
+      },
+      creatorUpdates: {
+        count: creatorUpdates.length,
+        items: creatorUpdates.slice(0, 5).map((v: any) => ({
+          id: v.id,
+          version: v.version,
+          publishedAt: v.publishedAt,
+          resource: creatorResourceById.get(v.resourceId) ?? null,
+        })),
+      },
+      followedResourceUpdates: {
+        count: resourceUpdates.length,
+        items: resourceUpdates.slice(0, 5).map((v: any) => ({
+          id: v.id,
+          version: v.version,
+          publishedAt: v.publishedAt,
+          resource: followedResourceById.get(v.resourceId) ?? null,
         })),
       },
     };

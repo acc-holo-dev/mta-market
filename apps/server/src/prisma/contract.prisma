@@ -60,6 +60,10 @@ model User {
   reports       Report[]
   // PLAN-007: Content Foundation
   articles      Article[]
+  // PLAN-008: Follow Expansion
+  creatorFollowsGiven  SellerFollow[] @relation("sellerFollowsFollower")
+  creatorFollowsRecvd  SellerFollow[] @relation("sellerFollowsSeller")
+  resourceFollowsGiven ResourceFollow[]
 
   @@index([email])
   @@index([username])
@@ -140,6 +144,7 @@ model Resource {
   media      ResourceMedia[]
   moderationEvents ModerationEvent[]
   articleLinks ArticleResourceLink[]
+  follows      ResourceFollow[]
 
   @@index([sellerId])
   @@index([status])
@@ -1283,6 +1288,10 @@ enum NotificationType {
   FORUM_REPLY
   REVIEW_EVENT
   MODERATION
+  // PLAN-008: Follow Expansion (Creator + Resource).
+  CREATOR_RESOURCE
+  CREATOR_ARTICLE
+  RESOURCE_UPDATE
 }
 
 // R: reportable surfaces.
@@ -1399,6 +1408,39 @@ model ServerFollow {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([serverId, userId])
+  @@index([userId])
+}
+
+// PLAN-008 B-001: creator follow. Target = a User with an APPROVED
+// SellerProfile. Private relationship: only the aggregate count is public —
+// follower lists are never exposed (DAILY-EXPERIENCE §42).
+model SellerFollow {
+  id           String @id @default(uuid())
+  followerId   String
+  sellerUserId String
+  createdAt    TimestamptzString @default(now())
+
+  follower User @relation("sellerFollowsFollower", fields: [followerId], references: [id], onDelete: Cascade)
+  seller   User @relation("sellerFollowsSeller", fields: [sellerUserId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, sellerUserId])
+  @@index([sellerUserId])
+  @@index([followerId])
+}
+
+// PLAN-008 B-002: resource follow. Private relationship; aggregate count
+// public on the resource page; the list is never exposed.
+model ResourceFollow {
+  id         String @id @default(uuid())
+  userId     String
+  resourceId String
+  createdAt  TimestamptzString @default(now())
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resource Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, resourceId])
+  @@index([resourceId])
   @@index([userId])
 }
 

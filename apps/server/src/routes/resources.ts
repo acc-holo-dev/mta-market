@@ -633,6 +633,11 @@ router.get("/:slug", standardRateLimit, async (req, res: Response) => {
       return;
     }
 
+    // PLAN-008: aggregate follower count only — lists never exposed (§42).
+    const followersAgg = await db.orm.public.ResourceFollow
+      .where({ resourceId: resource.id })
+      .aggregate((a: any) => ({ total: a.count() }));
+
     // Gallery data (D-002): screenshots ordered by their stable position.
     const screenshots = await db.orm.public.ResourceMedia
       .where({ resourceId: resource.id, kind: "SCREENSHOT" })
@@ -641,6 +646,7 @@ router.get("/:slug", standardRateLimit, async (req, res: Response) => {
 
     res.json({
       ...withCardEnrichment(resource),
+      resourceFollowers: Number(followersAgg.total ?? 0),
       screenshots: screenshots.map((m: any) => ({
         id: m.id,
         url: m.url,

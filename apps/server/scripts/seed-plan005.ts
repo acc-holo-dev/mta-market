@@ -586,6 +586,84 @@ async function seedArticles(userIds: Map<string, string>): Promise<void> {
   }
 }
 
+
+// ---------------------------------------------------------------------------
+// PLAN-008: Follow Expansion — подписки на создателей/ресурсы и примеры
+// уведомлений (идемпотентно по unique-парам).
+// ---------------------------------------------------------------------------
+async function seedFollows(userIds: Map<string, string>): Promise<void> {
+  const pairs: [string, string][] = [
+    ["market_fan", "nightcity_owner"],
+    ["racer_x", "nightcity_owner"],
+    ["market_fan", "auroraChief"],
+  ];
+  for (const [fan, creator] of pairs) {
+    const followerId = userIds.get(fan);
+    const sellerUserId = userIds.get(creator);
+    if (!followerId || !sellerUserId) continue;
+    const existing = await db.orm.public.SellerFollow
+      .where({ followerId, sellerUserId })
+      .first();
+    if (!existing) {
+      await db.orm.public.SellerFollow.create({ followerId, sellerUserId });
+    }
+  }
+
+  // Resource follows: фан следит за демо-ресурсами (если есть).
+  const demoResources = await db.orm.public.Resource
+    .where({ status: "PUBLISHED" })
+    .limit(3)
+    .all();
+  const fanId = userIds.get("market_fan");
+  for (const r of demoResources as any[]) {
+    if (!fanId || r.sellerId === fanId) continue;
+    const existing = await db.orm.public.ResourceFollow
+      .where({ userId: fanId, resourceId: r.id })
+      .first();
+    if (!existing) {
+      await db.orm.public.ResourceFollow.create({ userId: fanId, resourceId: r.id });
+    }
+  }
+
+  // Примеры уведомлений новых типов (одноразово по заголовку).
+  const examples: { type: any; recipient: string; title: string; body: string }[] = [
+    {
+      type: "CREATOR_RESOURCE",
+      recipient: "market_fan",
+      title: "Новинка от NightForge Studio: Drift Physics Pack",
+      body: "Набор физических настроек для дрифта: двадцать пресетов.",
+    },
+    {
+      type: "RESOURCE_UPDATE",
+      recipient: "market_fan",
+      title: "Santa Marina Bay — новая версия 1.2",
+      body: "Набережная, порт, жилые кварталы: обновление коллизий.",
+    },
+    {
+      type: "CREATOR_ARTICLE",
+      recipient: "racer_x",
+      title: "Новая статья от автора: Какой framework выбрать для RP-сервера",
+      body: "Сравнение подходов к ядру RP-сервера.",
+    },
+  ];
+  for (const ex of examples) {
+    const recipientId = userIds.get(ex.recipient);
+    if (!recipientId) continue;
+    const existing = await db.orm.public.Notification
+      .where({ recipientId, title: ex.title })
+      .first();
+    if (!existing) {
+      await db.orm.public.Notification.create({
+        recipientId,
+        type: ex.type,
+        title: ex.title,
+        body: ex.body,
+      });
+    }
+  }
+  console.log("[seed-plan005] follows seeded");
+}
+
 async function main(): Promise<void> {
   if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
   console.log("[seed-plan005] start");
@@ -842,6 +920,7 @@ async function main(): Promise<void> {
   }
 
   await seedArticles(userIds);
+  await seedFollows(userIds);
 
   console.log("[seed-plan005] done");
 }

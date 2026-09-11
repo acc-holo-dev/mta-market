@@ -134,9 +134,29 @@ router.post(
         // PLAN B-002: canonical manifest + SHA-256 + Ed25519 signature.
         const signed = await signVersionArtifact(newVersion.id, artifactBuffer);
 
+        // PLAN-008 D-002 (Update delivery path): a new version of a PUBLISHED
+        // resource re-enters moderation — PUBLISHED → PENDING_REVIEW as a
+        // system-initiated transition recorded for audit. Moderation approval
+        // then releases the version and notifies buyers (§26) and followers.
+        let reenteredReview = false;
+        if (resource.status === "PUBLISHED") {
+          await db.orm.public.Resource
+            .where({ id: resource.id })
+            .update({ status: "PENDING_REVIEW" });
+          await db.orm.public.ModerationEvent.create({
+            resourceId: resource.id,
+            actorId: req.user!.userId,
+            fromStatus: "PUBLISHED",
+            toStatus: "PENDING_REVIEW",
+            reason: `New version ${version} uploaded (update review)`,
+          });
+          reenteredReview = true;
+        }
+
         res.status(201).json({
           ...newVersion,
           signed: true,
+          reenteredReview,
           artifactHash: signed.artifactHash,
           manifestHash: signed.manifestHash,
         });

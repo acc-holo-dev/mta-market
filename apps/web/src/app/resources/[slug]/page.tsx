@@ -17,6 +17,9 @@ import {
   postReview,
   formatRub,
   getErrorMessage,
+  followResource,
+  unfollowResource,
+  fetchMyResourceFollows,
   type Purchase,
 } from "@/lib/api-ext";
 import { useAuthStore } from "@/store/auth";
@@ -36,7 +39,7 @@ export default function ResourceDetailPage() {
   const params = useParams();
   const router = useRouter();
   const slug = params.slug as string;
-  const { accessToken, isAuthenticated } = useAuthStore();
+  const { user, accessToken, isAuthenticated } = useAuthStore();
   const qc = useQueryClient();
 
   // Restore session from refresh cookie on reload (token is memory-only).
@@ -77,6 +80,32 @@ export default function ResourceDetailPage() {
       ) ?? false,
     [myPurchases, slug]
   );
+
+  // PLAN-008 E-002: resource follow (§26 — optional relationship on top of
+  // the purchase relationship). Own state only; aggregate count from payload.
+  const { data: myResourceFollows } = useQuery({
+    queryKey: ["me", "follows", "resources", accessToken ?? "guest"],
+    queryFn: fetchMyResourceFollows,
+    enabled: isAuthenticated() && !!accessToken,
+    retry: false,
+  });
+  const [followState, setFollowState] = useState<{ following: boolean; count: number } | null>(null);
+  const isFollowingResource = followState
+    ? followState.following
+    : (myResourceFollows ?? []).some((f: any) => f.slug === resource?.slug);
+
+  const followToggle = useMutation({
+    mutationFn: async () => {
+      if (!resource) throw new Error("no resource");
+      return isFollowingResource
+        ? unfollowResource(resource.slug)
+        : followResource(resource.slug);
+    },
+    onSuccess: (res: any) => {
+      setFollowState({ following: res.following, count: res.resourceFollowers });
+      qc?.invalidateQueries({ queryKey: ["me", "follows", "resources"] });
+    },
+  });
 
   // ---------- Checkout state (M-004/M-005) ----------
   const [discountCode, setDiscountCode] = useState("");
@@ -431,8 +460,39 @@ export default function ResourceDetailPage() {
           </Card>
         </div>
 
-        {/* Sidebar: purchase area (F-004) */}
+        {/* Sidebar: purchase area (F-004) + PLAN-008 follow */}
         <div className="space-y-6 lg:sticky lg:top-24 self-start">
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm text-content-secondary">
+                  Следят:{" "}
+                  <span className="font-semibold text-content">
+                    {(followState ? followState.count : (resource?.resourceFollowers ?? 0)).toLocaleString("ru-RU")}
+                  </span>
+                </p>
+                {resource?.seller?.username === user?.username ? null : (
+                  <Button
+                    variant={isFollowingResource ? "outline" : "primary"}
+                    size="sm"
+                    disabled={followToggle.isPending}
+                    onClick={() => {
+                      if (!user) {
+                        router.push("/auth/login");
+                        return;
+                      }
+                      followToggle.mutate();
+                    }}
+                  >
+                    {isFollowingResource ? "Не следить" : "Следить"}
+                  </Button>
+                )}
+              </div>
+              <p className="mt-2 text-xs text-content-muted">
+                Уведомим о новой версии ресурса.
+              </p>
+            </CardContent>
+          </Card>
           <Card>
             <CardHeader>
               <CardTitle>

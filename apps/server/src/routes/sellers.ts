@@ -53,6 +53,12 @@ router.get("/:username", standardRateLimit, async (req, res: Response) => {
       };
     });
 
+    // PLAN-008: aggregate follower count only — the follower list is never
+    // exposed (DAILY-EXPERIENCE §42).
+    const followersAgg = await db.orm.public.SellerFollow
+      .where({ sellerUserId: user.id })
+      .aggregate((a: any) => ({ total: a.count() }));
+
     res.json({
       seller: {
         username: user.username,
@@ -61,6 +67,7 @@ router.get("/:username", standardRateLimit, async (req, res: Response) => {
         supportInfo: hasApprovedProfile ? profile?.supportInfo ?? null : null,
         memberSince: user.createdAt,
         resourceCount: resources.length,
+        creatorFollowers: Number(followersAgg.total ?? 0),
       },
       resources,
     });

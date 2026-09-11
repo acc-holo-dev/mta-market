@@ -156,6 +156,10 @@
       "model": "ResourceDependency",
       "namespace": "public"
     },
+    "resourceFollow": {
+      "model": "ResourceFollow",
+      "namespace": "public"
+    },
     "resourceMedia": {
       "model": "ResourceMedia",
       "namespace": "public"
@@ -174,6 +178,10 @@
     },
     "sellerBalance": {
       "model": "SellerBalance",
+      "namespace": "public"
+    },
+    "sellerFollow": {
+      "model": "SellerFollow",
       "namespace": "public"
     },
     "sellerProfile": {
@@ -569,6 +577,18 @@
               {
                 "name": "MODERATION",
                 "value": "MODERATION"
+              },
+              {
+                "name": "CREATOR_RESOURCE",
+                "value": "CREATOR_RESOURCE"
+              },
+              {
+                "name": "CREATOR_ARTICLE",
+                "value": "CREATOR_ARTICLE"
+              },
+              {
+                "name": "RESOURCE_UPDATE",
+                "value": "RESOURCE_UPDATE"
               }
             ]
           },
@@ -6588,6 +6608,21 @@
                   "namespace": "public"
                 }
               },
+              "follows": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "resourceId"
+                  ]
+                },
+                "to": {
+                  "model": "ResourceFollow",
+                  "namespace": "public"
+                }
+              },
               "media": {
                 "cardinality": "1:N",
                 "on": {
@@ -6789,6 +6824,88 @@
               },
               "namespaceId": "public",
               "table": "resourceDependency"
+            }
+          },
+          "ResourceFollow": {
+            "fields": {
+              "createdAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "resourceId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "userId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {
+              "resource": {
+                "cardinality": "N:1",
+                "on": {
+                  "localFields": [
+                    "resourceId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "Resource",
+                  "namespace": "public"
+                }
+              },
+              "user": {
+                "cardinality": "N:1",
+                "on": {
+                  "localFields": [
+                    "userId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "User",
+                  "namespace": "public"
+                }
+              }
+            },
+            "storage": {
+              "fields": {
+                "createdAt": {
+                  "column": "createdAt"
+                },
+                "id": {
+                  "column": "id"
+                },
+                "resourceId": {
+                  "column": "resourceId"
+                },
+                "userId": {
+                  "column": "userId"
+                }
+              },
+              "namespaceId": "public",
+              "table": "resourceFollow"
             }
           },
           "ResourceMedia": {
@@ -7481,6 +7598,88 @@
               },
               "namespaceId": "public",
               "table": "sellerBalance"
+            }
+          },
+          "SellerFollow": {
+            "fields": {
+              "createdAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "followerId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "sellerUserId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {
+              "follower": {
+                "cardinality": "N:1",
+                "on": {
+                  "localFields": [
+                    "followerId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "User",
+                  "namespace": "public"
+                }
+              },
+              "seller": {
+                "cardinality": "N:1",
+                "on": {
+                  "localFields": [
+                    "sellerUserId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "User",
+                  "namespace": "public"
+                }
+              }
+            },
+            "storage": {
+              "fields": {
+                "createdAt": {
+                  "column": "createdAt"
+                },
+                "followerId": {
+                  "column": "followerId"
+                },
+                "id": {
+                  "column": "id"
+                },
+                "sellerUserId": {
+                  "column": "sellerUserId"
+                }
+              },
+              "namespaceId": "public",
+              "table": "sellerFollow"
             }
           },
           "SellerProfile": {
@@ -10439,6 +10638,36 @@
                   "namespace": "public"
                 }
               },
+              "creatorFollowsGiven": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "followerId"
+                  ]
+                },
+                "to": {
+                  "model": "SellerFollow",
+                  "namespace": "public"
+                }
+              },
+              "creatorFollowsRecvd": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "sellerUserId"
+                  ]
+                },
+                "to": {
+                  "model": "SellerFollow",
+                  "namespace": "public"
+                }
+              },
               "discountCampaigns": {
                 "cardinality": "1:N",
                 "on": {
@@ -10586,6 +10815,21 @@
                 },
                 "to": {
                   "model": "Report",
+                  "namespace": "public"
+                }
+              },
+              "resourceFollowsGiven": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "userId"
+                  ]
+                },
+                "to": {
+                  "model": "ResourceFollow",
                   "namespace": "public"
                 }
               },
@@ -13980,8 +14224,8 @@
             "notification": {
               "checks": [
                 {
-                  "expression": "\"type\" IN ('SERVER_NEWS', 'SERVER_UPDATE', 'FORUM_REPLY', 'REVIEW_EVENT', 'MODERATION')",
-                  "name": "notification_type_check_7029523f",
+                  "expression": "\"type\" IN ('SERVER_NEWS', 'SERVER_UPDATE', 'FORUM_REPLY', 'REVIEW_EVENT', 'MODERATION', 'CREATOR_RESOURCE', 'CREATOR_ARTICLE', 'RESOURCE_UPDATE')",
+                  "name": "notification_type_check_5e911290",
                   "prefix": "notification_type_check"
                 }
               ],
@@ -15806,6 +16050,101 @@
                 }
               ]
             },
+            "resourceFollow": {
+              "columns": {
+                "createdAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "default": {
+                    "expression": "now()",
+                    "kind": "function"
+                  },
+                  "nativeType": "timestamptz",
+                  "nullable": false
+                },
+                "id": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "resourceId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "userId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                }
+              },
+              "foreignKeys": [
+                {
+                  "onDelete": "cascade",
+                  "source": {
+                    "columns": [
+                      "userId"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "resourceFollow"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "user"
+                  }
+                },
+                {
+                  "onDelete": "cascade",
+                  "source": {
+                    "columns": [
+                      "resourceId"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "resourceFollow"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "resource"
+                  }
+                }
+              ],
+              "indexes": [
+                {
+                  "columns": [
+                    "resourceId"
+                  ],
+                  "name": "resourceFollow_resourceId_idx_72964925",
+                  "prefix": "resourceFollow_resourceId_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "userId"
+                  ],
+                  "name": "resourceFollow_userId_idx_a489d58a",
+                  "prefix": "resourceFollow_userId_idx",
+                  "unique": false
+                }
+              ],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
+              "uniques": [
+                {
+                  "columns": [
+                    "userId",
+                    "resourceId"
+                  ]
+                }
+              ]
+            },
             "resourceMedia": {
               "columns": {
                 "createdAt": {
@@ -16370,6 +16709,101 @@
                 ]
               },
               "uniques": []
+            },
+            "sellerFollow": {
+              "columns": {
+                "createdAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "default": {
+                    "expression": "now()",
+                    "kind": "function"
+                  },
+                  "nativeType": "timestamptz",
+                  "nullable": false
+                },
+                "followerId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "id": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "sellerUserId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                }
+              },
+              "foreignKeys": [
+                {
+                  "onDelete": "cascade",
+                  "source": {
+                    "columns": [
+                      "followerId"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "sellerFollow"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "user"
+                  }
+                },
+                {
+                  "onDelete": "cascade",
+                  "source": {
+                    "columns": [
+                      "sellerUserId"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "sellerFollow"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "user"
+                  }
+                }
+              ],
+              "indexes": [
+                {
+                  "columns": [
+                    "followerId"
+                  ],
+                  "name": "sellerFollow_followerId_idx_2aa6c62d",
+                  "prefix": "sellerFollow_followerId_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "sellerUserId"
+                  ],
+                  "name": "sellerFollow_sellerUserId_idx_3d9f6a46",
+                  "prefix": "sellerFollow_sellerUserId_idx",
+                  "unique": false
+                }
+              ],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
+              "uniques": [
+                {
+                  "columns": [
+                    "followerId",
+                    "sellerUserId"
+                  ]
+                }
+              ]
             },
             "sellerProfile": {
               "checks": [
@@ -19127,7 +19561,10 @@
                 "SERVER_UPDATE",
                 "FORUM_REPLY",
                 "REVIEW_EVENT",
-                "MODERATION"
+                "MODERATION",
+                "CREATOR_RESOURCE",
+                "CREATOR_ARTICLE",
+                "RESOURCE_UPDATE"
               ]
             },
             "OrderItemType": {
@@ -19403,10 +19840,10 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "5841e59d7b47f5316b290c36866bd80d3bf727b8ec75cbfe6c1271d6175ea19a"
+    "storageHash": "021fb1f74e5f03b3a39cd9cb4f235cb2fc16d1ac5a4a193217370e7806a89d71"
   },
   "execution": {
-    "executionHash": "ee8199159654625f5483ef6b6114032eb503e3b95399d7d763cfdbe4e52237d7",
+    "executionHash": "4094f2668e500f58c304ffe01feae65760cc0e207de327eb8aa8591637c2d295",
     "mutations": {
       "defaults": [
         {
@@ -19955,6 +20392,17 @@
           "ref": {
             "column": "id",
             "namespace": "public",
+            "table": "resourceFollow"
+          }
+        },
+        {
+          "onCreate": {
+            "id": "uuidv4",
+            "kind": "generator"
+          },
+          "ref": {
+            "column": "id",
+            "namespace": "public",
             "table": "resourceMedia"
           }
         },
@@ -20019,6 +20467,17 @@
             "column": "updatedAt",
             "namespace": "public",
             "table": "sellerBalance"
+          }
+        },
+        {
+          "onCreate": {
+            "id": "uuidv4",
+            "kind": "generator"
+          },
+          "ref": {
+            "column": "id",
+            "namespace": "public",
+            "table": "sellerFollow"
           }
         },
         {

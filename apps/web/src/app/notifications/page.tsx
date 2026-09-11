@@ -13,7 +13,11 @@ import {
   MessageSquareReply,
   Star,
   ShieldCheck,
+  Package,
+  PackageOpen,
+  FileText,
 } from "lucide-react";
+// PLAN-008 icons for the new notification types
 import { Button } from "@/components/ui/Button";
 import { LoadingSpinner, EmptyState, ErrorState } from "@/components/ui/States";
 import { Tabs } from "@/components/ui/Tabs";
@@ -33,6 +37,10 @@ const TYPE_META: Record<string, { label: string; icon: typeof Bell }> = {
   FORUM_REPLY: { label: "Ответ на форуме", icon: MessageSquareReply },
   REVIEW_EVENT: { label: "Отзыв", icon: Star },
   MODERATION: { label: "Модерация", icon: ShieldCheck },
+  // PLAN-008: Follow Expansion.
+  CREATOR_RESOURCE: { label: "Новинка от создателя", icon: Package },
+  CREATOR_ARTICLE: { label: "Статья создателя", icon: FileText },
+  RESOURCE_UPDATE: { label: "Обновление ресурса", icon: PackageOpen },
 };
 
 function formatDateTime(value: string): string {

@@ -10,6 +10,7 @@ import { reqLog } from "../middleware/requestId";
 import { recordAudit } from "../lib/audit";
 import { createNotifications } from "../lib/notify";
 import { bustActivityCache } from "../lib/activity";
+import { creatorFollowerIds, isCreator, deliverFollowNotifications } from "../lib/follows";
 
 const router: Router = Router();
 
@@ -91,6 +92,23 @@ router.post("/content/:id/approve", authenticate, adminOnly, standardRateLimit, 
     );
     // PLAN-006 F-001: NEW_ARTICLE is a high-value activity item.
     await bustActivityCache();
+    // PLAN-008 D-003: if the author is a creator (APPROVED seller), notify
+    // their followers (CREATOR_ARTICLE).
+    if (await isCreator(article.authorId)) {
+      const followerIds = await creatorFollowerIds(article.authorId);
+      await deliverFollowNotifications(
+        followerIds,
+        (recipientId) => ({
+          recipientId,
+          type: "CREATOR_ARTICLE" as const,
+          title: `Новая статья от автора: ${article.title}`,
+          body: article.excerpt.slice(0, 200),
+          entityType: "article",
+          entityId: article.id,
+        }),
+        { excludeActorId: req.user!.userId }
+      );
+    }
     res.json(published);
   } catch (error) {
     reqLog(req).error("admin_content_approve_failed", { error });

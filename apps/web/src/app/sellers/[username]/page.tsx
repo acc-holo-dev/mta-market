@@ -3,21 +3,68 @@
 // в Resource Detail (E-004). Непубличные ресурсы сервер не отдаёт.
 "use client";
 
-import { use } from "react";
+import { use, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { fetchSellerStore } from "@/lib/api-ext";
+import {
+  fetchSellerStore,
+  followCreator,
+  unfollowCreator,
+  fetchMyCreatorFollows,
+  getErrorMessage,
+} from "@/lib/api-ext";
 import { Button } from "@/components/ui/Button";
 import { ResourceCard } from "@/components/ui/ResourceCard";
 import { ResourceCardSkeleton } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/States";
 import { Avatar } from "@/components/ui/Avatar";
 import { formatDate } from "@/lib/domain";
-import { PackageCheck, Store } from "lucide-react";
+import { useAuthStore } from "@/store/auth";
+import { PackageCheck, Store, UserPlus } from "lucide-react";
 
 export default function SellerStorePage({ params }: { params: Promise<{ username: string }> }) {
   const { username } = use(params);
   const decoded = decodeURIComponent(username);
+  const router = useRouter();
+  const { accessToken, isAuthenticated } = useAuthStore();
+  // PLAN-008 E-001: follow state is only the user's own (/me/follows/*);
+  // the follower list itself is never exposed (§42). Guests skip the query
+  // entirely — a 401 would trigger the global session-expiry redirect.
+  const [followState, setFollowState] = useState<{ following: boolean; count: number } | null>(null);
+  const [followBusy, setFollowBusy] = useState(false);
+  const [followError, setFollowError] = useState<string | null>(null);
+
+  const { data: myFollows } = useQuery({
+    queryKey: ["me", "follows", "creators", accessToken ?? "guest"],
+    queryFn: fetchMyCreatorFollows,
+    enabled: isAuthenticated() && !!accessToken,
+    retry: false,
+  });
+
+  const isFollowing = followState
+    ? followState.following
+    : (myFollows ?? []).some((f: any) => f.username === decoded);
+
+  const onToggleFollow = async () => {
+    setFollowBusy(true);
+    setFollowError(null);
+    try {
+      const res = isFollowing
+        ? await unfollowCreator(decoded)
+        : await followCreator(decoded);
+      setFollowState({ following: res.following, count: res.creatorFollowers });
+    } catch (e: unknown) {
+      const status = (e as { response?: { status?: number } })?.response?.status;
+      if (status === 401) {
+        router.push("/auth/login");
+        return;
+      }
+      setFollowError(getErrorMessage(e, "Не удалось изменить подписку"));
+    } finally {
+      setFollowBusy(false);
+    }
+  };
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["seller-store", decoded],
@@ -85,12 +132,28 @@ export default function SellerStorePage({ params }: { params: Promise<{ username
                     {data.seller.resourceCount === 1 ? "ресурс" : "ресурсов"}
                   </span>
                   <span>На Маркетплейсе с {formatDate(data.seller.memberSince)}</span>
+                  <span className="inline-flex items-center gap-1">
+                    <UserPlus className="h-3.5 w-3.5" />
+                    {(followState ? followState.count : data.seller.creatorFollowers ?? 0).toLocaleString("ru-RU")}{" "}
+                    подписчиков
+                  </span>
                 </div>
                 {data.seller.supportInfo ? (
                   <p className="mt-3 max-w-xl text-sm text-content-secondary">
                     {data.seller.supportInfo}
                   </p>
                 ) : null}
+              </div>
+              <div className="sm:ml-auto flex flex-col items-start gap-2">
+                <Button
+                  variant={isFollowing ? "outline" : "primary"}
+                  size="sm"
+                  disabled={followBusy}
+                  onClick={onToggleFollow}
+                >
+                  {isFollowing ? "Отписаться" : "Подписаться"}
+                </Button>
+                {followError ? <p className="text-xs text-red-400">{followError}</p> : null}
               </div>
             </div>
           </header>

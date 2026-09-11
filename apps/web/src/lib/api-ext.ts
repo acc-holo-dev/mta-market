@@ -40,6 +40,8 @@ export interface Resource {
   coverUrl?: string | null;
   screenshots?: { id: string; url: string; position: number }[];
   updatedAt?: string;
+  // PLAN-008: aggregate follower count (§42 — no lists).
+  resourceFollowers?: number;
 }
 
 export interface Screenshot {
@@ -557,6 +559,8 @@ export interface SellerStore {
     supportInfo: string | null;
     memberSince: string;
     resourceCount: number;
+    // PLAN-008: aggregate follower count (§42 — no lists).
+    creatorFollowers?: number;
   };
   resources: Resource[];
 }
@@ -1430,43 +1434,7 @@ export async function fetchActivity(): Promise<ActivitySnapshot> {
   return data;
 }
 
-export interface DashboardNow {
-  since: string;
-  firstVisit: boolean;
-  unreadNotifications: number;
-  serverUpdates: {
-    count: number;
-    items: {
-      id: string;
-      version: string;
-      title: string;
-      publishedAt: string;
-      server: { slug: string; name: string } | null;
-    }[];
-  };
-  serverNews: {
-    count: number;
-    items: {
-      id: string;
-      title: string;
-      publishedAt: string;
-      server: { slug: string; name: string } | null;
-    }[];
-  };
-  discussionReplies: {
-    count: number;
-    items: { threadId: string; threadTitle: string | null; createdAt: string }[];
-  };
-  purchasedUpdates: {
-    count: number;
-    items: {
-      id: string;
-      version: string;
-      publishedAt: string;
-      resource: { slug: string; title: string } | null;
-    }[];
-  };
-}
+
 
 export async function fetchDashboardNow(): Promise<DashboardNow> {
   const { data } = await api.get<DashboardNow>("/dashboard/now");
@@ -1497,6 +1465,37 @@ export async function adminArticleAction(
 ) {
   const { data } = await api.post(`/admin/content/${id}/${action}`, action === "approve" ? {} : { reason });
   return data;
+}
+
+// ---------- PLAN-008: Follow Expansion (Creator + Resource) ----------
+export async function followCreator(username: string) {
+  const { data } = await api.post(`/creators/${encodeURIComponent(username)}/follow`);
+  return data as { following: boolean; creatorFollowers: number };
+}
+
+export async function unfollowCreator(username: string) {
+  const { data } = await api.delete(`/creators/${encodeURIComponent(username)}/follow`);
+  return data as { following: boolean; creatorFollowers: number };
+}
+
+export async function followResource(slug: string) {
+  const { data } = await api.post(`/resources/${encodeURIComponent(slug)}/follow`);
+  return data as { following: boolean; resourceFollowers: number };
+}
+
+export async function unfollowResource(slug: string) {
+  const { data } = await api.delete(`/resources/${encodeURIComponent(slug)}/follow`);
+  return data as { following: boolean; resourceFollowers: number };
+}
+
+export async function fetchMyCreatorFollows(): Promise<{ username: string; displayName: string | null; avatar: string | null }[]> {
+  const { data } = await api.get("/me/follows/creators");
+  return data.data ?? [];
+}
+
+export async function fetchMyResourceFollows(): Promise<{ slug: string; title: string; coverUrl: string | null }[]> {
+  const { data } = await api.get("/me/follows/resources");
+  return data.data ?? [];
 }
 
 // ---------- PLAN-007: Content Foundation (articles) ----------
@@ -1606,3 +1605,60 @@ export async function createArticleDiscussion(id: string) {
   return data;
 }
 
+
+// PLAN-008: dashboard summary — follow-related rows (additive).
+export interface DashboardNow {
+  since: string;
+  firstVisit: boolean;
+  unreadNotifications: number;
+  serverUpdates: {
+    count: number;
+    items: {
+      id: string;
+      version: string;
+      title: string;
+      publishedAt: string;
+      server: { slug: string; name: string } | null;
+    }[];
+  };
+  serverNews: {
+    count: number;
+    items: {
+      id: string;
+      title: string;
+      publishedAt: string;
+      server: { slug: string; name: string } | null;
+    }[];
+  };
+  discussionReplies: {
+    count: number;
+    items: { threadId: string; threadTitle: string | null; createdAt: string }[];
+  };
+  purchasedUpdates: {
+    count: number;
+    items: {
+      id: string;
+      version: string;
+      publishedAt: string;
+      resource: { slug: string; title: string } | null;
+    }[];
+  };
+  creatorUpdates?: {
+    count: number;
+    items: {
+      id: string;
+      version: string;
+      publishedAt: string;
+      resource: { slug: string; title: string } | null;
+    }[];
+  };
+  followedResourceUpdates?: {
+    count: number;
+    items: {
+      id: string;
+      version: string;
+      publishedAt: string;
+      resource: { slug: string; title: string } | null;
+    }[];
+  };
+}

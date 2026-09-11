@@ -8,7 +8,7 @@ import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { fetchDashboardNow } from "@/lib/api-ext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
-import { Bell, RefreshCcw, MessageSquare, ShoppingBag, Newspaper } from "lucide-react";
+import { Bell, RefreshCcw, MessageSquare, ShoppingBag, Newspaper, UserPlus, PackageOpen } from "lucide-react";
 
 function Row({
   href,
@@ -108,6 +108,31 @@ export function DashboardNow() {
       icon: <ShoppingBag className="h-4 w-4 text-accent" />,
       label: `Покупки: ${data.purchasedUpdates.count} ${
         data.purchasedUpdates.count === 1 ? "новый update" : "новых updates"
+      }`,
+      detail: first?.resource ? `${first.resource.title} — ${first.version}` : undefined,
+    });
+  }
+  // PLAN-008 E-003: подписки на создателей и отслеживаемые ресурсы.
+  if (data.creatorUpdates && data.creatorUpdates.count > 0) {
+    const first = data.creatorUpdates.items[0];
+    rows.push({
+      key: "creator-updates",
+      href: first?.resource ? `/resources/${first.resource.slug}` : "/resources",
+      icon: <UserPlus className="h-4 w-4 text-accent" />,
+      label: `Подписки: ${data.creatorUpdates.count} ${
+        data.creatorUpdates.count === 1 ? "новинка" : "новинок"
+      } от создателей`,
+      detail: first?.resource ? `${first.resource.title} — ${first.version}` : undefined,
+    });
+  }
+  if (data.followedResourceUpdates && data.followedResourceUpdates.count > 0) {
+    const first = data.followedResourceUpdates.items[0];
+    rows.push({
+      key: "followed-updates",
+      href: first?.resource ? `/resources/${first.resource.slug}` : "/resources",
+      icon: <PackageOpen className="h-4 w-4 text-accent" />,
+      label: `Отслеживаемые ресурсы: ${data.followedResourceUpdates.count} ${
+        data.followedResourceUpdates.count === 1 ? "обновление" : "обновлений"
       }`,
       detail: first?.resource ? `${first.resource.title} — ${first.version}` : undefined,
     });

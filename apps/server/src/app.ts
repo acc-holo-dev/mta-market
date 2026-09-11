@@ -41,6 +41,8 @@ import activityRoutes from "./routes/activity";
 // PLAN-007: Content Foundation (articles).
 import contentRoutes from "./routes/content";
 import adminContentRoutes from "./routes/adminContent";
+// PLAN-008: Follow Expansion (Creator + Resource).
+import followsRoutes from "./routes/follows";
 import adminCommunityRoutes from "./routes/adminCommunity";
 import { standardRateLimit } from "./lib/rateLimit";
 import { reqLog } from "./middleware/requestId";
@@ -182,6 +184,10 @@ export function createApp(): Express {
   app.use("/content", contentRoutes);
   app.use("/admin", adminCommunityRoutes);
   app.use("/admin", adminContentRoutes);
+  // PLAN-008: Follow Expansion (creator/resource follow, own follow state).
+  // Paths inside the router are absolute (/creators/..., /resources/...,
+  // /me/follows/...); a single root mount avoids double prefixes.
+  app.use("/", followsRoutes);
 
   // PLAN-004 J-003 (audit): global error handler — in Express 4 a rejected
   // async handler would otherwise become an unhandledRejection and crash the
