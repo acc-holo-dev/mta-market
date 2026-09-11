@@ -3,7 +3,7 @@
 // hero area с CTA, DRM-блок, читаемая история версий, полноценные отзывы.
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
@@ -15,6 +15,7 @@ import {
   createPurchase,
   createPayment,
   postReview,
+  countResourceView,
   formatRub,
   getErrorMessage,
   followResource,
@@ -80,6 +81,15 @@ export default function ResourceDetailPage() {
       ) ?? false,
     [myPurchases, slug]
   );
+
+  // PLAN-010 C-001: honest page view — once per mount, fire-and-forget.
+  const viewFired = useRef(false);
+  useEffect(() => {
+    if (resource?.slug && resource?.status === "PUBLISHED" && !viewFired.current) {
+      viewFired.current = true;
+      countResourceView(resource.slug);
+    }
+  }, [resource?.slug, resource?.status]);
 
   // PLAN-008 E-002: resource follow (§26 — optional relationship on top of
   // the purchase relationship). Own state only; aggregate count from payload.

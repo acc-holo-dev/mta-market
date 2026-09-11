@@ -172,6 +172,10 @@
       "model": "ResourceVersion",
       "namespace": "public"
     },
+    "resourceViewDaily": {
+      "model": "ResourceViewDaily",
+      "namespace": "public"
+    },
     "review": {
       "model": "Review",
       "namespace": "public"
@@ -6798,6 +6802,21 @@
                   "model": "ResourceVersion",
                   "namespace": "public"
                 }
+              },
+              "viewDays": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "resourceId"
+                  ]
+                },
+                "to": {
+                  "model": "ResourceViewDaily",
+                  "namespace": "public"
+                }
               }
             },
             "storage": {
@@ -7327,6 +7346,73 @@
               },
               "namespaceId": "public",
               "table": "resourceVersion"
+            }
+          },
+          "ResourceViewDaily": {
+            "fields": {
+              "day": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "resourceId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "views": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/int4@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {
+              "resource": {
+                "cardinality": "N:1",
+                "on": {
+                  "localFields": [
+                    "resourceId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "Resource",
+                  "namespace": "public"
+                }
+              }
+            },
+            "storage": {
+              "fields": {
+                "day": {
+                  "column": "day"
+                },
+                "id": {
+                  "column": "id"
+                },
+                "resourceId": {
+                  "column": "resourceId"
+                },
+                "views": {
+                  "column": "views"
+                }
+              },
+              "namespaceId": "public",
+              "table": "resourceViewDaily"
             }
           },
           "Review": {
@@ -16573,6 +16659,76 @@
                 }
               ]
             },
+            "resourceViewDaily": {
+              "columns": {
+                "day": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "id": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "resourceId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "views": {
+                  "codecId": "pg/int4@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": 0
+                  },
+                  "nativeType": "int4",
+                  "nullable": false
+                }
+              },
+              "foreignKeys": [
+                {
+                  "onDelete": "cascade",
+                  "source": {
+                    "columns": [
+                      "resourceId"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "resourceViewDaily"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "resource"
+                  }
+                }
+              ],
+              "indexes": [
+                {
+                  "columns": [
+                    "resourceId"
+                  ],
+                  "name": "resourceViewDaily_resourceId_idx_72964925",
+                  "prefix": "resourceViewDaily_resourceId_idx",
+                  "unique": false
+                }
+              ],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
+              "uniques": [
+                {
+                  "columns": [
+                    "resourceId",
+                    "day"
+                  ]
+                }
+              ]
+            },
             "review": {
               "columns": {
                 "buyerId": {
@@ -20051,10 +20207,10 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "1964aa6e342e76ac59307151c6111f7f53a7208ce6667357b254eb773689b065"
+    "storageHash": "eefc89aa395f121293557bc0c461a86bc3654b1f43c32fdfea426402b4171e21"
   },
   "execution": {
-    "executionHash": "ec245a0f2d9fac07223beb2172873fc4e0cdd1aefa016cec00b280d30e77e54c",
+    "executionHash": "9294b73e0286c982c0a99368be602ae8fcd3a012abc8e1274563ea08a4b6dfd2",
     "mutations": {
       "defaults": [
         {
@@ -20637,6 +20793,17 @@
             "column": "id",
             "namespace": "public",
             "table": "resourceVersion"
+          }
+        },
+        {
+          "onCreate": {
+            "id": "uuidv4",
+            "kind": "generator"
+          },
+          "ref": {
+            "column": "id",
+            "namespace": "public",
+            "table": "resourceViewDaily"
           }
         },
         {

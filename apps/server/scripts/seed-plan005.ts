@@ -700,6 +700,37 @@ async function seedFollows(userIds: Map<string, string>): Promise<void> {
   console.log("[seed-plan005] follows seeded");
 }
 
+
+// ---------------------------------------------------------------------------
+// PLAN-010: Creator Analytics — история просмотров демо-ресурсов
+// (агрегат ресурс × день; правдоподобные объёмы; идемпотентно).
+// ---------------------------------------------------------------------------
+async function seedResourceViews(): Promise<void> {
+  const resources = await db.orm.public.Resource
+    .where({ status: "PUBLISHED" })
+    .limit(20)
+    .all();
+  for (const [i, r] of (resources as any[]).entries()) {
+    for (let d = 0; d < 30; d++) {
+      const day = new Date(Date.now() - d * 24 * 3600_000).toISOString().slice(0, 10);
+      const existing = await db.orm.public.ResourceViewDaily
+        .where({ resourceId: r.id, day })
+        .first();
+      if (existing) continue;
+      // Волна интереса: новее — больше; разные ресурсы — разные объёмы.
+      const base = 4 + ((i * 7) % 12);
+      const views = Math.max(0, Math.round(base * (1 - d / 40) + ((d * 13 + i * 5) % 7)));
+      if (views <= 0) continue;
+      await db.orm.public.ResourceViewDaily.create({
+        resourceId: r.id as string,
+        day,
+        views,
+      });
+    }
+  }
+  console.log("[seed-plan005] resource views seeded");
+}
+
 async function main(): Promise<void> {
   if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
   console.log("[seed-plan005] start");
@@ -957,6 +988,7 @@ async function main(): Promise<void> {
 
   await seedArticles(userIds);
   await seedFollows(userIds);
+  await seedResourceViews();
 
   console.log("[seed-plan005] done");
 }

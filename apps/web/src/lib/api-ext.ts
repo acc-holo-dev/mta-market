@@ -1469,6 +1469,34 @@ export async function adminArticleAction(
   return data;
 }
 
+// ---------- PLAN-010: Creator Analytics (honest demand signal) ----------
+export async function countResourceView(slug: string): Promise<void> {
+  try {
+    await api.post(`/resources/${encodeURIComponent(slug)}/view`);
+  } catch {
+    // fire-and-forget: a failed counter never breaks the page
+  }
+}
+
+export interface SellerAnalytics {
+  days: number;
+  totalViews: number;
+  totalPurchases: number;
+  byResource: {
+    resourceId: string;
+    slug: string;
+    title: string;
+    views30d: number;
+    purchases30d: number;
+    conversionPct: number | null;
+  }[];
+}
+
+export async function fetchSellerAnalytics(): Promise<SellerAnalytics> {
+  const { data } = await api.get("/seller/analytics");
+  return data;
+}
+
 // ---------- PLAN-008: Follow Expansion (Creator + Resource) ----------
 export async function followCreator(username: string) {
   const { data } = await api.post(`/creators/${encodeURIComponent(username)}/follow`);

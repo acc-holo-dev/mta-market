@@ -27,6 +27,83 @@ router.get("/profile", authenticate, standardRateLimit, async (req: AuthRequest,
 });
 
 // POST /seller/apply - apply for seller onboarding (L-001)
+// PLAN-010 B-002: creator analytics — honest demand signal for the seller.
+// Views are aggregate page-opens of the seller's own resources; no viewer
+// identities exist. Conversion = completed purchases / views (30 days).
+const ANALYTICS_DAYS = 30;
+
+router.get("/analytics", authenticate, standardRateLimit, async (req: AuthRequest, res: Response) => {
+  try {
+    const myResources = await db.orm.public.Resource
+      .where({ sellerId: req.user!.userId })
+      .select("id", "slug", "title", "status")
+      .all();
+    const published = myResources.filter((r: any) => r.status === "PUBLISHED");
+    const ids = published.map((r: any) => r.id as string);
+
+    const sinceDay = new Date(Date.now() - ANALYTICS_DAYS * 24 * 3600_000)
+      .toISOString()
+      .slice(0, 10);
+    const sinceIso = new Date(Date.now() - ANALYTICS_DAYS * 24 * 3600_000).toISOString();
+
+    const viewRows = ids.length
+      ? await db.orm.public.ResourceViewDaily
+          .where((v: any) => v.resourceId.in(ids))
+          .where((v: any) => v.day.gte(sinceDay))
+          .all()
+      : [];
+    const viewsByResource = new Map<string, number>();
+    for (const row of viewRows as any[]) {
+      viewsByResource.set(
+        row.resourceId as string,
+        (viewsByResource.get(row.resourceId as string) ?? 0) + Number(row.views ?? 0)
+      );
+    }
+
+    const purchases = ids.length
+      ? await db.orm.public.Purchase
+          .where((p: any) => p.resourceId.in(ids))
+          .where({ status: "COMPLETED" })
+          .all()
+      : [];
+    const purchasesByResource = new Map<string, number>();
+    for (const p of purchases as any[]) {
+      const ts = p.completedAt ?? p.createdAt;
+      if (new Date(ts as string).getTime() >= Date.parse(sinceIso)) {
+        purchasesByResource.set(
+          p.resourceId as string,
+          (purchasesByResource.get(p.resourceId as string) ?? 0) + 1
+        );
+      }
+    }
+
+    const byResource = published
+      .map((r: any) => {
+        const views = viewsByResource.get(r.id as string) ?? 0;
+        const purchases = purchasesByResource.get(r.id as string) ?? 0;
+        return {
+          resourceId: r.id as string,
+          slug: r.slug as string,
+          title: r.title as string,
+          views30d: views,
+          purchases30d: purchases,
+          conversionPct: views > 0 ? Math.round((purchases / views) * 100) : null,
+        };
+      })
+      .sort((a: any, b: any) => b.views30d - a.views30d);
+
+    res.json({
+      days: ANALYTICS_DAYS,
+      totalViews: byResource.reduce((acc: number, r: any) => acc + r.views30d, 0),
+      totalPurchases: byResource.reduce((acc: number, r: any) => acc + r.purchases30d, 0),
+      byResource,
+    });
+  } catch (error) {
+    reqLog(req).error("seller_analytics_failed", { error });
+    res.status(500).json({ error: "Failed to build analytics" });
+  }
+});
+
 router.post("/apply", authenticate, standardRateLimit, async (req: AuthRequest, res: Response) => {
   try {
     const { displayName, supportInfo } = req.body ?? {};

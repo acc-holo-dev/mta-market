@@ -616,6 +616,41 @@ router.get(
 );
 
 // GET /resources/:slug - Get resource by slug (with media, D-001/D-002)
+// PLAN-010 B-001: honest page-view counter. Public (guests count too);
+// no viewer identities are ever stored — resource × day × count only.
+// Views are shown exclusively to the resource's seller (not a public metric).
+router.post("/:slug/view", standardRateLimit, async (req, res: Response) => {
+  try {
+    const resource = await db.orm.public.Resource
+      .where({ slug: req.params.slug as string })
+      .select("id", "status")
+      .first();
+    if (!resource || resource.status !== "PUBLISHED") {
+      res.status(404).json({ error: "Resource not found" });
+      return;
+    }
+    const day = new Date().toISOString().slice(0, 10);
+    const existing = await db.orm.public.ResourceViewDaily
+      .where({ resourceId: resource.id, day })
+      .first();
+    if (existing) {
+      await db.orm.public.ResourceViewDaily
+        .where({ id: existing.id })
+        .update({ views: existing.views + 1 });
+    } else {
+      await db.orm.public.ResourceViewDaily.create({
+        resourceId: resource.id as string,
+        day,
+        views: 1,
+      });
+    }
+    res.json({ ok: true });
+  } catch (error) {
+    reqLog(req).error("resource_view_failed", { error });
+    res.status(500).json({ error: "Failed to count view" });
+  }
+});
+
 router.get("/:slug", standardRateLimit, async (req, res: Response) => {
   try {
     const slug = req.params.slug as string;

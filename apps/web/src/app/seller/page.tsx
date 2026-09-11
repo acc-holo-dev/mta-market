@@ -21,6 +21,8 @@ import {
   type ServiceOrder,
   type Resource,
   type Purchase,
+  fetchSellerAnalytics,
+  type SellerAnalytics,
 } from "@/lib/api-ext";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -28,7 +30,9 @@ import { Input, Select } from "@/components/ui/Input";
 import { StatusBadge, statusLabel } from "@/components/ui/StatusBadge";
 import { LoadingSpinner, EmptyState, ErrorState } from "@/components/ui/States";
 import { MediaEditorButton } from "@/components/seller/MediaEditorButton";
-import { Store, Package, Wrench, Plus, Wallet, Clock, Send, FileEdit } from "lucide-react";
+import { Store, Package, Wrench, Plus, Wallet, Clock, Send, FileEdit,
+  BarChart3,
+} from "lucide-react";
 import Link from "next/link";
 import { typeLabel, formatDate } from "@/lib/domain";
 
@@ -246,6 +250,8 @@ function SellerDashboard() {
           </Button>
         </Link>
       </div>
+
+      <SellerAnalyticsCard />
 
       {/* H-002: dashboard stats */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-10">
@@ -642,6 +648,95 @@ function SellerOrdersSection() {
               </div>
             </div>
           ))
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+
+// ---------- PLAN-010: Аналитика (30 дней) — честный сигнал спроса ----------
+function SellerAnalyticsCard() {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ["seller", "analytics"],
+    queryFn: fetchSellerAnalytics,
+  });
+
+  return (
+    <Card className="mt-8">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <BarChart3 className="h-5 w-5 text-accent" /> Аналитика
+        </CardTitle>
+        <CardDescription>
+          Просмотры страниц ресурсов и конверсия в покупки за{" "}
+          {data?.days ?? 30} дней. Только ваши данные; просмотры считаются по
+          открытиям страниц и не показываются покупателям.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <LoadingSpinner label="Загрузка аналитики…" />
+        ) : error ? (
+          <ErrorState error={error} onRetry={() => refetch()} />
+        ) : !data || data.byResource.length === 0 ? (
+          <EmptyState
+            title="Пока нечего анализировать"
+            description="Опубликуйте ресурс — здесь появятся просмотры и конверсия."
+          />
+        ) : (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4 text-center sm:grid-cols-3">
+              <div className="rounded-card border border-line bg-surface-raised p-4">
+                <p className="text-xs text-content-secondary">Просмотры (30 дней)</p>
+                <p className="mt-1 text-2xl font-bold">
+                  {data.totalViews.toLocaleString("ru-RU")}
+                </p>
+              </div>
+              <div className="rounded-card border border-line bg-surface-raised p-4">
+                <p className="text-xs text-content-secondary">Покупки (30 дней)</p>
+                <p className="mt-1 text-2xl font-bold">
+                  {data.totalPurchases.toLocaleString("ru-RU")}
+                </p>
+              </div>
+              <div className="rounded-card border border-line bg-surface-raised p-4">
+                <p className="text-xs text-content-secondary">Средняя конверсия</p>
+                <p className="mt-1 text-2xl font-bold">
+                  {data.totalViews > 0
+                    ? `${Math.round((data.totalPurchases / data.totalViews) * 100)}%`
+                    : "—"}
+                </p>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs uppercase tracking-wide text-content-secondary">
+                    <th className="py-2 pr-3">Ресурс</th>
+                    <th className="py-2 pr-3 text-right">Просмотры</th>
+                    <th className="py-2 pr-3 text-right">Покупки</th>
+                    <th className="py-2 text-right">Конверсия</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.byResource.map((r) => (
+                    <tr key={r.resourceId} className="border-t border-line">
+                      <td className="py-2 pr-3">
+                        <Link href={`/resources/${r.slug}`} className="hover:text-accent-strong">
+                          {r.title}
+                        </Link>
+                      </td>
+                      <td className="py-2 pr-3 text-right">{r.views30d}</td>
+                      <td className="py-2 pr-3 text-right">{r.purchases30d}</td>
+                      <td className="py-2 text-right">
+                        {r.conversionPct == null ? "—" : `${r.conversionPct}%`}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         )}
       </CardContent>
     </Card>

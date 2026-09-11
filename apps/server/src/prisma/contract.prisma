@@ -147,6 +147,7 @@ model Resource {
   moderationEvents ModerationEvent[]
   articleLinks ArticleResourceLink[]
   follows      ResourceFollow[]
+  viewDays     ResourceViewDaily[]
 
   @@index([sellerId])
   @@index([status])
@@ -1444,6 +1445,21 @@ model ResourceFollow {
   @@unique([userId, resourceId])
   @@index([resourceId])
   @@index([userId])
+}
+
+// PLAN-010: resource page views — honest aggregate (resource × day × count).
+// No viewer identities are ever stored (privacy principle); views are shown
+// only to the resource's seller (not a public metric).
+model ResourceViewDaily {
+  id         String @id @default(uuid())
+  resourceId String
+  day        String // UTC date, YYYY-MM-DD
+  views      Int    @default(0)
+
+  resource Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@unique([resourceId, day])
+  @@index([resourceId])
 }
 
 // PLAN-009: thread follow — the Follow step of the Community Loop
