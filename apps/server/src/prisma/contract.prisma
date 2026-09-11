@@ -58,6 +58,8 @@ model User {
   forumReactions ForumReaction[]
   notifications Notification[]
   reports       Report[]
+  // PLAN-007: Content Foundation
+  articles      Article[]
 
   @@index([email])
   @@index([username])
@@ -137,6 +139,7 @@ model Resource {
   reviews    Review[]
   media      ResourceMedia[]
   moderationEvents ModerationEvent[]
+  articleLinks ArticleResourceLink[]
 
   @@index([sellerId])
   @@index([status])
@@ -1290,6 +1293,8 @@ enum ReportTargetType {
   NEWS
   SERVER
   PROFILE
+  // PLAN-007: articles are a reportable content surface.
+  ARTICLE
 }
 
 enum ReportStatus {
@@ -1359,6 +1364,7 @@ model Server {
   statusSamples ServerStatusSample[]
   resources ServerResource[]
   threads  ForumThread[]
+  articleLinks ArticleServerLink[]
 
   @@index([ownerId])
   @@index([lifecycle])
@@ -1546,12 +1552,14 @@ model ForumCategory {
 
 // F-003/F-005/G-004: threads live in a category and may be explicitly linked
 // to a Server (server discussion) or a ServerNews item (news discussion).
+// PLAN-007: also to an Article (article discussion).
 model ForumThread {
   id         String @id @default(uuid())
   categoryId String
   authorId   String
   serverId   String?
   newsId     String? @unique
+  articleId  String? @unique
   title      String
   state      ForumThreadState @default(OPEN)
   pinned     Boolean @default(false)
@@ -1565,6 +1573,7 @@ model ForumThread {
   author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
   server   Server? @relation(fields: [serverId], references: [id], onDelete: Cascade)
   news     ServerNews? @relation(fields: [newsId], references: [id], onDelete: SetNull)
+  article  Article?  @relation(fields: [articleId], references: [id], onDelete: SetNull)
   posts    ForumPost[]
 
   @@index([categoryId, lastPostAt])
@@ -1650,4 +1659,78 @@ model Report {
 
   @@index([status, createdAt])
   @@index([targetType, targetId])
+}
+
+// ============================================
+// PLAN-007: Content Foundation (articles)
+// ============================================
+
+enum ArticleStatus {
+  DRAFT
+  PENDING_REVIEW
+  PUBLISHED
+  ARCHIVED
+}
+
+enum ArticleCategory {
+  GUIDES
+  NEWS
+  REVIEWS
+  OPINION
+}
+
+// B: article — the CONTENT pillar entity. Plain-text content (no raw HTML),
+// moderation before publication, explicit links only (B-002).
+model Article {
+  id          String @id @default(uuid())
+  authorId    String
+  slug        String @unique
+  title       String
+  content     String
+  excerpt     String // auto-derived from content (≤300), rendered in lists
+  coverUrl    String?
+  category    ArticleCategory @default(GUIDES)
+  tags        String? // comma-separated display tags (no tag table at this stage)
+  status      ArticleStatus @default(DRAFT)
+  publishedAt TimestamptzString?
+  reviewNote  String? // human-readable reject/hide reason (like verificationNote)
+  createdAt   TimestamptzString @default(now())
+  updatedAt   temporal.updatedAtString()
+
+  author     User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  thread     ForumThread?
+  resources  ArticleResourceLink[]
+  servers    ArticleServerLink[]
+
+  @@index([status, publishedAt])
+  @@index([authorId])
+}
+
+// B-002: explicit editorial link to a PUBLISHED resource (public context).
+model ArticleResourceLink {
+  id         String @id @default(uuid())
+  articleId  String
+  resourceId String
+  position   Int @default(0)
+
+  article  Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  resource Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@unique([articleId, resourceId])
+  @@index([resourceId])
+}
+
+// B-002: explicit link to a server — only its staff may attach it (G-004
+// precedent). Deleted/hidden servers simply stop rendering in «Связанном».
+model ArticleServerLink {
+  id        String @id @default(uuid())
+  articleId String
+  serverId  String
+  position  Int @default(0)
+
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  server  Server  @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  @@unique([articleId, serverId])
+  @@index([serverId])
 }

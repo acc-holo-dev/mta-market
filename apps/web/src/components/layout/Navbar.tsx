@@ -23,11 +23,13 @@ import {
   Server,
   MessagesSquare,
   Bell,
+  FileText,
 } from "lucide-react";
 
 const NAV_LINKS = [
   { href: "/resources", label: "Маркетплейс", icon: LayoutGrid },
   { href: "/servers", label: "Серверы", icon: Server },
+  { href: "/content", label: "Статьи", icon: FileText },
   { href: "/community", label: "Сообщество", icon: MessagesSquare },
   { href: "/dashboard", label: "Покупки", icon: Package },
   { href: "/account", label: "Профиль", icon: User },
@@ -38,6 +40,7 @@ const NAV_LINKS = [
 const GUEST_NAV_LINKS = [
   { href: "/resources", label: "Маркетплейс", icon: LayoutGrid },
   { href: "/servers", label: "Серверы", icon: Server },
+  { href: "/content", label: "Статьи", icon: FileText },
   { href: "/community", label: "Сообщество", icon: MessagesSquare },
 ];
 

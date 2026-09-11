@@ -38,6 +38,9 @@ import newsRoutes from "./routes/news";
 import dashboardRoutes from "./routes/dashboard";
 // PLAN-006: Daily Experience read layer (derived activity, live aggregates).
 import activityRoutes from "./routes/activity";
+// PLAN-007: Content Foundation (articles).
+import contentRoutes from "./routes/content";
+import adminContentRoutes from "./routes/adminContent";
 import adminCommunityRoutes from "./routes/adminCommunity";
 import { standardRateLimit } from "./lib/rateLimit";
 import { reqLog } from "./middleware/requestId";
@@ -175,7 +178,10 @@ export function createApp(): Express {
   app.use("/dashboard", dashboardRoutes);
   // PLAN-006: Daily Experience read layer (derived activity, live aggregates).
   app.use("/activity", activityRoutes);
+  // PLAN-007: Content Foundation (articles).
+  app.use("/content", contentRoutes);
   app.use("/admin", adminCommunityRoutes);
+  app.use("/admin", adminContentRoutes);
 
   // PLAN-004 J-003 (audit): global error handler — in Express 4 a rejected
   // async handler would otherwise become an unhandledRejection and crash the

@@ -8,7 +8,7 @@ import { reqLog } from "../middleware/requestId";
 
 const router: Router = Router();
 
-const TARGET_TYPES = ["THREAD", "POST", "REVIEW", "NEWS", "SERVER", "PROFILE"] as const;
+const TARGET_TYPES = ["THREAD", "POST", "REVIEW", "NEWS", "SERVER", "PROFILE", "ARTICLE"] as const;
 
 // POST /reports — file a report against any reportable surface.
 router.post(
@@ -81,6 +81,8 @@ async function targetExists(targetType: string, targetId: string): Promise<boole
       return !!(await db.orm.public.Server.where({ id: targetId }).first());
     case "PROFILE":
       return !!(await db.orm.public.User.where({ username: targetId }).first());
+    case "ARTICLE":
+      return !!(await db.orm.public.Article.where({ id: targetId }).first());
     default:
       return false;
   }

@@ -37,13 +37,18 @@ export type ActivityType =
   | "RESOURCE_UPDATE"
   | "NEW_DISCUSSION"
   | "DISCUSSION_REPLY"
-  | "NEW_REVIEW";
+  | "NEW_REVIEW"
+  // PLAN-007: Content Foundation (the slot reserved by PLAN-006 D-001).
+  | "NEW_ARTICLE";
 
 // PLAN-006 D-004: deterministic priority when timestamps are close.
+// PLAN-007: NEW_ARTICLE is a high-value event (DAILY-EXPERIENCE §40) with
+// the same tier as NEW_SERVER.
 const TYPE_PRIORITY: Record<ActivityType, number> = {
   SERVER_UPDATE: 6,
   RESOURCE_RELEASE: 6,
   NEW_SERVER: 5,
+  NEW_ARTICLE: 5,
   SERVER_NEWS: 4,
   RESOURCE_UPDATE: 4,
   SERVER_ONLINE: 3,
@@ -66,6 +71,12 @@ export interface ActivityItem {
     title: string;
     coverUrl: string | null;
     sellerName?: string | null;
+  } | null;
+  article?: {
+    slug: string;
+    title: string;
+    coverUrl: string | null;
+    category: string;
   } | null;
   thread?: { id: string; title: string; replyCount: number } | null;
   author?: {
@@ -202,6 +213,47 @@ async function usersByIds(ids: string[]) {
 }
 
 // ---------- WORKSTREAM C/D: source builders ----------
+
+// PLAN-007 F-001: NEW_ARTICLE — published articles within the window. Only
+// PUBLISHED rows exist publicly; DRAFT/PENDING/ARCHIVED never appear.
+async function buildArticleItems(since: string): Promise<ActivityItem[]> {
+  const rows = await db.orm.public.Article
+    .where({ status: "PUBLISHED" })
+    .where((a: any) => (a.publishedAt ?? a.createdAt).gte(since))
+    .orderBy((a: any) => (a.publishedAt ?? a.createdAt).desc())
+    .limit(8)
+    .all();
+  const authorIds = Array.from(new Set(rows.map((a: any) => a.authorId as string)));
+  const authors = authorIds.length
+    ? await db.orm.public.User
+        .where((u: any) => u.id.in(authorIds))
+        .select("id", "username", "displayName", "avatar")
+        .all()
+    : [];
+  const authorById = new Map(authors.map((u: any) => [u.id, u]));
+  return rows.map((a: any) => {
+    const author = authorById.get(a.authorId);
+    return {
+      type: "NEW_ARTICLE" as const,
+      at: a.publishedAt ?? a.createdAt,
+      href: `/content/articles/${a.slug}`,
+      article: {
+        slug: a.slug as string,
+        title: a.title as string,
+        coverUrl: a.coverUrl ?? null,
+        category: a.category as string,
+      },
+      author: author
+        ? {
+            username: author.username ?? null,
+            displayName: author.displayName ?? null,
+            avatar: author.avatar ?? null,
+          }
+        : null,
+      title: a.title,
+    } satisfies ActivityItem;
+  });
+}
 
 async function buildServerUpdateItems(since: string): Promise<ActivityItem[]> {
   const rows = await db.orm.public.ServerUpdate
@@ -380,7 +432,7 @@ async function visibleThreadFilter(threadIds: string[]) {
   const servers = await publicServersByIds(serverIds);
   const visible = new Map<string, any>();
   for (const t of rows) {
-    if (t.newsId) continue;
+    if (t.newsId || t.articleId) continue;
     if (t.state === "ARCHIVED") continue;
     if (t.serverId) {
       const server = servers.get(t.serverId);
@@ -531,7 +583,7 @@ async function buildPopular(since: string): Promise<PopularBlock> {
     .slice(0, 4);
 
   const hotThreads = await db.orm.public.ForumThread
-    .where({ newsId: null })
+    .where({ newsId: null, articleId: null })
     .where((t: any) => t.lastPostAt.gte(since))
     .where((t: any) => t.state.in(["OPEN", "LOCKED"]))
     .orderBy((t: any) => t.lastPostAt.desc())
@@ -628,6 +680,7 @@ export async function computeActivitySnapshot(limit: number): Promise<ActivitySn
     resourceUpdates,
     discussions,
     reviews,
+    articles,
     popular,
   ] = await Promise.all([
     getLiveAggregates(),
@@ -639,15 +692,23 @@ export async function computeActivitySnapshot(limit: number): Promise<ActivitySn
     buildResourceUpdateItems(since),
     buildDiscussionItems(since, sinceMs),
     buildReviewItems(since),
+    buildArticleItems(since),
     buildPopular(since),
   ]);
 
   return {
     live,
-    items: dedupItems([...updates, ...news, ...newServers, ...online, ...releases, ...resourceUpdates, ...discussions, ...reviews]).slice(
-      0,
-      limit
-    ),
+    items: dedupItems([
+      ...updates,
+      ...news,
+      ...newServers,
+      ...online,
+      ...releases,
+      ...resourceUpdates,
+      ...discussions,
+      ...reviews,
+      ...articles,
+    ]).slice(0, limit),
     popular,
     generatedAt: now.toISOString(),
   };

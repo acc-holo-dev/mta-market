@@ -21,6 +21,7 @@ import {
   Newspaper,
   Star,
   Radio,
+  FileText,
   type LucideIcon,
 } from "lucide-react";
 
@@ -41,6 +42,10 @@ function itemTitle(item: ActivityItem): string {
     }
     case "RESOURCE_UPDATE":
       return `${item.resource?.title ?? item.title ?? "Ресурс"} — версия ${item.version ?? ""}`.trim();
+    case "NEW_ARTICLE": {
+      const by = item.author?.displayName || item.author?.username;
+      return `Новая статья: ${item.article?.title ?? item.title ?? ""}${by ? ` — ${by}` : ""}`;
+    }
     case "NEW_DISCUSSION":
       return `Новое обсуждение: «${item.thread?.title ?? item.title ?? ""}»`;
     case "DISCUSSION_REPLY":
@@ -68,6 +73,8 @@ function itemIcon(type: string): LucideIcon | null {
       return PackagePlus;
     case "RESOURCE_UPDATE":
       return Package;
+    case "NEW_ARTICLE":
+      return FileText;
     case "NEW_DISCUSSION":
       return MessageSquarePlus;
     case "DISCUSSION_REPLY":

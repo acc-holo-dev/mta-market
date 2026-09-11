@@ -12,8 +12,8 @@ import { ResourceCard } from "@/components/ui/ResourceCard";
 import { LoadingSpinner, EmptyState } from "@/components/ui/States";
 import { Avatar } from "@/components/ui/Avatar";
 import { VerificationBadge } from "@/components/servers/ServerCard";
-import { formatDate } from "@/lib/domain";
-import { Server, ShieldCheck, Store, User, Users, MessageSquare, Package } from "lucide-react";
+import { formatDate, categoryLabel } from "@/lib/domain";
+import { Server, ShieldCheck, Store, User, Users, MessageSquare, Package, FileText } from "lucide-react";
 
 // P: бейджи отражают реальные, проверяемые условия (без инфляции).
 const BADGE_META: Record<string, { label: string; icon: typeof Server }> = {
@@ -195,6 +195,33 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
               <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {data.resources.map((r) => (
                   <ResourceCard key={r.id} resource={r} />
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* PLAN-007 E-003: опубликованные статьи автора */}
+          <section className="mt-10">
+            <h2 className="text-lg font-semibold mb-5">Статьи</h2>
+            {(data.articles?.length ?? 0) === 0 ? (
+              <div className="rounded-card border border-dashed border-line p-8 text-center">
+                <FileText className="h-8 w-8 text-content-muted mx-auto mb-3" />
+                <p className="text-sm text-content-secondary">Опубликованных статей пока нет.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {data.articles!.map((a) => (
+                  <Link
+                    key={a.slug}
+                    href={`/content/articles/${a.slug}`}
+                    className="flex items-center justify-between gap-3 rounded-card border border-line bg-surface p-3 hover:border-accent/40"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium">{a.title}</span>
+                      <span className="block truncate text-xs text-content-secondary">{a.excerpt}</span>
+                    </span>
+                    <span className="flex-shrink-0 text-xs text-content-muted">{categoryLabel(a.category)}</span>
+                  </Link>
                 ))}
               </div>
             )}

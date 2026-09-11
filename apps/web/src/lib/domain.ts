@@ -47,3 +47,15 @@ export function timeAgo(iso: string): string {
   if (days < 7) return `${days} дн назад`;
   return formatDate(iso);
 }
+
+// PLAN-007: категории статей (Content pillar).
+export const ARTICLE_CATEGORY_LABELS: Record<string, string> = {
+  GUIDES: "Гайды",
+  NEWS: "Новости",
+  REVIEWS: "Обзоры",
+  OPINION: "Мнения",
+};
+
+export function categoryLabel(category: string): string {
+  return ARTICLE_CATEGORY_LABELS[category] ?? category;
+}

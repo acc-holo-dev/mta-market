@@ -447,6 +447,145 @@ async function ensureUser(username: string, displayName: string): Promise<string
   return user.id;
 }
 
+
+// ---------------------------------------------------------------------------
+// PLAN-007: Content Foundation — статьи (идемпотентно по slug).
+// Реалистичные материалы экосистемы, включая примеры из DAILY-EXPERIENCE.
+// ---------------------------------------------------------------------------
+const ARTICLES = [
+  {
+    slug: "kakoi-framework-vybrat-dlya-rp",
+    author: "nightcity_owner",
+    title: "Какой framework выбрать для RP-сервера",
+    category: "GUIDES",
+    tags: "roleplay, framework, старт",
+    daysAgo: 3,
+    coverSeed: "article-framework",
+    content:
+      "Выбор фреймворка определяет всё развитие сервера: скорость старта, стоимость поддержки и то, насколько свободно вы сможете реализовывать идеи.\n\nСобственный фреймворк даёт полный контроль, но требует месяцев работы сильного разработчика. Готовые решения (полные сборки) запускаются за день, однако привязывают вас к чужой архитектуре и качеству кода.\n\nКомпромисс, который выбирает большинство успешных проектов: готовое ядро плюс собственные модули поверх. Так вы проверяете идею быстро, а уникальные механики пишете сами.\n\nСмотрите разборы готовых ресурсов в маркетплейсе и читайте отзывы владельцев серверов перед решением.",
+    serverKey: "night-city-rp",
+    withThread: true,
+  },
+  {
+    slug: "optimizaciya-mta-servera-taimery",
+    author: "dustdevils_lead",
+    title: "Оптимизация MTA-сервера: таймеры и колбэки",
+    category: "GUIDES",
+    tags: "оптимизация, lua",
+    daysAgo: 2,
+    coverSeed: "article-optimization",
+    content:
+      "Главное зло производительности MTA-сервера — таймеры с малыми интервалами. setTimer на 50мс, запущенный в десятке ресурсов, съедает кадры серверного цикла незаметно.\n\nПравило простое: событийная модель вместо опроса. onPlayerClick, onVehicleEnter и другие события заменяют 90% таймеров-опросников.\n\nВторой источник проблем — синхронные запросы к базе в горячем коде. Кэшируйте данные, которые читаются часто и меняются редко: топ игроков, цены магазинов, конфиги.\n\nПрофилируйте встроенным пef-инструментом сервера и смотрите раздел мониторинга вашего сервера на MTA Market — рост среднего онлайна после оптимизации виден там же.",
+    serverKey: "dust-rally",
+    withThread: true,
+  },
+  {
+    slug: "nochi-otkrytij-obnovlenie-2-5",
+    author: "redcounty_admin",
+    title: "Ночь открытий: сезонные ивенты в Red County",
+    category: "NEWS",
+    tags: "ивенты",
+    daysAgo: 1,
+    coverSeed: null as unknown as string,
+    content:
+      "В Red County стартовала серия ночных ивентов: гонки по закрытым трассам, осада ферм и охота за редкими машинами.\n\nРасписание меняется каждую неделю — следите за новостями сервера и обсуждением в теме.",
+    serverKey: "red-count",
+    withThread: false,
+  },
+  {
+    slug: "demo-resursy-kak-proverit-pokupku",
+    author: "racer_x",
+    title: "Демо-ресурсы: как проверить покупку до оплаты",
+    category: "REVIEWS",
+    tags: "маркетплейс, drm",
+    daysAgo: 5,
+    coverSeed: null as unknown as string,
+    content:
+      "На MTA Market у каждого ресурса есть лицензия и защита: покупка выдаёт персональную лицензию с привязкой к вашему серверу.\n\nПрежде чем покупать платный ресурс, изучите бесплатные демо-версии того же автора: они показывают стиль кода и качество документации.\n\nОтзывы с меткой Verified Interaction означают подтверждённое взаимодействие с сервером — доверять им проще.",
+    serverKey: null,
+    withThread: false,
+  },
+];
+
+async function seedArticles(userIds: Map<string, string>): Promise<void> {
+  const category = await db.orm.public.ForumCategory.where({ slug: "servers" }).first()
+    ?? (await db.orm.public.ForumCategory.orderBy((c: any) => c.position.asc()).first());
+  for (const a of ARTICLES) {
+    if (await db.orm.public.Article.where({ slug: a.slug }).first()) {
+      console.log(`[seed-plan005] article ${a.slug} exists, skip`);
+      continue;
+    }
+    const authorId = userIds.get(a.author);
+    if (!authorId) continue;
+    const coverUrl = a.coverSeed ? writeMediaPng(generateCover(a.coverSeed)) : null;
+    const publishedAt = daysAgoIso(a.daysAgo);
+    const article = await db.orm.public.Article.create({
+      authorId,
+      slug: a.slug,
+      title: a.title,
+      content: a.content,
+      excerpt: a.content.replace(/\s+/g, " ").trim().slice(0, 297),
+      coverUrl,
+      category: a.category,
+      tags: a.tags,
+      status: "PUBLISHED",
+      publishedAt,
+    });
+    if (a.serverKey) {
+      const server = await db.orm.public.Server.where({ slug: a.serverKey }).first();
+      if (server) {
+        await db.orm.public.ArticleServerLink.create({ articleId: article.id, serverId: server.id, position: 0 });
+      }
+    }
+    if (a.withThread && category) {
+      const thread = await db.orm.public.ForumThread.create({
+        categoryId: category.id,
+        authorId,
+        articleId: article.id,
+        title: a.title,
+      });
+      await db.orm.public.ForumPost.create({
+        threadId: thread.id,
+        authorId,
+        content: `Обсуждение статьи «${a.title}». ${a.content.slice(0, 120)}`,
+        position: 0,
+      });
+      await db.orm.public.ForumThread
+        .where({ id: thread.id })
+        .update({ lastPostAt: publishedAt });
+    }
+    console.log(`[seed-plan005] article ${a.slug} created`);
+  }
+
+  // Драфт и статья в очереди модерации — для витрины статусов.
+  const fanId = userIds.get("market_fan");
+  if (fanId && !(await db.orm.public.Article.where({ slug: "chto-takoe-drm-na-mta-market" }).first())) {
+    await db.orm.public.Article.create({
+      authorId: fanId,
+      slug: "chto-takoe-drm-na-mta-market",
+      title: "Что такое DRM на MTA Market (черновик)",
+      content:
+        "DRM защищает платные ресурсы от массового копирования.\n\nЧерновик объясняет, как работает лицензия, lease и установка модуля.",
+      excerpt: "DRM защищает платные ресурсы от массового копирования.",
+      category: "GUIDES",
+      status: "DRAFT",
+    });
+  }
+  const racerId = userIds.get("racer_x");
+  if (racerId && !(await db.orm.public.Article.where({ slug: "rendy-hostinga-mta-2026" }).first())) {
+    await db.orm.public.Article.create({
+      authorId: racerId,
+      slug: "rendy-hostinga-mta-2026",
+      title: "Тренды хостинга MTA-серверов в 2026",
+      content:
+        "Обзор тарифов хостеров, сравнение NVMe-дисков и пинга по регионам.\n\nМатериал отправлен на модерацию и появится после проверки.",
+      excerpt: "Обзор тарифов хостеров, сравнение NVMe-дисков и пинга по регионам.",
+      category: "OPINION",
+      status: "PENDING_REVIEW",
+    });
+  }
+}
+
 async function main(): Promise<void> {
   if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
   console.log("[seed-plan005] start");
@@ -701,6 +840,8 @@ async function main(): Promise<void> {
       }).catch(() => undefined);
     }
   }
+
+  await seedArticles(userIds);
 
   console.log("[seed-plan005] done");
 }

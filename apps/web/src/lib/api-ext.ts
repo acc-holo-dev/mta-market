@@ -367,6 +367,12 @@ export async function fetchMyPurchases() {
  * GET /seller/profile — the server wraps the row: { profile: SellerProfile | null }.
  * Returns the unwrapped profile (null when the user has not applied yet).
  */
+/** GET /resources/my — the seller's own resources (all statuses). */
+export async function fetchMyResources(): Promise<Resource[]> {
+  const { data } = await api.get<{ data: Resource[] }>("/resources/my");
+  return Array.isArray(data) ? ((data as unknown as { data: Resource[] }).data ?? []) : (data as unknown as Resource[]);
+}
+
 export async function fetchSellerProfile(): Promise<SellerProfile | null> {
   const { data } = await api.get<{ profile: SellerProfile | null }>("/seller/profile");
   return data.profile ?? null;
@@ -1233,6 +1239,15 @@ export interface PublicProfile {
   }[];
   resources: Resource[];
   forumActivity: { threadCount: number; postCount: number };
+  // PLAN-007 E-003: published articles of the author (additive).
+  articles?: {
+    slug: string;
+    title: string;
+    excerpt: string;
+    coverUrl: string | null;
+    category: string;
+    publishedAt: string;
+  }[];
 }
 
 export async function fetchProfile(username: string): Promise<PublicProfile> {
@@ -1246,6 +1261,8 @@ export interface SearchResults {
   resources: { count: number; data: Partial<Resource>[] };
   servers: { count: number; data: ServerCard[] };
   threads: { count: number; data: ThreadCard[] };
+  // PLAN-007 E-004: articles group (additive; older caches may omit it).
+  articles?: { count: number; data: ArticleCard[] };
 }
 
 export async function search(q: string): Promise<SearchResults> {
@@ -1372,6 +1389,12 @@ export interface ActivityItem {
     coverUrl: string | null;
     sellerName?: string | null;
   } | null;
+  article?: {
+    slug: string;
+    title: string;
+    coverUrl: string | null;
+    category: string;
+  } | null;
   thread?: { id: string; title: string; replyCount: number } | null;
   author?: { username: string | null; displayName: string | null; avatar: string | null } | null;
   version?: string | null;
@@ -1449,3 +1472,137 @@ export async function fetchDashboardNow(): Promise<DashboardNow> {
   const { data } = await api.get<DashboardNow>("/dashboard/now");
   return data;
 }
+
+// ---------- PLAN-007: admin content moderation (D) ----------
+export interface AdminArticle {
+  id: string;
+  slug: string;
+  title: string;
+  excerpt: string;
+  category: string;
+  status: string;
+  createdAt: string;
+  author: { username: string | null; displayName: string | null } | null;
+}
+
+export async function fetchAdminArticles(status = "PENDING_REVIEW"): Promise<{ data: AdminArticle[] }> {
+  const { data } = await api.get("/admin/content", { params: { status } });
+  return data;
+}
+
+export async function adminArticleAction(
+  id: string,
+  action: "approve" | "reject" | "hide",
+  reason?: string
+) {
+  const { data } = await api.post(`/admin/content/${id}/${action}`, action === "approve" ? {} : { reason });
+  return data;
+}
+
+// ---------- PLAN-007: Content Foundation (articles) ----------
+export interface ArticleCard {
+  id: string;
+  slug: string;
+  title: string;
+  excerpt: string;
+  coverUrl: string | null;
+  category: string;
+  tags?: string | null;
+  publishedAt: string;
+  author: { username: string | null; displayName: string | null; avatar: string | null } | null;
+  replyCount: number;
+}
+
+export interface ArticleDetail {
+  id: string;
+  slug: string;
+  title: string;
+  content: string;
+  coverUrl: string | null;
+  category: string;
+  tags: string | null;
+  publishedAt: string;
+  author: { id: string; username: string | null; displayName: string | null; avatar: string | null } | null;
+  thread: { id: string; replyCount: number } | null;
+  resources: {
+    slug: string;
+    title: string;
+    coverUrl: string | null;
+    price: number;
+    type: string;
+  }[];
+  servers: {
+    slug: string;
+    name: string;
+    logoUrl: string | null;
+    monitoring: string;
+    playerCount: number | null;
+    maxPlayers: number | null;
+  }[];
+}
+
+export interface ArticleStatus {
+  id: string;
+  slug: string;
+  title: string;
+  excerpt: string;
+  category: string;
+  status: "DRAFT" | "PENDING_REVIEW" | "PUBLISHED" | "ARCHIVED";
+  reviewNote: string | null;
+  publishedAt: string | null;
+  createdAt: string;
+  threadId: string | null;
+  replyCount: number;
+}
+
+export async function fetchContentHub(
+  category?: string,
+  page = 1
+): Promise<{ data: ArticleCard[]; pagination: Pagination }> {
+  const { data } = await api.get("/content", {
+    params: { ...(category ? { category } : {}), page, limit: 9 },
+  });
+  return data;
+}
+
+export async function fetchArticle(slug: string): Promise<ArticleDetail> {
+  const { data } = await api.get<ArticleDetail>(`/content/articles/${slug}`);
+  return data;
+}
+
+export async function fetchMyArticles(): Promise<{ data: ArticleStatus[] }> {
+  const { data } = await api.get("/content/mine");
+  return data;
+}
+
+export async function createArticle(body: {
+  title: string;
+  content: string;
+  category: string;
+  tags?: string;
+  coverUrl?: string | null;
+  resourceIds?: string[];
+  serverIds?: string[];
+}) {
+  const { data } = await api.post("/content", body);
+  return data;
+}
+
+export async function updateArticle(
+  id: string,
+  body: { title?: string; content?: string; category?: string; tags?: string; coverUrl?: string | null }
+) {
+  const { data } = await api.patch(`/content/${id}`, body);
+  return data;
+}
+
+export async function submitArticle(id: string) {
+  const { data } = await api.post(`/content/${id}/submit`);
+  return data;
+}
+
+export async function createArticleDiscussion(id: string) {
+  const { data } = await api.post(`/content/${id}/discussion`);
+  return data;
+}
+

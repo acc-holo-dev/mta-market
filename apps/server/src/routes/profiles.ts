@@ -91,6 +91,21 @@ router.get("/:username", standardRateLimit, async (req, res: Response) => {
         threadCount: Number(threadAgg.total ?? 0),
         postCount: Number(postAgg.total ?? 0),
       },
+      // PLAN-007 E-003: published articles of the author (public only).
+      articles: (
+        await db.orm.public.Article
+          .where({ authorId: user.id, status: "PUBLISHED" })
+          .orderBy((a: any) => (a.publishedAt ?? a.createdAt).desc())
+          .limit(6)
+          .all()
+      ).map((a: any) => ({
+        slug: a.slug,
+        title: a.title,
+        excerpt: a.excerpt,
+        coverUrl: a.coverUrl,
+        category: a.category,
+        publishedAt: a.publishedAt ?? a.createdAt,
+      })),
     });
   } catch (error) {
     reqLog(req).error("profile_fetch_failed", { error });

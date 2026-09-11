@@ -64,6 +64,18 @@ router.get("/", standardRateLimit, async (req, res: Response) => {
       .where((t: any) => t.title.ilike(pattern))
       .aggregate((a: any) => ({ total: a.count() }));
 
+    // PLAN-007: articles (PUBLISHED only) — explicit result type (E-004).
+    const articles = await db.orm.public.Article
+      .where((a: any) => a.title.ilike(pattern))
+      .where({ status: "PUBLISHED" })
+      .orderBy((a: any) => (a.publishedAt ?? a.createdAt).desc())
+      .limit(limit)
+      .all();
+    const articlesAgg = await db.orm.public.Article
+      .where((a: any) => a.title.ilike(pattern))
+      .where({ status: "PUBLISHED" })
+      .aggregate((a: any) => ({ total: a.count() }));
+
     res.json({
       query: q,
       resources: {
@@ -97,6 +109,17 @@ router.get("/", standardRateLimit, async (req, res: Response) => {
           state: t.state,
           replyCount: t.replyCount,
           lastPostAt: t.lastPostAt,
+        })),
+      },
+      articles: {
+        count: Number(articlesAgg.total ?? 0),
+        data: articles.map((a: any) => ({
+          id: a.id,
+          slug: a.slug,
+          title: a.title,
+          excerpt: a.excerpt,
+          category: a.category,
+          publishedAt: a.publishedAt ?? a.createdAt,
         })),
       },
     });
