@@ -64,6 +64,8 @@ model User {
   creatorFollowsGiven  SellerFollow[] @relation("sellerFollowsFollower")
   creatorFollowsRecvd  SellerFollow[] @relation("sellerFollowsSeller")
   resourceFollowsGiven ResourceFollow[]
+  // PLAN-009: Thread Follow
+  threadFollows        ForumThreadFollow[]
 
   @@index([email])
   @@index([username])
@@ -1444,6 +1446,23 @@ model ResourceFollow {
   @@index([userId])
 }
 
+// PLAN-009: thread follow — the Follow step of the Community Loop
+// (DAILY-EXPERIENCE §10). Private relationship: only the aggregate count is
+// public on the thread page; the follower list is never exposed (§42).
+model ForumThreadFollow {
+  id       String @id @default(uuid())
+  userId   String
+  threadId String
+  createdAt TimestamptzString @default(now())
+
+  user   User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  thread ForumThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, threadId])
+  @@index([threadId])
+  @@index([userId])
+}
+
 // T: the server<->resource relationship. Created only by explicit owner
 // action; publicly rendered only while server.showResources is enabled.
 model ServerResource {
@@ -1617,6 +1636,7 @@ model ForumThread {
   news     ServerNews? @relation(fields: [newsId], references: [id], onDelete: SetNull)
   article  Article?  @relation(fields: [articleId], references: [id], onDelete: SetNull)
   posts    ForumPost[]
+  follows  ForumThreadFollow[]
 
   @@index([categoryId, lastPostAt])
   @@index([serverId])

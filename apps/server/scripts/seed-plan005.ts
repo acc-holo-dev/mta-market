@@ -661,6 +661,42 @@ async function seedFollows(userIds: Map<string, string>): Promise<void> {
       });
     }
   }
+  // PLAN-009: thread follows + пример уведомления подписчику темы.
+  const threadFollowPairs: [string, string][] = [
+    ["market_fan", "Какой framework выбрать для RP-сервера"],
+    ["racer_x", "Какой framework выбрать для RP-сервера"],
+  ];
+  for (const [fan, threadTitle] of threadFollowPairs) {
+    const followerId = userIds.get(fan);
+    if (!followerId) continue;
+    const thread = await db.orm.public.ForumThread.where({ title: threadTitle }).first();
+    if (!thread) continue;
+    const existing = await db.orm.public.ForumThreadFollow
+      .where({ userId: followerId, threadId: thread.id })
+      .first();
+    if (!existing) {
+      await db.orm.public.ForumThreadFollow.create({ userId: followerId, threadId: thread.id });
+    }
+  }
+  const fanUserId = userIds.get("market_fan");
+  if (fanUserId) {
+    const frameworkThread = await db.orm.public.ForumThread
+      .where({ title: "Какой framework выбрать для RP-сервера" })
+      .first();
+    if (frameworkThread) {
+      const notifExists = await db.orm.public.Notification
+        .where({ recipientId: fanUserId, entityType: "forumThread", entityId: frameworkThread.id })
+        .first();
+      if (!notifExists) {
+        await db.orm.public.Notification.create({
+          recipientId: fanUserId,
+          type: "FORUM_REPLY",
+          title: `Новый ответ в теме «${frameworkThread.title}»`,
+          body: "Готовые ядра быстрее на старте, но собственные модули дают уникальность.",
+        });
+      }
+    }
+  }
   console.log("[seed-plan005] follows seeded");
 }
 

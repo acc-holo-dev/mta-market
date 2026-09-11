@@ -29,6 +29,9 @@ import {
   deleteForumPost,
   toggleReaction,
   setThreadState,
+  followThread,
+  unfollowThread,
+  fetchMyThreadFollows,
   getErrorMessage,
   type ForumPostItem,
 } from "@/lib/api-ext";
@@ -323,6 +326,7 @@ function ThreadPageContent() {
               <h1 className="text-3xl font-bold tracking-tight">{thread.title}</h1>
               {thread.pinned ? <PinnedChip /> : null}
               <ThreadStateChip state={thread.state} />
+              <ThreadFollowButton threadId={threadId} followersCount={data.followersCount ?? 0} />
             </div>
 
             <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-content-secondary">
@@ -559,5 +563,62 @@ export default function ThreadViewPage() {
     >
       <ThreadPageContent />
     </Suspense>
+  );
+}
+
+// ---------- PLAN-009: Thread Follow (Community Loop completion, §10) ----------
+// The follower list is never exposed — only the aggregate count (§42).
+// The own follow state is read from /me/follows/threads, only within a
+// session (a guest must not trigger the global session-expiry redirect).
+function ThreadFollowButton({ threadId, followersCount }: { threadId: string; followersCount: number }) {
+  const { user, accessToken, isAuthenticated } = useAuthStore();
+  const qc = useQueryClient();
+  const router = useRouter();
+  const [override, setOverride] = useState<{ following: boolean; count: number } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const { data: myFollows } = useQuery({
+    queryKey: ["me", "follows", "threads", accessToken ?? "guest"],
+    queryFn: fetchMyThreadFollows,
+    enabled: isAuthenticated() && !!accessToken,
+    retry: false,
+  });
+  const isFollowing = override
+    ? override.following
+    : (myFollows ?? []).some((t: any) => t.id === threadId);
+  const count = override ? override.count : followersCount;
+
+  const toggle = useMutation({
+    mutationFn: () => (isFollowing ? unfollowThread(threadId) : followThread(threadId)),
+    onSuccess: (res: any) => {
+      setOverride({ following: res.following, count: res.followersCount });
+      setError(null);
+      qc.invalidateQueries({ queryKey: ["me", "follows", "threads"] });
+    },
+    onError: (e) => setError(getErrorMessage(e, "Не удалось изменить подписку")),
+  });
+
+  return (
+    <span className="inline-flex items-center gap-2">
+      <Button
+        variant={isFollowing ? "outline" : "secondary"}
+        size="sm"
+        disabled={toggle.isPending}
+        onClick={() => {
+          if (!isAuthenticated() || !user) {
+            router.push("/auth/login");
+            return;
+          }
+          toggle.mutate();
+        }}
+      >
+        {isFollowing ? "Не следить" : "Следить"}
+      </Button>
+      <span className="inline-flex items-center gap-1 text-sm text-content-secondary">
+        <Eye className="h-3.5 w-3.5" aria-hidden />
+        {count.toLocaleString("ru-RU")} следят
+      </span>
+      {error ? <span className="text-xs text-red-400">{error}</span> : null}
+    </span>
   );
 }

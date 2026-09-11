@@ -177,6 +177,27 @@ router.get("/me/follows/creators", authenticate, standardRateLimit, async (req: 
   }
 });
 
+// PLAN-009: own thread follows (private list, §42).
+router.get("/me/follows/threads", authenticate, standardRateLimit, async (req: AuthRequest, res: Response) => {
+  try {
+    const rows = await db.orm.public.ForumThreadFollow
+      .where({ userId: req.user!.userId })
+      .limit(200)
+      .all();
+    const threadIds = rows.map((r: any) => r.threadId as string);
+    const threads = threadIds.length
+      ? await db.orm.public.ForumThread
+          .where((t: any) => t.id.in(threadIds))
+          .select("id", "title", "state", "replyCount", "lastPostAt")
+          .all()
+      : [];
+    res.json({ data: threads });
+  } catch (error) {
+    reqLog(req).error("me_follows_threads_failed", { error });
+    res.status(500).json({ error: "Failed to fetch thread follows" });
+  }
+});
+
 router.get("/me/follows/resources", authenticate, standardRateLimit, async (req: AuthRequest, res: Response) => {
   try {
     const rows = await db.orm.public.ResourceFollow

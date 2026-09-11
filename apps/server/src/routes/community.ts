@@ -301,6 +301,12 @@ router.get("/threads/:id", standardRateLimit, async (req, res: Response) => {
       }
     }
 
+    // PLAN-009 B-002: aggregate follower count only — the list is never
+    // exposed (DAILY-EXPERIENCE §42).
+    const threadFollowersAgg = await db.orm.public.ForumThreadFollow
+      .where({ threadId: thread.id })
+      .aggregate((a: any) => ({ total: a.count() }));
+
     // Real view counting (F-003 "views if real") — fire and forget.
     db.orm.public.ForumThread
       .where({ id: thread.id })
@@ -337,6 +343,7 @@ router.get("/threads/:id", standardRateLimit, async (req, res: Response) => {
 
     const total = Number(agg.total ?? 0);
     res.json({
+      followersCount: Number(threadFollowersAgg.total ?? 0),
       thread: { ...thread, author: threadAuthor },
       category: category ? { id: category.id, slug: category.slug, name: category.name } : null,
       server,
@@ -403,14 +410,25 @@ router.post(
         lastPostAt: new Date().toISOString(),
       });
 
-      // FORUM_REPLY: author of the thread + everyone who already spoke,
-      // deduplicated by createNotifications; the actor never notifies self.
+      // FORUM_REPLY: author of the thread + everyone who already spoke +
+      // PLAN-009 C-001: thread followers (the Follow step of the Community
+      // Loop, §10). Deduplicated by createNotifications (a user who is both
+      // a participant and a follower receives exactly one); the actor never
+      // notifies self.
       const participants = await db.orm.public.ForumPost
         .where({ threadId: thread.id, deletedAt: null })
         .select("authorId")
         .all();
-      const inputs = participants.map((p: any) => ({
-        recipientId: p.authorId as string,
+      const followers = await db.orm.public.ForumThreadFollow
+        .where({ threadId: thread.id })
+        .select("userId")
+        .limit(500)
+        .all();
+      const inputs = [
+        ...participants.map((p: any) => p.authorId as string),
+        ...followers.map((f: any) => f.userId as string),
+      ].map((recipientId) => ({
+        recipientId,
         type: "FORUM_REPLY" as const,
         title: `Новый ответ в теме «${thread.title}»`,
         body: content.slice(0, 120),
@@ -720,5 +738,71 @@ async function threadCardGroup(...groups: any[][]): Promise<{ latest: any[]; act
     pinned: await threadCardList(pinned),
   };
 }
+
+// ---------------------------------------------------------------------------
+// PLAN-009: Thread Follow (Community Loop completion). Private relationship:
+// aggregate count on the page, follower lists never exposed (§42).
+// ---------------------------------------------------------------------------
+
+router.post(
+  "/forum/thread/:id/follow",
+  authenticate,
+  standardRateLimit,
+  userRateLimit({ windowMs: 60 * 60_000, max: 60, action: "thread_follow" }),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const thread = await db.orm.public.ForumThread
+        .where({ id: req.params.id as string })
+        .first();
+      if (!thread) {
+        res.status(404).json({ error: "Thread not found" });
+        return;
+      }
+      const existing = await db.orm.public.ForumThreadFollow
+        .where({ userId: req.user!.userId, threadId: thread.id })
+        .first();
+      if (existing) {
+        res.status(409).json({ error: "Вы уже следите за этой темой" });
+        return;
+      }
+      await db.orm.public.ForumThreadFollow.create({
+        userId: req.user!.userId,
+        threadId: thread.id as string,
+      });
+      const agg = await db.orm.public.ForumThreadFollow
+        .where({ threadId: thread.id })
+        .aggregate((a: any) => ({ total: a.count() }));
+      res.status(201).json({ following: true, followersCount: Number(agg.total ?? 0) });
+    } catch (error) {
+      reqLog(req).error("thread_follow_failed", { error });
+      res.status(500).json({ error: "Failed to follow thread" });
+    }
+  }
+);
+
+router.delete(
+  "/forum/thread/:id/follow",
+  authenticate,
+  standardRateLimit,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const existing = await db.orm.public.ForumThreadFollow
+        .where({ userId: req.user!.userId, threadId: req.params.id as string })
+        .first();
+      if (!existing) {
+        res.status(404).json({ error: "Вы не следите за этой темой" });
+        return;
+      }
+      await db.orm.public.ForumThreadFollow.where({ id: existing.id }).delete();
+      const agg = await db.orm.public.ForumThreadFollow
+        .where({ threadId: req.params.id as string })
+        .aggregate((a: any) => ({ total: a.count() }));
+      res.json({ following: false, followersCount: Number(agg.total ?? 0) });
+    } catch (error) {
+      reqLog(req).error("thread_unfollow_failed", { error });
+      res.status(500).json({ error: "Failed to unfollow thread" });
+    }
+  }
+);
 
 export default router;

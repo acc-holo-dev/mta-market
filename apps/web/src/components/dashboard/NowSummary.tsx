@@ -125,6 +125,19 @@ export function DashboardNow() {
       detail: first?.resource ? `${first.resource.title} — ${first.version}` : undefined,
     });
   }
+  // PLAN-009 D-002: ответы в отслеживаемых обсуждениях.
+  if (data.followedThreadReplies && data.followedThreadReplies.count > 0) {
+    const first = data.followedThreadReplies.items[0];
+    rows.push({
+      key: "thread-replies",
+      href: first ? `/community/forum/thread/${first.threadId}` : "/community",
+      icon: <MessageSquare className="h-4 w-4 text-accent" />,
+      label: `Отслеживаемые обсуждения: ${data.followedThreadReplies.count} ${
+        data.followedThreadReplies.count === 1 ? "новый ответ" : "новых ответов"
+      }`,
+      detail: first?.threadTitle ?? undefined,
+    });
+  }
   if (data.followedResourceUpdates && data.followedResourceUpdates.count > 0) {
     const first = data.followedResourceUpdates.items[0];
     rows.push({

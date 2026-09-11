@@ -80,6 +80,10 @@
       "model": "ForumThread",
       "namespace": "public"
     },
+    "forumThreadFollow": {
+      "model": "ForumThreadFollow",
+      "namespace": "public"
+    },
     "installation": {
       "model": "Installation",
       "namespace": "public"
@@ -3713,6 +3717,21 @@
                   "namespace": "public"
                 }
               },
+              "follows": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "threadId"
+                  ]
+                },
+                "to": {
+                  "model": "ForumThreadFollow",
+                  "namespace": "public"
+                }
+              },
               "news": {
                 "cardinality": "N:1",
                 "on": {
@@ -3806,6 +3825,88 @@
               },
               "namespaceId": "public",
               "table": "forumThread"
+            }
+          },
+          "ForumThreadFollow": {
+            "fields": {
+              "createdAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "threadId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "userId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {
+              "thread": {
+                "cardinality": "N:1",
+                "on": {
+                  "localFields": [
+                    "threadId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "ForumThread",
+                  "namespace": "public"
+                }
+              },
+              "user": {
+                "cardinality": "N:1",
+                "on": {
+                  "localFields": [
+                    "userId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "User",
+                  "namespace": "public"
+                }
+              }
+            },
+            "storage": {
+              "fields": {
+                "createdAt": {
+                  "column": "createdAt"
+                },
+                "id": {
+                  "column": "id"
+                },
+                "threadId": {
+                  "column": "threadId"
+                },
+                "userId": {
+                  "column": "userId"
+                }
+              },
+              "namespaceId": "public",
+              "table": "forumThreadFollow"
             }
           },
           "Installation": {
@@ -11028,6 +11129,21 @@
                   "namespace": "public"
                 }
               },
+              "threadFollows": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "userId"
+                  ]
+                },
+                "to": {
+                  "model": "ForumThreadFollow",
+                  "namespace": "public"
+                }
+              },
               "transactions": {
                 "cardinality": "1:N",
                 "on": {
@@ -13432,6 +13548,101 @@
                 {
                   "columns": [
                     "articleId"
+                  ]
+                }
+              ]
+            },
+            "forumThreadFollow": {
+              "columns": {
+                "createdAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "default": {
+                    "expression": "now()",
+                    "kind": "function"
+                  },
+                  "nativeType": "timestamptz",
+                  "nullable": false
+                },
+                "id": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "threadId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "userId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                }
+              },
+              "foreignKeys": [
+                {
+                  "onDelete": "cascade",
+                  "source": {
+                    "columns": [
+                      "userId"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "forumThreadFollow"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "user"
+                  }
+                },
+                {
+                  "onDelete": "cascade",
+                  "source": {
+                    "columns": [
+                      "threadId"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "forumThreadFollow"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "forumThread"
+                  }
+                }
+              ],
+              "indexes": [
+                {
+                  "columns": [
+                    "threadId"
+                  ],
+                  "name": "forumThreadFollow_threadId_idx_6deac339",
+                  "prefix": "forumThreadFollow_threadId_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "userId"
+                  ],
+                  "name": "forumThreadFollow_userId_idx_a489d58a",
+                  "prefix": "forumThreadFollow_userId_idx",
+                  "unique": false
+                }
+              ],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
+              "uniques": [
+                {
+                  "columns": [
+                    "userId",
+                    "threadId"
                   ]
                 }
               ]
@@ -19840,10 +20051,10 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "021fb1f74e5f03b3a39cd9cb4f235cb2fc16d1ac5a4a193217370e7806a89d71"
+    "storageHash": "1964aa6e342e76ac59307151c6111f7f53a7208ce6667357b254eb773689b065"
   },
   "execution": {
-    "executionHash": "4094f2668e500f58c304ffe01feae65760cc0e207de327eb8aa8591637c2d295",
+    "executionHash": "ec245a0f2d9fac07223beb2172873fc4e0cdd1aefa016cec00b280d30e77e54c",
     "mutations": {
       "defaults": [
         {
@@ -20143,6 +20354,17 @@
             "column": "updatedAt",
             "namespace": "public",
             "table": "forumThread"
+          }
+        },
+        {
+          "onCreate": {
+            "id": "uuidv4",
+            "kind": "generator"
+          },
+          "ref": {
+            "column": "id",
+            "namespace": "public",
+            "table": "forumThreadFollow"
           }
         },
         {

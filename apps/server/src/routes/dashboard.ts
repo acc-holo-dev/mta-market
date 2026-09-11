@@ -172,6 +172,32 @@ router.get("/now", authenticate, standardRateLimit, async (req: AuthRequest, res
       : [];
     const followedResourceById = new Map(followedResources.map((r: any) => [r.id, r]));
 
+    // PLAN-009 D-002: new replies in threads the user follows (since last
+    // visit) — the Follow step of the Community Loop reaches the summary.
+    const threadFollows = await db.orm.public.ForumThreadFollow
+      .where({ userId })
+      .limit(100)
+      .all();
+    const followedThreadIds = Array.from(
+      new Set(threadFollows.map((f: any) => f.threadId as string))
+    );
+    const followedThreads = followedThreadIds.length
+      ? await db.orm.public.ForumThread
+          .where((t: any) => t.id.in(followedThreadIds))
+          .select("id", "title")
+          .all()
+      : [];
+    const followedThreadById = new Map(followedThreads.map((t: any) => [t.id, t]));
+    const followedThreadReplies = followedThreadIds.length
+      ? await db.orm.public.ForumPost
+          .where((p: any) => p.threadId.in(followedThreadIds))
+          .where({ deletedAt: null })
+          .where((p: any) => p.createdAt.gte(since))
+          .orderBy((p: any) => p.createdAt.desc())
+          .limit(20)
+          .all()
+      : [];
+
     const unread = await unreadNotificationCount(userId);
 
     const payload = {
@@ -235,6 +261,14 @@ router.get("/now", authenticate, standardRateLimit, async (req: AuthRequest, res
           version: v.version,
           publishedAt: v.publishedAt,
           resource: followedResourceById.get(v.resourceId) ?? null,
+        })),
+      },
+      followedThreadReplies: {
+        count: followedThreadReplies.length,
+        items: followedThreadReplies.slice(0, 5).map((p: any) => ({
+          threadId: p.threadId,
+          threadTitle: followedThreadById.get(p.threadId)?.title ?? null,
+          createdAt: p.createdAt,
         })),
       },
     };

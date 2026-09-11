@@ -1111,6 +1111,8 @@ export async function createForumThread(
 
 export interface ForumThreadDetail {
   thread: ThreadCard & { newsId?: string | null; serverId?: string | null; categoryId: string };
+  // PLAN-009: aggregate thread-follower count (top-level; §42 — no lists).
+  followersCount?: number;
   category: { id: string; slug: string; name: string } | null;
   server: { id: string; slug: string; name: string } | null;
   data: ForumPostItem[];
@@ -1498,6 +1500,24 @@ export async function fetchMyResourceFollows(): Promise<{ slug: string; title: s
   return data.data ?? [];
 }
 
+// PLAN-009: thread follow (Community Loop completion).
+export async function followThread(threadId: string) {
+  const { data } = await api.post(`/community/forum/thread/${threadId}/follow`);
+  return data as { following: boolean; followersCount: number };
+}
+
+export async function unfollowThread(threadId: string) {
+  const { data } = await api.delete(`/community/forum/thread/${threadId}/follow`);
+  return data as { following: boolean; followersCount: number };
+}
+
+export async function fetchMyThreadFollows(): Promise<
+  { id: string; title: string; state: string; replyCount: number; lastPostAt: string | null }[]
+> {
+  const { data } = await api.get("/me/follows/threads");
+  return data.data ?? [];
+}
+
 // ---------- PLAN-007: Content Foundation (articles) ----------
 export interface ArticleCard {
   id: string;
@@ -1660,5 +1680,9 @@ export interface DashboardNow {
       publishedAt: string;
       resource: { slug: string; title: string } | null;
     }[];
+  };
+  followedThreadReplies?: {
+    count: number;
+    items: { threadId: string; threadTitle: string | null; createdAt: string }[];
   };
 }
