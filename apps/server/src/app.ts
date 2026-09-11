@@ -36,6 +36,8 @@ import profilesRoutes from "./routes/profiles";
 import searchRoutes from "./routes/search";
 import newsRoutes from "./routes/news";
 import dashboardRoutes from "./routes/dashboard";
+// PLAN-006: Daily Experience read layer (derived activity, live aggregates).
+import activityRoutes from "./routes/activity";
 import adminCommunityRoutes from "./routes/adminCommunity";
 import { standardRateLimit } from "./lib/rateLimit";
 import { reqLog } from "./middleware/requestId";
@@ -171,6 +173,8 @@ export function createApp(): Express {
   app.use("/search", searchRoutes);
   app.use("/news", newsRoutes);
   app.use("/dashboard", dashboardRoutes);
+  // PLAN-006: Daily Experience read layer (derived activity, live aggregates).
+  app.use("/activity", activityRoutes);
   app.use("/admin", adminCommunityRoutes);
 
   // PLAN-004 J-003 (audit): global error handler — in Express 4 a rejected

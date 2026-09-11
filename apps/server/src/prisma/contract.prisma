@@ -27,6 +27,9 @@ model User {
   status        UserStatus   @default(ACTIVE)
   createdAt     TimestamptzString @default(now())
   updatedAt     temporal.updatedAtString()
+  // PLAN-006 I-002: last dashboard visit — the "Сейчас / За ночь" summary
+  // measures new activity since this moment. Null = never visited.
+  dashboardSeenAt TimestamptzString?
 
   accounts      Account[]
   sessions      Session[]
@@ -276,6 +279,8 @@ model ResourceVersion {
 
   @@unique([resourceId, version])
   @@index([resourceId])
+  // PLAN-006: activity window queries (RESOURCE_UPDATE ordering).
+  @@index([releaseStatus, publishedAt])
 }
 
 enum PurchaseStatus {
@@ -489,6 +494,8 @@ model Review {
   @@unique([resourceId, buyerId])
   @@index([resourceId])
   @@index([buyerId])
+  // PLAN-006: activity window queries (NEW_REVIEW ordering).
+  @@index([createdAt])
 }
 
 // ============================================
@@ -1055,6 +1062,8 @@ model ModerationEvent {
   resource Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
 
   @@index([resourceId])
+  // PLAN-006: activity window queries (RESOURCE_RELEASE via publish events).
+  @@index([toStatus, createdAt])
 }
 
 // K-002: dispute state machine.
@@ -1354,6 +1363,8 @@ model Server {
   @@index([ownerId])
   @@index([lifecycle])
   @@index([monitoring])
+  // PLAN-006: activity window queries (NEW_SERVER ordering).
+  @@index([lifecycle, verifiedAt])
 }
 
 // Staff membership (owner/admin/moderator capabilities).
@@ -1470,6 +1481,8 @@ model ServerReview {
 
   @@unique([serverId, userId])
   @@index([serverId, status])
+  // PLAN-006: activity window queries (NEW_REVIEW ordering).
+  @@index([createdAt])
 }
 
 // H: server news — one object, many surfaces (server page, global feed,
@@ -1492,6 +1505,8 @@ model ServerNews {
 
   @@index([serverId, status, publishedAt])
   @@index([authorId])
+  // PLAN-006: activity window queries (global SERVER_NEWS ordering).
+  @@index([status, publishedAt])
 }
 
 // I: server updates are distinct from news — a versioned changelog entry.
@@ -1510,6 +1525,8 @@ model ServerUpdate {
   author User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
 
   @@index([serverId, publishedAt])
+  // PLAN-006: activity window queries (global SERVER_UPDATE ordering).
+  @@index([publishedAt])
 }
 
 // F-002: forum categories (global community).
@@ -1554,6 +1571,8 @@ model ForumThread {
   @@index([serverId])
   @@index([authorId])
   @@index([newsId])
+  // PLAN-006: activity window queries (NEW_DISCUSSION ordering).
+  @@index([createdAt])
 }
 
 // F-004: posts (first post of a thread is position 0). Soft delete where
@@ -1575,6 +1594,8 @@ model ForumPost {
 
   @@index([threadId, position])
   @@index([authorId])
+  // PLAN-006: activity window queries (DISCUSSION_REPLY ordering).
+  @@index([createdAt])
 }
 
 // F-004: reactions on posts. kind stays a string so new reaction kinds do

@@ -1,11 +1,14 @@
-// Homepage (PLAN-002 D-001..D-004 → PLAN-003 J-001..J-006): marketplace-
-// oriented, РЕАЛЬНЫЕ секции через агрегированный /resources/homepage:
-// Новинки (createdAt), Популярное (завершённые покупки), Бесплатные.
-// Каждая секция имеет «Смотреть всё» и ведёт в соответствующий state
-// Маркетплейса (J-005).
+// Homepage (PLAN-006 F): Home = живой вход в экосистему — главный вопрос
+// «Что происходит в MTA прямо сейчас?» (DAILY-EXPERIENCE §2/§49).
+// Структура (F-001): «Сейчас в MTA» (live line) → «Активность» (high-value
+// events) → «Популярное» (реальные метрики) → маркетплейс-секции PLAN-003
+// (Новинки/Популярное/Бесплатные) — сохранены ниже (§3: marketplace остаётся
+// частью daily experience, а не всей платформой). Всё доступно Guest (§29).
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchHomepage, type Resource } from "@/lib/api-ext";
 import { Button } from "@/components/ui/Button";
@@ -13,9 +16,15 @@ import { ResourceCard } from "@/components/ui/ResourceCard";
 import { ResourceCardSkeleton } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/States";
 import { SectionHeader } from "@/components/ui/SectionHeader";
+import { LiveLine } from "@/components/home/LiveLine";
+import { ActivityFeed } from "@/components/home/ActivityFeed";
+import { PopularSection } from "@/components/home/PopularSection";
 import { ArrowRight, Search, ShieldCheck, Sparkles, Store } from "lucide-react";
 
 export default function HomePage() {
+  const router = useRouter();
+  const [q, setQ] = useState("");
+
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["resources", "homepage"],
     queryFn: fetchHomepage,
@@ -35,7 +44,7 @@ export default function HomePage() {
       href: "/resources?sort=newest",
     },
     {
-      title: "Популярное",
+      title: "Популярное у покупателей",
       description: "Ресурсы, которые реально покупают",
       items: data?.popular ?? [],
       href: "/resources?sort=popular",
@@ -53,38 +62,54 @@ export default function HomePage() {
     !error &&
     (!data || (data.newest.length === 0 && data.popular.length === 0 && data.free.length === 0));
 
+  const submitSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    const query = q.trim();
+    router.push(query ? `/search?q=${encodeURIComponent(query)}` : "/search");
+  };
+
   return (
     <div>
-      {/* Hero (D-002) */}
+      {/* Hero — «Сейчас в MTA» (F-002): live line prominent, discovery-first */}
       <section className="border-b border-line bg-gradient-to-b from-surface-raised to-background">
-        <div className="mx-auto max-w-7xl px-4 py-16 md:py-24">
-          <div className="max-w-3xl">
-            <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-1 text-xs font-medium text-content-secondary">
-              <Sparkles className="h-3.5 w-3.5 text-accent" />
-              Маркетплейс серверных ресурсов
-            </p>
-            <h1 className="text-4xl md:text-5xl font-bold leading-tight tracking-tight">
-              Ресурсы для твоего сервера{" "}
-              <span className="text-accent-strong">MTA:SA</span>
-            </h1>
-            <p className="mt-4 text-lg text-content-secondary max-w-2xl">
-              Скрипты, карты, модели и готовые гейммоды от проверенных разработчиков. Каждый ресурс
-              проходит модерацию, а покупка выдаёт персональную лицензию с DRM-защитой.
-            </p>
-            <div className="mt-8 flex flex-col sm:flex-row gap-3">
-              <Link href="/resources">
-                <Button size="lg" className="w-full sm:w-auto">
-                  <Search className="mr-2 h-5 w-5" />
-                  Открыть Маркетплейс
-                </Button>
-              </Link>
-              <Link href="/auth/register">
-                <Button size="lg" variant="outline" className="w-full sm:w-auto">
-                  Создать аккаунт
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
-              </Link>
-            </div>
+        <div className="mx-auto max-w-7xl px-4 py-14 md:py-20">
+          <p className="mb-4 inline-flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-1 text-xs font-medium text-content-secondary">
+            <Sparkles className="h-3.5 w-3.5 text-accent" />
+            Сейчас в MTA
+          </p>
+          <h1 className="max-w-3xl text-4xl md:text-5xl font-bold leading-tight tracking-tight">
+            Что происходит в MTA{" "}
+            <span className="text-accent-strong">прямо сейчас?</span>
+          </h1>
+          <div className="mt-6">
+            <LiveLine />
+          </div>
+          <form onSubmit={submitSearch} className="mt-8 flex max-w-xl gap-2" role="search">
+            <input
+              type="search"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Найти сервер, ресурс или обсуждение…"
+              aria-label="Поиск по MTA Market"
+              className="w-full rounded-card border border-line bg-surface px-4 py-3 text-sm outline-none placeholder:text-content-muted focus-visible:ring-2 focus-visible:ring-accent"
+            />
+            <Button type="submit" size="lg" aria-label="Искать">
+              <Search className="h-5 w-5" />
+            </Button>
+          </form>
+          <div className="mt-4 flex flex-col sm:flex-row gap-3">
+            <Link href="/servers">
+              <Button size="lg" variant="primary" className="w-full sm:w-auto">
+                Серверы
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </Link>
+            <Link href="/resources">
+              <Button size="lg" variant="outline" className="w-full sm:w-auto">
+                <Search className="mr-2 h-5 w-5" />
+                Открыть Маркетплейс
+              </Button>
+            </Link>
           </div>
 
           <div className="mt-12 grid gap-4 sm:grid-cols-3 max-w-3xl">
@@ -115,7 +140,25 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Resource sections (J-001..J-003): реальные product sections */}
+      {/* Активность (F-001.2): high-value events с deep links (§43) */}
+      <section className="mx-auto max-w-7xl px-4 py-12">
+        <SectionHeader
+          title="Активность"
+          description="Обновления серверов, релизы, обсуждения и отзывы за последние дни"
+        />
+        <ActivityFeed />
+      </section>
+
+      {/* Популярное (F-001.3): реальные метрики, без fake trending */}
+      <section className="mx-auto max-w-7xl px-4 pb-4">
+        <SectionHeader
+          title="Популярное"
+          description="Серверы с живым онлайном и обсуждения с реальной активностью"
+        />
+        <PopularSection />
+      </section>
+
+      {/* Маркетплейс (F-001.4): существующие секции PLAN-003 сохранены */}
       <section className="mx-auto max-w-7xl px-4 py-12 space-y-12">
         {isLoading ? (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">

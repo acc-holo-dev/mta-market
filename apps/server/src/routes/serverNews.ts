@@ -12,6 +12,7 @@ import { recordAudit } from "../lib/audit";
 import { isOwnMediaUrl } from "../lib/media";
 import { loadStaffRole, isPubliclyVisible } from "../lib/serverAccess";
 import { createNotifications } from "../lib/notify";
+import { bustActivityCache } from "../lib/activity";
 
 const router: Router = Router();
 
@@ -281,6 +282,9 @@ router.post(
         ip: req.ip,
         requestId: req.id ?? null,
       });
+      // PLAN-006: published news is a high-value activity item — bust the
+      // snapshot cache so Home reflects it immediately.
+      await bustActivityCache();
       res.json({ news: published, thread });
     } catch (error) {
       reqLog(req).error("server_news_publish_failed", { error });
@@ -482,6 +486,8 @@ router.post(
         ip: req.ip,
         requestId: req.id ?? null,
       });
+      // PLAN-006: SERVER_UPDATE is the top-priority activity item.
+      await bustActivityCache();
       res.status(201).json(update);
     } catch (error) {
       reqLog(req).error("server_update_create_failed", { error });

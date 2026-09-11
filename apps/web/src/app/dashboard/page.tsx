@@ -12,6 +12,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Button } from "@/components/ui/Button";
 import { LoadingSpinner, EmptyState, ErrorState } from "@/components/ui/States";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { DashboardNow } from "@/components/dashboard/NowSummary";
 import Link from "next/link";
 import { Store, ShoppingBag, Server, Users, MessageSquare, Bell, Newspaper, RefreshCcw } from "lucide-react";
 import { typeLabel, formatDate } from "@/lib/domain";
@@ -137,6 +138,9 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* PLAN-006 I: сводка «Сейчас / За ночь» — персональный вход в экосистему */}
+      <DashboardNow />
 
       {/* PLAN-005 N: виджеты «My MTA» — сообщество (серверы, подписки, форум) */}
       <section className="mt-10">

@@ -12,6 +12,7 @@ import { recordAudit } from "../lib/audit";
 import { verifyAccessToken } from "../lib/jwt";
 import { loadStaffRole, isPubliclyVisible } from "../lib/serverAccess";
 import { createNotifications } from "../lib/notify";
+import { bustActivityCache } from "../lib/activity";
 
 const router: Router = Router();
 
@@ -245,6 +246,8 @@ router.post(
         position: 0,
       });
       await db.orm.public.ForumThread.where({ id: thread.id }).update({ lastPostAt: new Date().toISOString() });
+      // PLAN-006: NEW_DISCUSSION is a high-value activity item.
+      await bustActivityCache();
       res.status(201).json(thread);
     } catch (error) {
       reqLog(req).error("thread_create_failed", { error });
@@ -415,7 +418,8 @@ router.post(
         entityId: thread.id,
       }));
       await createNotifications(inputs, { excludeActorId: req.user!.userId });
-
+      // PLAN-006: fresh replies surface in Home within the cache cycle.
+      await bustActivityCache();
       res.status(201).json(post);
     } catch (error) {
       reqLog(req).error("forum_post_create_failed", { error });

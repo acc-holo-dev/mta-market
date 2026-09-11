@@ -8,6 +8,7 @@ import { authenticate, AuthRequest } from "../lib/auth";
 import { standardRateLimit, userRateLimit } from "../lib/rateLimit";
 import { db } from "../prisma/db";
 import { reqLog } from "../middleware/requestId";
+import { bustActivityCache } from "../lib/activity";
 import { recordAudit } from "../lib/audit";
 import { findActiveReviewToken } from "../lib/serverIntegration";
 import { loadStaffRole, isPubliclyVisible } from "../lib/serverAccess";
@@ -251,6 +252,8 @@ router.post(
         },
       ]);
 
+      // PLAN-006: NEW_REVIEW is a high-value activity item.
+      await bustActivityCache();
       res.status(201).json(review);
     } catch (error) {
       reqLog(req).error("server_review_create_failed", { error });

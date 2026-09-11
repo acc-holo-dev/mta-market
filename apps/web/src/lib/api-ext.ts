@@ -1358,3 +1358,94 @@ export async function adminModerateThread(id: string, state?: string, pinned?: b
   });
   return data;
 }
+
+// ---------- PLAN-006: Daily Experience (activity read layer) ----------
+export interface ActivityItem {
+  type: string;
+  at: string;
+  href: string;
+  title?: string | null;
+  server?: { slug: string; name: string; logoUrl: string | null } | null;
+  resource?: {
+    slug: string;
+    title: string;
+    coverUrl: string | null;
+    sellerName?: string | null;
+  } | null;
+  thread?: { id: string; title: string; replyCount: number } | null;
+  author?: { username: string | null; displayName: string | null; avatar: string | null } | null;
+  version?: string | null;
+  count?: number | null;
+  review?: { rating: number; verified?: boolean } | null;
+}
+
+export interface ActivityLive {
+  playersOnline: number;
+  serversOnline: number;
+  computedAt: string;
+}
+
+export interface ActivitySnapshot {
+  live: ActivityLive;
+  items: ActivityItem[];
+  popular: {
+    servers: {
+      slug: string;
+      name: string;
+      logoUrl: string | null;
+      playerCount: number | null;
+      maxPlayers: number | null;
+      monitoring: string;
+    }[];
+    discussions: { id: string; title: string; replyCount: number; views: number }[];
+  };
+  generatedAt: string;
+}
+
+export async function fetchActivity(): Promise<ActivitySnapshot> {
+  const { data } = await api.get<ActivitySnapshot>("/activity?limit=14");
+  return data;
+}
+
+export interface DashboardNow {
+  since: string;
+  firstVisit: boolean;
+  unreadNotifications: number;
+  serverUpdates: {
+    count: number;
+    items: {
+      id: string;
+      version: string;
+      title: string;
+      publishedAt: string;
+      server: { slug: string; name: string } | null;
+    }[];
+  };
+  serverNews: {
+    count: number;
+    items: {
+      id: string;
+      title: string;
+      publishedAt: string;
+      server: { slug: string; name: string } | null;
+    }[];
+  };
+  discussionReplies: {
+    count: number;
+    items: { threadId: string; threadTitle: string | null; createdAt: string }[];
+  };
+  purchasedUpdates: {
+    count: number;
+    items: {
+      id: string;
+      version: string;
+      publishedAt: string;
+      resource: { slug: string; title: string } | null;
+    }[];
+  };
+}
+
+export async function fetchDashboardNow(): Promise<DashboardNow> {
+  const { data } = await api.get<DashboardNow>("/dashboard/now");
+  return data;
+}

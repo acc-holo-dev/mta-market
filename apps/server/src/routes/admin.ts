@@ -8,6 +8,7 @@ import { sendResourcePublishedEmail } from "../lib/email";
 import { isResourceStatus, isTransitionAllowed, type ResourceStatus } from "../lib/moderation";
 import { hasValidSignature } from "../lib/artifact/signing";
 import { getSandboxRun } from "../lib/sandbox/service";
+import { bustActivityCache } from "../lib/activity";
 import { reqLog } from "../middleware/requestId";
 import { validateResourceDependencies } from "../lib/artifact/dependencies";
 import { recordAudit } from "../lib/audit";
@@ -181,10 +182,16 @@ router.patch(
             await db.orm.public.ResourceVersion
               .where({ id: version.id })
               .update({ releaseStatus: "PUBLISHED" });
+            // PLAN-006: RESOURCE_UPDATE activity item.
+            await bustActivityCache();
           }
         }
       }
 
+      // PLAN-006: RESOURCE_RELEASE is a high-value activity item.
+      if (status === "PUBLISHED" && resource.status !== "PUBLISHED") {
+        await bustActivityCache();
+      }
       // Send notification if published
       if (status === "PUBLISHED" && resource.status !== "PUBLISHED") {
         const seller = await db.orm.public.User.where({ id: resource.sellerId }).first();

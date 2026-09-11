@@ -1,10 +1,11 @@
-﻿import { defineConfig } from "vitest/config";
+import { defineConfig } from "vitest/config";
 
 // Integration tests run against a real PostgreSQL with the contract schema
 // applied (prisma db init). Default URL points at the local embedded test
-// instance; override with TEST_DATABASE_URL.
+// instance (docker: mta-market-postgres-test, POSTGRES_PASSWORD=postgres);
+// override with TEST_DATABASE_URL.
 const TEST_DATABASE_URL =
-  process.env.TEST_DATABASE_URL || "postgresql://postgres@127.0.0.1:5433/postgres?schema=public";
+  process.env.TEST_DATABASE_URL || "postgresql://postgres:postgres@127.0.0.1:5433/postgres?schema=public";
 
 export default defineConfig({
   test: {

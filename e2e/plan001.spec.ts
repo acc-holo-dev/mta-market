@@ -456,8 +456,15 @@ test.describe.serial("PLAN-001 full product cycle", () => {
   test("purchases dashboard lists the acquisitions", async ({ page }) => {
     await uiLogin(page, BUYER, PASSWORD);
     await page.goto("/dashboard");
-    await expect(page.getByText(PAID_TITLE)).toBeVisible();
-    await expect(page.getByText(FREEACQ_TITLE)).toBeVisible();
+    // PLAN-006: the dashboard also renders the «Сейчас» summary, whose rows
+    // may mention the same resource title (detail text) — match the purchases
+    // list rows via their links, not bare text.
+    await expect(
+      page.getByRole("link", { name: PAID_TITLE, exact: true })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: FREEACQ_TITLE, exact: true })
+    ).toBeVisible();
     // The rejected free resource was never purchased and never appears.
     await expect(page.getByText(FREE_TITLE)).toHaveCount(0);
   });

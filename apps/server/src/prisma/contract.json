@@ -9809,6 +9809,13 @@
                   "kind": "scalar"
                 }
               },
+              "dashboardSeenAt": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
               "displayName": {
                 "nullable": true,
                 "type": {
@@ -10284,6 +10291,9 @@
                 },
                 "createdAt": {
                   "column": "createdAt"
+                },
+                "dashboardSeenAt": {
+                  "column": "dashboardSeenAt"
                 },
                 "displayName": {
                   "column": "displayName"
@@ -11918,6 +11928,14 @@
                 },
                 {
                   "columns": [
+                    "createdAt"
+                  ],
+                  "name": "forumPost_createdAt_idx_9575dbd7",
+                  "prefix": "forumPost_createdAt_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
                     "threadId"
                   ],
                   "name": "forumPost_threadId_idx_6deac339",
@@ -12241,6 +12259,14 @@
                   ],
                   "name": "forumThread_categoryId_lastPostAt_idx_e90d04e0",
                   "prefix": "forumThread_categoryId_lastPostAt_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "createdAt"
+                  ],
+                  "name": "forumThread_createdAt_idx_9575dbd7",
+                  "prefix": "forumThread_createdAt_idx",
                   "unique": false
                 },
                 {
@@ -13039,6 +13065,15 @@
                   ],
                   "name": "moderationEvent_resourceId_idx_72964925",
                   "prefix": "moderationEvent_resourceId_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "toStatus",
+                    "createdAt"
+                  ],
+                  "name": "moderationEvent_toStatus_createdAt_idx_d3c44f73",
+                  "prefix": "moderationEvent_toStatus_createdAt_idx",
                   "unique": false
                 }
               ],
@@ -15065,6 +15100,15 @@
               "indexes": [
                 {
                   "columns": [
+                    "releaseStatus",
+                    "publishedAt"
+                  ],
+                  "name": "resourceVersion_releaseStatus_publishedAt_idx_b6b40219",
+                  "prefix": "resourceVersion_releaseStatus_publishedAt_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
                     "resourceId"
                   ],
                   "name": "resourceVersion_resourceId_idx_72964925",
@@ -15171,6 +15215,14 @@
                   ],
                   "name": "review_buyerId_idx_80be0de9",
                   "prefix": "review_buyerId_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "createdAt"
+                  ],
+                  "name": "review_createdAt_idx_9575dbd7",
+                  "prefix": "review_createdAt_idx",
                   "unique": false
                 },
                 {
@@ -15796,6 +15848,15 @@
                 },
                 {
                   "columns": [
+                    "lifecycle",
+                    "verifiedAt"
+                  ],
+                  "name": "server_lifecycle_verifiedAt_idx_da9a4538",
+                  "prefix": "server_lifecycle_verifiedAt_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
                     "monitoring"
                   ],
                   "name": "server_monitoring_idx_92350f0d",
@@ -16172,6 +16233,15 @@
                   "name": "serverNews_serverId_status_publishedAt_idx_8b30b479",
                   "prefix": "serverNews_serverId_status_publishedAt_idx",
                   "unique": false
+                },
+                {
+                  "columns": [
+                    "status",
+                    "publishedAt"
+                  ],
+                  "name": "serverNews_status_publishedAt_idx_4d4b1960",
+                  "prefix": "serverNews_status_publishedAt_idx",
+                  "unique": false
                 }
               ],
               "primaryKey": {
@@ -16389,6 +16459,14 @@
                 }
               ],
               "indexes": [
+                {
+                  "columns": [
+                    "createdAt"
+                  ],
+                  "name": "serverReview_createdAt_idx_9575dbd7",
+                  "prefix": "serverReview_createdAt_idx",
+                  "unique": false
+                },
                 {
                   "columns": [
                     "serverId"
@@ -16938,6 +17016,14 @@
                   ],
                   "name": "serverUpdate_authorId_idx_e47547ed",
                   "prefix": "serverUpdate_authorId_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "publishedAt"
+                  ],
+                  "name": "serverUpdate_publishedAt_idx_36121b91",
+                  "prefix": "serverUpdate_publishedAt_idx",
                   "unique": false
                 },
                 {
@@ -17841,6 +17927,11 @@
                   "nativeType": "timestamptz",
                   "nullable": false
                 },
+                "dashboardSeenAt": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "nativeType": "timestamptz",
+                  "nullable": true
+                },
                 "displayName": {
                   "codecId": "pg/text@1",
                   "nativeType": "text",
@@ -18400,7 +18491,7 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "52df04b636afb8f268f5da8cea604fc67d4be509ccb429d2913e18ff6174ebcc"
+    "storageHash": "6738219b4d00311c3a6c8162c2aacd2ac2ba6e59797f848e669afe4c0aa24fd1"
   },
   "execution": {
     "executionHash": "495043761f86cf1b4f61c1e01fff571750e2906634e4c68fbb95bd52f52d4906",
